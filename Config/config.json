@@ -1,10 +1,10 @@
 {
-  "server_dir": "G:/Servers/VeinServer",
+  "server_dir": "G:/Servers/VeinServer/Vein/Binaries/Win64",
   "server_executables": [
     "VeinServer.exe",
     "VeinServer-Win64-Test.exe"
   ],
-  "runtime_dir": "G:/Servers/VeinServer/ServerManagment/Runtime",
+  "runtime_dir": "G:/Servers/VeinServer/VeinServerManagement/Runtime",
   "save_dir": "G:/Servers/VeinServer/Vein/Saved/SaveGames",
   "save_filenames": [
     "Server.vns",
@@ -24,7 +24,7 @@
   "game_port": 7777,
   "query_port": 27015,
   "enable_query_port": true,
-  "steamcmd_path": "C:\\SteamCMD\\steamcmd.exe",
+  "steamcmd_path": "C:/SteamCMD/steamcmd.exe",
   "app_id": 2131400,
   "auto_update_on_start": true,
   "steam_update_validate": true,
@@ -34,7 +34,12 @@
   "steam_update_timeout_seconds": 900,
   "max_backups": 10,
   "backup_max_age_days": 7,
-  "backup_folders": "G:/Servers/VeinServer/ServerManagment/Backups",
+  "backup_folders": {
+    "Manual": "G:/Servers/VeinServer/VeinServerManagement/Backups/Manual",
+    "Startup": "G:/Servers/VeinServer/VeinServerManagement/Backups/Startup",
+    "Autosave": "G:/Servers/VeinServer/VeinServerManagement/Backups/Autosave",
+    "Crash": "G:/Servers/VeinServer/VeinServerManagement/Backups/Crash"
+  },
   "nightly_backup": {
     "enable": false,
     "max_backups": 14,

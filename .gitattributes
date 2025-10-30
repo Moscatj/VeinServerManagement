@@ -1,0 +1,43 @@
+# =========================================
+# Vein Server Management — Git Attributes
+# =========================================
+
+# Normalize all text files to LF in repo, auto-convert to CRLF on Windows checkout
+* text=auto eol=lf
+
+# Explicit text file types (normalize to LF)
+*.py      text eol=lf
+*.json    text eol=lf
+*.cfg     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Explicit binary types (never modify line endings)
+*.exe     binary
+*.dll     binary
+*.pyd     binary
+*.zip     binary
+*.7z      binary
+*.rar     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.pdf     binary
+
+# Keep backups and logs clearly binary (even though they’re ignored)
+Backups/** binary
+Logs/**     binary
+Runtime/**  binary
+
+# Ensure .gitignore and .gitattributes themselves stay normalized
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Optional: mark Python scripts as diffable with unified context
+*.py diff=python
