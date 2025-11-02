@@ -1,5 +1,5 @@
 {
-  "server_dir": "G:/Servers/VeinServer/Vein/Binaries/Win64",
+  "server_dir": "G:/Servers/VeinServer",
   "server_executables": [
     "VeinServer.exe",
     "VeinServer-Win64-Test.exe"

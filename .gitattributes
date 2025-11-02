@@ -1,43 +1,33 @@
-# =========================================
-# Vein Server Management — Git Attributes
-# =========================================
+# Default: normalize text to LF in the repo
+*               text=auto eol=lf
 
-# Normalize all text files to LF in repo, auto-convert to CRLF on Windows checkout
-* text=auto eol=lf
+# Windows batch files need CRLF to run when double-clicked
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
 
-# Explicit text file types (normalize to LF)
-*.py      text eol=lf
-*.json    text eol=lf
-*.cfg     text eol=lf
-*.yml     text eol=lf
-*.yaml    text eol=lf
-*.md      text eol=lf
-*.txt     text eol=lf
-*.bat     text eol=crlf
-*.cmd     text eol=crlf
+# Shell/PowerShell scripts stay LF (cross-platform, CI friendly)
+*.sh            text eol=lf
+*.ps1           text eol=lf
 
-# Explicit binary types (never modify line endings)
-*.exe     binary
-*.dll     binary
-*.pyd     binary
-*.zip     binary
-*.7z      binary
-*.rar     binary
-*.png     binary
-*.jpg     binary
-*.jpeg    binary
-*.gif     binary
-*.ico     binary
-*.pdf     binary
+# Project text files (LF)
+*.py            text eol=lf
+*.json          text eol=lf
+*.ini           text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
 
-# Keep backups and logs clearly binary (even though they’re ignored)
-Backups/** binary
-Logs/**     binary
-Runtime/**  binary
-
-# Ensure .gitignore and .gitattributes themselves stay normalized
-.gitattributes text eol=lf
-.gitignore     text eol=lf
-
-# Optional: mark Python scripts as diffable with unified context
-*.py diff=python
+# Binary files — never normalize
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.pdf           binary
+*.zip           binary
+*.7z            binary
+*.exe           binary
+*.dll           binary
+*.pdb           binary
+*.vns           binary
