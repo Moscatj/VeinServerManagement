@@ -1,214 +1,167 @@
-# Vein Server Control Suite — v2.1 “Notify Ready”
+# Vein Server Management Suite
 
-A fully configurable, self-healing control suite for the **Vein Dedicated Server** on Windows 11 — featuring automatic Steam updates, crash recovery, backups, and Discord integration for every stage of the server lifecycle.
+A modular, self-healing control system for the **Vein Dedicated Server** on Windows.  
+Includes automated backups, crash recovery, Steam updates, and Discord event reporting — all configurable through JSON and managed via an integrated GUI.
 
 ---
 
-## 📁 Directory Layout
+## 🚀 Features
 
-G:\Servers\VeinServer
-├── StartSuite_tabs.bat # Unified startup (server + monitors in one tabbed window)
-├── StartServer.bat # Start only the server
-├── StartMonitors.bat # Classic dual-monitor start
-├── StartMonitors_tab.bat # Monitors in a single tabbed console
-├── ShutdownServer.bat # Full graceful shutdown (Admin required)
-└── /Tools/
-├── config.json
-├── config_helper.py
-├── utils.py
-├── start_server.py
-├── shutdown_server.py
-├── crash_monitor.py
-└── monitor_log.py
+- ✅ One-click startup with crash + log monitors  
+- 🔄 Auto-recovery after crashes or disconnects  
+- 🕓 Automated scheduled (nightly) backups  
+- 🧩 Full GUI for editing config and viewing logs (`vein_manager.py`)  
+- 💬 Discord integration for startup, crash, join, and shutdown events  
+- ⚙️ Completely config-driven — no hardcoded paths  
+
+---
+
+## 📁 Project Structure
+
+VeinServerManagement/
+├── Config/
+│ └── config.json
+├── Controller/
+│ ├── start_server.py
+│ ├── shutdown_server.py
+│ ├── crash_monitor.py
+│ ├── monitor_log.py
+│ ├── nightly_backup.py
+│ ├── vein_manager.py
+│ ├── config.py
+│ ├── config_helper.py
+│ └── utils.py
+├── Scripts/
+│ ├── env_setup.bat
+│ ├── StartServer.bat
+│ ├── StartCrashMonitor.bat
+│ ├── StartLogMonitor.bat
+│ └── ShutdownServer.bat
+├── Runtime/
+│ ├── *.pid / *.json / *.flag
+│ └── ...
+├── Backups/
+│ ├── Manual/
+│ ├── Startup/
+│ ├── Autosave/
+│ ├── Crash/
+│ └── Nightly/
+└── Docs/
+├── utils_summary.md
+├── start_server_summary.md
+├── monitor_log_summary.md
+├── crash_monitor_summary.md
+├── shutdown_server_summary.md
+├── config_helper_summary.md
+├── config_summary.md
+├── config_reference.md
+├── vein_manager_summary.md
+├── nightly_backup_summary.md
+├── env_setup_summary.md
+└── control_layer_overview.md
 
 yaml
 Copy code
 
 ---
 
-## ⚙️ Config Reference (`config.json`)
+## ⚙️ Setup
 
-All adjustable behavior lives in `Tools/config.json`.  
-No hard-coded paths — everything resolves through `config_helper`.
+### 1. Prerequisites
+- Windows 10/11  
+- Python 3.10+  
+- SteamCMD (for automatic updates)
+- Discord webhook URL (optional but recommended)
 
-### Core Settings
+### 2. Configure
+Edit `Config/config.json` to match your paths and desired behavior.  
+See detailed explanations in **[Docs/config_reference.md](Docs/config_reference.md)**.
 
-| Key | Description |
-|-----|--------------|
-| `server_dir` | Folder containing the Vein server executables |
-| `server_executables` | List of accepted EXE filenames |
-| `map_path` | Unreal map path (omit `?listen`) |
-| `multi_home_ip` | IP to bind (use `0.0.0.0` for all interfaces) |
-| `game_port` / `query_port` | Game and query ports |
-| `extra_launch_args` | Extra Unreal arguments (e.g. `-SteamSockets`) |
-| `steamcmd_path` | Full path to SteamCMD |
-| `app_id` | Vein App ID 2131400 |
-| `auto_update_on_start` | Run Steam update before each boot |
-| `backup_root` | Root directory for all backups |
-| `save_dir` / `save_filenames` | Save file locations |
-| `discord_webhook` | Webhook URL or `ENV:DISCORD_WEBHOOK_URL` |
-| `shutdown_timeout_sec` | Time to wait for graceful exit |
-| `pre_shutdown_warning_seconds` | Optional Discord countdown before shutdown |
+### 3. Launch Options
+| Task | How |
+|------|-----|
+| Start everything | `Scripts\StartServer.bat` |
+| Start monitors only | `Scripts\StartMonitors.bat` |
+| Shut down gracefully | `Scripts\ShutdownServer.bat` |
+| Use GUI | Run `Controller\vein_manager.py` |
+| Run nightly backup | `py Controller\nightly_backup.py` or schedule it |
+
+All batch files automatically call `Scripts/env_setup.bat` to set paths.
 
 ---
 
-### 🧩 Monitor Configuration (`monitor` block)
+## 🧩 Core Components
 
-| Key | Purpose |
-|-----|--------|
-| `enable` | Master toggle for `monitor_log.py` |
-| `heartbeat_interval_seconds` | Seconds between heartbeat updates (default 3600 = hourly) |
-| `state_file` | Optional override path for `server_state.json` |
+| Module | Summary |
+|---------|----------|
+| **start_server.py** | Launches the server, applies config, starts monitors. |
+| **crash_monitor.py** | Detects unexpected exits, performs controlled restarts. |
+| **monitor_log.py** | Parses the live log for player events and crash signatures. |
+| **shutdown_server.py** | Performs graceful shutdown + backup. |
+| **nightly_backup.py** | Creates and prunes daily “Nightly” backups. |
+| **config_helper.py** | Unified getter interface for `config.json`. |
+| **vein_manager.py** | Full-featured GUI to manage the suite. |
+| **env_setup.bat** | Sets all required environment variables for the suite. |
 
-#### 🧠 Tracking Toggles (`monitor.track`)
-```json
-"track": {
-  "startup": true,
-  "auth": true,
-  "join": true,
-  "character": true,
-  "disconnect": true,
-  "autosave": true,
-  "crash": true,
-  "heartbeat": true
-}
+Full documentation for each file is available in the [Docs](Docs/) folder.
 
-Disabling a track item stops it from being processed entirely.
+---
 
-🔔 Notification Toggles (monitor.notify)
-"notify": {
-  "startup": true,
-  "joinable": true,
-  "auth": true,
-  "join": true,
-  "character": true,
-  "disconnect": true,
-  "autosave": false,
-  "crash": true,
-  "heartbeat": false,
-  "monitor_status": true
-}
-Set any value to false to silence that event in Discord while keeping console and state updates active.
+## 🧠 Understanding the Control Layer
 
-💾 Backup Triggers (monitor.backups)
-"backups": {
-  "on_player_logout": true,
-  "on_autosave": true
-}
-Automatically creates labeled ZIP backups during player logouts or autosaves.
+If you want to understand how the system pieces fit together, read:  
+📘 **[Docs/control_layer_overview.md](Docs/control_layer_overview.md)**  
+It includes an ASCII flow diagram and cross-module interactions.
 
-🔧 Feature Flags (features block)
-Key	Description
-enable_discord	Master Discord on/off
-enable_backups	Enable all backup creation and rotation
-enable_steam_update	Run SteamCMD pre-launch
-enable_crash_monitor	Enable crash monitor process
-enable_log_rotation	Periodic Vein.log rotation
-discord_*	Per-channel toggles (monitor, startup, shutdown, backups, crash_monitor)
+---
 
-🖥 Server Lifecycle Commands
-Command	Function
-StartSuite_tabs.bat	Launches server + both monitors in one tabbed terminal (recommended)
-StartServer.bat	Starts server only
-StartMonitors_tab.bat	Starts only log & crash monitors
-ShutdownServer.bat	Performs full controlled shutdown and backup
+## 🕓 Automation
 
-🛑 Shutdown Sequence
-ShutdownServer.bat performs:
+To automate nightly backups, schedule:
+py -3 Controller\nightly_backup.py
 
-Gracefully stops monitors.
+yaml
+Copy code
+in Windows Task Scheduler.  
+See [Docs/nightly_backup_summary.md](Docs/nightly_backup_summary.md) for more details.
 
-Sends optional Discord countdown (pre_shutdown_warning_seconds).
+---
 
-Terminates all VeinServer*.exe and UE helper processes.
+## 🧰 Troubleshooting
 
-Performs Shutdown backup.
+| Issue | Solution |
+|-------|-----------|
+| Server starts twice | Check for stale `startup_in_progress.lock` in `Runtime/` |
+| Crash monitor restarts too fast | Increase `startup_quiet_seconds` or `restart_throttle_seconds` |
+| No Discord messages | Verify `enable_discord` and webhook variable |
+| GUI gumballs never turn green | Ensure monitor state JSONs are updating under `Runtime/` |
 
-Clears flags and lock files.
+---
 
-Posts final “Server stopped” message to Discord (if enabled).
+## 🧾 Documentation Index
 
-Requires Administrator rights.
+| Topic | File |
+|--------|------|
+| System Overview | [Docs/control_layer_overview.md](Docs/control_layer_overview.md) |
+| Config Reference | [Docs/config_reference.md](Docs/config_reference.md) |
+| Configuration Loader | [Docs/config_summary.md](Docs/config_summary.md) |
+| Config Helper | [Docs/config_helper_summary.md](Docs/config_helper_summary.md) |
+| Server Startup | [Docs/start_server_summary.md](Docs/start_server_summary.md) |
+| Shutdown | [Docs/shutdown_server_summary.md](Docs/shutdown_server_summary.md) |
+| Crash Monitor | [Docs/crash_monitor_summary.md](Docs/crash_monitor_summary.md) |
+| Log Monitor | [Docs/monitor_log_summary.md](Docs/monitor_log_summary.md) |
+| Nightly Backup | [Docs/nightly_backup_summary.md](Docs/nightly_backup_summary.md) |
+| Environment Setup | [Docs/env_setup_summary.md](Docs/env_setup_summary.md) |
+| GUI (Vein Manager) | [Docs/vein_manager_summary.md](Docs/vein_manager_summary.md) |
+| Utilities | [Docs/utils_summary.md](Docs/utils_summary.md) |
 
-💥 Crash & Exception Recovery
-crash_monitor.py watches for unexpected exits.
+---
 
-On detection:
+## 🧱 Legacy Technical Notes
 
-Posts crash alert (respecting notify.crash).
+For the full deep-dive legacy documentation from v2.1 (“Notify Ready”),  
+see **[Docs/Legacy_README_v2.1.md](Docs/Legacy_README_v2.1.md)**.
 
-Sends last N log lines (gated by same flag).
+---
 
-Performs backup.
-
-Waits out quiet window before restarting.
-
-📊 Log Monitoring (monitor_log.py)
-Continuously follows Vein.log and reacts to:
-
-Player authentication, joins, and disconnects
-
-Character selection
-
-Auto-saves (with cooldown backups)
-
-Fatal/crash signatures
-
-Heartbeats summarizing uptime and player list
-
-Heartbeats
-Default: every hour (heartbeat_interval_seconds: 3600)
-
-Controlled by track.heartbeat and notify.heartbeat.
-
-Heartbeats always print to console and update the WebAdmin state file.
-
-Discord posting only occurs if both flags are true.
-
-🧱 Safety & Reliability
-Startup locks prevent duplicate boots.
-
-Quiet windows stop restart loops after manual restarts.
-
-Crash-aware backups keep save data safe.
-
-Discord secrets pulled from environment variables.
-
-Graceful shutdown ensures process cleanup before restart.
-
-🔔 Discord Webhook Handling
-Set system variable DISCORD_WEBHOOK_URL.
-
-In config.json, specify "discord_webhook": "ENV:DISCORD_WEBHOOK_URL".
-
-The suite auto-loads it at runtime.
-
-🧩 Troubleshooting
-🔹 Heartbeats spamming Discord
-Set "monitor.notify.heartbeat": false or raise "heartbeat_interval_seconds" to 3600 or higher.
-
-🔹 No Discord messages
-Check:
-
-"features.enable_discord": true
-
-Environment variable DISCORD_WEBHOOK_URL is set correctly
-
-The corresponding "monitor.notify" flag isn’t disabled
-
-🔹 Log monitor not stopping
-Run ShutdownServer.bat as Administrator to terminate background processes.
-
-🔹 Steam update timeout
-Disable "auto_update_on_start" temporarily or increase "steam_update_timeout_seconds".
-
-✅ Summary
-Fully config-driven, zero hard-coded paths.
-
-Modular monitors with per-event tracking and Discord notification toggles.
-
-Hourly heartbeat default, safe backups, and robust crash recovery.
-
-Designed for Windows 11 tabbed terminals with full admin cleanup support.
-
-Vein Server Control Suite v2.1 — Reliable · Recoverable · Refined
+_Last updated by AI documentation generator for the Vein Server Management project._
