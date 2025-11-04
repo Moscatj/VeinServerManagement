@@ -86,25 +86,30 @@ def _spawn_py(script_name: str) -> bool:
         return False
 
 def _start_monitors() -> None:
-    # Best-effort cleanup: kill any lingering instances
     stop_log_monitor()
     stop_crash_monitor()
 
     feats = dict(config.get("features", {}))
+    wanted = []
     started = []
 
     if feats.get("enable_log_monitor", True):
+        wanted.append("log")
         if _spawn_py("monitor_log.py"):
             started.append("log")
 
     if feats.get("enable_crash_monitor", True):
+        wanted.append("crash")
         if _spawn_py("crash_monitor.py"):
             started.append("crash")
 
-    if started:
-        send_discord_message(f"🟢 Monitors started: {', '.join(started)}", channel="startup")
+    if not wanted:
+        send_discord_message("ℹ️ Monitors disabled by config; none requested.", channel="startup")
+    elif not started:
+        send_discord_message("⚠️ Monitor spawn failed (see mgmt logs).", channel="startup")
     else:
-        send_discord_message("⚠️ No monitors started (disabled or spawn failed).", channel="startup")
+        send_discord_message(f"🟢 Monitors started: {', '.join(started)}", channel="startup")
+
 
 def _steam_update_if_enabled() -> None:
     """Narrate Steam update; never hard-fail start if update fails."""

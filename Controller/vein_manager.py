@@ -164,7 +164,7 @@ def _runtime_paths(cfg_path: str) -> dict:
     rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
     server_dir = Path(cfg.get("server_dir") or ROOT.parent)
 
-    # Heartbeat sizing (GUI’s freshness window)
+    # Heartbeat seconds used by freshness window (prefer top-level; fallback to nested; else 60)
     hb_top = cfg.get("monitor_heartbeat_interval_seconds", None)
     hb_nested = (cfg.get("monitor", {}) or {}).get("heartbeat_interval_seconds", None)
     try:
@@ -172,31 +172,24 @@ def _runtime_paths(cfg_path: str) -> dict:
     except Exception:
         hb = 60
 
-    # --- FIX: server_state must live in Runtime, not under "monitor.state_file"
-    server_state = rt / "server_state.json"
-
-    # Log monitor state path (allow override via monitor.state_file)
     monitor = cfg.get("monitor", {}) if isinstance(cfg.get("monitor", {}), dict) else {}
-    state_log = Path(monitor.get("state_file") or (rt / "log_monitor_state.json"))
 
     return {
         "runtime_dir": rt,
         "state_flag": rt / "server_running.flag",
         "shutdown_flag": rt / "shutdown_in_progress.flag",
-        "server_state": server_state,
+        "server_state": rt / "server_state.json",
         "crash_state": rt / "crash_monitor_state.json",
         "logs_dir": Path(cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")),
         "absolute_log_file": Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None,
         "backup_root": Path(cfg.get("backup_root") or (ROOT / "Backups")),
         "features": cfg.get("features", {}),
-
         "log_monitor_enabled": bool(cfg.get("features", {}).get("enable_log_monitor", True)),
         "crash_monitor_enabled": bool(cfg.get("features", {}).get("enable_crash_monitor", True)),
-
-        # Use a clear, generous freshness window: clamp(2*hb, 30..900)
         "hb_seconds": hb,
-        "state_log": state_log,
+        "state_log": Path(monitor.get("state_file") or (rt / "log_monitor_state.json")),
     }
+
 
 def _resolve_logfile(cfg_path: str, overrides: Dict[str, str]) -> Path:
     rp = _runtime_paths(cfg_path)
@@ -300,9 +293,8 @@ class StatusPoller(QtCore.QRunnable):
                 lu = lms["last_updated"].replace("Z", "")
                 dt = datetime.fromisoformat(lu)
 
-                # Use the same heartbeat baseline the monitor uses (rp["hb_seconds"])
+                # Use GUI hb baseline; window = clamp(2*hb, 30..900)
                 hb = max(10, int(rp.get("hb_seconds", 60)))
-                # Clear, generous window: 2× heartbeat, clamped to 30..900s
                 window = max(30, min(900, 2 * hb))
 
                 lm_fresh = (datetime.utcnow() - dt).total_seconds() <= window
@@ -529,46 +521,44 @@ class Main(QtWidgets.QMainWindow):
         self.setWindowTitle("Vein Server Manager")
         self.resize(1380, 900)
 
-        # state
+        # basic state
         self.config_dir = str(CONFIG_DIR)
         self.config_path = str(DEFAULT_CONFIG)
-        self.rows: Dict[Tuple[str, ...], KVRow] = {}
+        self.rows = {}
         self._saving = False
 
-        # settings: overrides
+        # settings
         q = QtCore.QSettings(APP_ORG, APP_NAME)
-        self.use_defaults: bool = bool(q.value("use_defaults", True))
-        self.overrides: Dict[str, str] = dict(q.value("overrides", {}) or {})
+        self.use_defaults = bool(q.value("use_defaults", True))
+        self.overrides = dict(q.value("overrides", {}) or {})
 
-        # --- Build UI first (creates tabs, checkboxes, buttons, etc.)
+        # 1) build UI (creates tabs + self.chk_live, self.log_game/self.log_lm/self.log_cm)
         self._ui()
-        # --- Wire signals next (uses widgets created by _ui)
-        self._signals()
 
-        # --- Initialize tail buffers/handles BEFORE tail_start()
-        self._buf_game: list[str] = []
-        self._buf_lm:   list[str] = []
-        self._buf_cm:   list[str] = []
+        # 2) signals
+        self._signals()  # should connect: b_clearlog-> _clear_current_log, chk_live-> _retail
+
+        # 3) init NEW 3-tab tail buffers/handles BEFORE tail_start()
+        self._buf_game, self._buf_lm, self._buf_cm = [], [], []
         self.tail_game = None
         self.tail_lm   = None
         self.tail_cm   = None
 
-        # Single periodic flush timer for all tails
-        if not hasattr(self, "flush_timer"):
-            self.flush_timer = QtCore.QTimer(self)
-            self.flush_timer.setInterval(250)
-            self.flush_timer.timeout.connect(self._flush_tail)
-            self.flush_timer.start()
+        # one flush timer for all tails
+        self.flush_timer = QtCore.QTimer(self)
+        self.flush_timer.setInterval(250)
+        self.flush_timer.timeout.connect(self._flush_tail)
+        self.flush_timer.start()
 
-        # --- Config & watchers
+        # 4) config load + JSON watches
         self.refresh_cfgs()
         self.load_json()
         self.watch_json()
 
-        # --- Start tailing now that everything is initialized
+        # 5) now it’s safe to start tailing
         self.tail_start()
 
-        # --- Background status polling (every 2s, non-blocking)
+        # 6) background status polling
         self._pool = QtCore.QThreadPool.globalInstance()
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(2000)

@@ -129,12 +129,14 @@ def _discord(msg: str, channel: str = "monitor"):
         send_discord_message(msg, channel=channel)
 
 def tail_log(fp: io.TextIOBase):
-    """Yield new lines as they appear."""
+    """Yield new lines as they appear; yield None periodically when idle."""
     fp.seek(0, os.SEEK_END)
+    poll = max(0.05, TAIL_POLL_MS / 1000.0)
     while True:
         line = fp.readline()
         if not line:
-            time.sleep(TAIL_POLL_MS / 1000.0)
+            time.sleep(poll)
+            yield None            # <-- idle tick so we can run timers
             continue
         yield line.rstrip("\r\n")
 
@@ -181,7 +183,7 @@ def monitor():
             # pre-read existing until EOF, then tail
             for _ in f:
                 pass
-            for line in tail_log(f):
+            for line in tail_log(f):  # ← single loop
                 if STOP_FLAG.exists():
                     _write_logmon_state(active=False, tailing_file=str(log_file), watching_server=False)
                     if NOTIFY_STATUS:
@@ -191,9 +193,23 @@ def monitor():
                 running_server = is_server_running()
                 now = time.time()
 
+                # --- idle tick: keep state fresh even when Vein.log is quiet
+                if line is None:
+                    if (now - last_state_ts) >= STATE_REFRESH_S:
+                        last_state_ts = now
+                        _write_logmon_state(active=True, tailing_file=str(log_file), watching_server=running_server)
+
+                    if TRACK_HEARTBEAT and HEARTBEAT_INTERVAL_S > 0 and (now - last_hb_ts) >= HEARTBEAT_INTERVAL_S:
+                        last_hb_ts = now
+                        _write_logmon_state(active=True, tailing_file=str(log_file), watching_server=running_server)
+                        if NOTIFY_HB:
+                            _discord("🫀 Log monitor heartbeat.", channel="monitor")
+                    continue
+
+                # --- from here on, we have a REAL log line ---
+
                 # bail out if server gone
                 if not running_server:
-                    # immediate inactive state so GUI flips quickly
                     _write_logmon_state(active=False, tailing_file=str(log_file), watching_server=False)
                     if NOTIFY_STATUS:
                         _discord("🛑 Server process ended; stopping log monitor.", channel="monitor")
@@ -214,10 +230,9 @@ def monitor():
 
                 # ---- Player auth/login
                 m_auth = RX_AUTH_OK.search(line) if TRACK_AUTH else None
-                if m_auth:
+                if m_auth and NOTIFY_AUTH:
                     steam_id = m_auth.group(1)
-                    if NOTIFY_AUTH:
-                        _discord(f"🔐 Auth OK for `{steam_id}`.", channel="monitor")
+                    _discord(f"🔐 Auth OK for `{steam_id}`.", channel="monitor")
 
                 m_join = RX_JOINED.search(line) if TRACK_JOIN else None
                 if m_join:
@@ -227,10 +242,9 @@ def monitor():
                         _discord(f"➡️ `{name}` joined.", channel="monitor")
 
                 m_char = RX_CHARSEL.search(line) if TRACK_CHARACTER else None
-                if m_char:
+                if m_char and NOTIFY_CHARACTER:
                     name = m_char.group(1).strip()
-                    if NOTIFY_CHARACTER:
-                        _discord(f"🎭 `{name}` selected a character.", channel="monitor")
+                    _discord(f"🎭 `{name}` selected a character.", channel="monitor")
 
                 if TRACK_DISCONNECT and RX_DISC.search(line):
                     if NOTIFY_DISC:
@@ -253,17 +267,13 @@ def monitor():
                     if NOTIFY_CRASH:
                         _discord("💥 Crash signature in log! Check server.", channel="monitor")
 
-                # ---- Heartbeat + state refresh
-                if TRACK_HEARTBEAT and HEARTBEAT_INTERVAL_S > 0:
-                    if (now - last_hb_ts) >= HEARTBEAT_INTERVAL_S:
-                        last_hb_ts = now
-                        _write_logmon_state(
-                            active=True,
-                            tailing_file=str(log_file),
-                            watching_server=running_server
-                        )
-                        if NOTIFY_HB:
-                            _discord("🫀 Log monitor heartbeat.", channel="monitor")
+                # (Optional) heartbeat also on real lines if you prefer:
+                if TRACK_HEARTBEAT and HEARTBEAT_INTERVAL_S > 0 and (now - last_hb_ts) >= HEARTBEAT_INTERVAL_S:
+                    last_hb_ts = now
+                    _write_logmon_state(active=True, tailing_file=str(log_file), watching_server=running_server)
+                    if NOTIFY_HB:
+                        _discord("🫀 Log monitor heartbeat.", channel="monitor")
+
 
     finally:
         _write_logmon_state(active=False, tailing_file=None, watching_server=False)
