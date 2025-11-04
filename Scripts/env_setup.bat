@@ -9,7 +9,7 @@ set "VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
 set "VEIN_MGMT_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
 
 rem Preferred Python launcher (caller can override)
-set "PYEXE=py -3w"
+set "PYEXE=py -3"
 
 rem Default VEIN_CONFIG if not already set
 if not defined VEIN_CONFIG if exist "%VEIN_MGMT_CONFIG%" set "VEIN_CONFIG=%VEIN_MGMT_CONFIG%"

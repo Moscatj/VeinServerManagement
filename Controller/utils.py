@@ -412,12 +412,14 @@ def start_vein_server(
 ) -> Optional[subprocess.Popen]:
     """
     Launch the Vein server.
+
+    Behavior:
       - When config['headless_mode'] == True:
           * Do NOT pass -log (prevents UE console window)
           * Spawn with CREATE_NO_WINDOW | DETACHED_PROCESS and stdio -> NUL
+          * If the process exits immediately, fall back once to visible mode
       - When False:
           * Ensure -log is present (visible console for debugging)
-    Falls back to visible mode if headless exits immediately.
     """
     exe = _choose_executable(server_dir, EXECUTABLE_NAMES)
     if not exe:
@@ -455,10 +457,10 @@ def start_vein_server(
         if abs_log_file:
             args.append(f"-Abslog={abs_log_file}")
 
-        # Output behavior
+        # Output / console behavior
         if visible_console:
             if "-log" not in args:
-                args.append("-log")  # UE visible console
+                args.append("-log")  # force UE console window in visible mode
         else:
             # Ensure -log is not present in headless
             try:
@@ -482,13 +484,16 @@ def start_vein_server(
         print("[Start] Launching server with args:\n   " + " ".join(args))
 
         creationflags = 0
-        if hide:
-            CREATE_NO_WINDOW = 0x08000000
-            DETACHED_PROCESS = 0x00000008
-            creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS
+        if hide and os.name == "nt":
+            # Hide the child window and keep it detached from our console
+            CREATE_NO_WINDOW         = 0x08000000
+            DETACHED_PROCESS         = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            creationflags = CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 
         try:
             if hide:
+                # Fully quiet in headless: pipe stdio to NUL so UE doesn't try to attach
                 with open(os.devnull, "wb") as devnull:
                     return subprocess.Popen(
                         args,
@@ -500,7 +505,11 @@ def start_vein_server(
                         close_fds=True,
                     )
             else:
-                return subprocess.Popen(args, cwd=str(server_dir))
+                return subprocess.Popen(
+                    args,
+                    cwd=str(server_dir),
+                    creationflags=creationflags
+                )
         except Exception as e:
             print(f"[Start] Failed to start server: {e}")
             return None
@@ -511,7 +520,7 @@ def start_vein_server(
     if proc is None:
         return None
 
-     # If a headless launch dies immediately, fall back once to visible mode
+    # If a headless launch dies immediately, fall back once to visible mode
     time.sleep(3)
     if headless and proc.poll() is not None:
         print("[Start] Headless server exited early. Falling back to visible console (-log).")
@@ -525,8 +534,8 @@ def start_vein_server(
     if proc.poll() is None:
         try:
             write_flag(proc.pid, os.path.basename(str(exe)), MAP_URL or "")
-            # keep a simple presence flag for ultra-cheap checks
             try:
+                # Ultra-cheap presence indicator for other components
                 STATE_FLAG.touch(exist_ok=True)
             except Exception:
                 pass
@@ -538,12 +547,44 @@ def start_vein_server(
 def is_server_running() -> bool:
     return find_running_server() is not None
 
+def win_creationflags_for_headless() -> int:
+    """
+    Return Windows creation flags that hide consoles for child processes.
+    No-ops on non-Windows.
+    """
+    if os.name != "nt":
+        return 0
+    CREATE_NO_WINDOW        = 0x08000000
+    DETACHED_PROCESS        = 0x00000008
+    CREATE_NEW_PROCESS_GROUP= 0x00000200
+    # NO_WINDOW is enough for python helpers; DETACHED avoids parent console binding.
+    return CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+
+def headless_enabled() -> bool:
+    try:
+        return bool(config.get("headless_mode", False))
+    except Exception:
+        return False
+
 # ----------------------------
 # Discord messaging
 # ----------------------------
 def _discord_webhook_url() -> Optional[str]:
-    url = config.get("discord_webhook") or config.get("discord_webhook_url")
-    return str(url) if url else None
+    """
+    Resolve webhook URL from config with ENV: support.
+    - Accepts direct URL string.
+    - If the value starts with 'ENV:', read that environment variable.
+    - Returns None if unset or empty.
+    """
+    raw = config.get("discord_webhook") or config.get("discord_webhook_url")
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if s.upper().startswith("ENV:"):
+        env_key = s.split(":", 1)[1].strip()
+        val = os.environ.get(env_key, "").strip()
+        return val or None
+    return s
 
 def send_discord_message(message: str, channel: str = "startup") -> None:
     """
