@@ -1,5 +1,6 @@
 # Default: normalize text to LF in the repo
-*               text=auto eol=lf
+* text=auto eol=lf
+
 
 # Windows batch files need CRLF to run when double-clicked
 *.bat           text eol=crlf
