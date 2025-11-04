@@ -167,6 +167,38 @@ def _choose_executable(server_dir: Path, names: List[str]) -> Optional[Path]:
 
 def _now() -> float:
     return time.time()
+    
+# ----------------------------
+# log helpers
+# ----------------------------
+def _console_print(msg: str) -> None:
+    """Print without ever crashing on Windows cp1252 consoles."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        # Strip characters the active console can't encode
+        try:
+            print(msg.encode("ascii", "ignore").decode("ascii"))
+        except Exception:
+            # Last resort: print *something*
+            print("[log] <unprintable message>")
+
+def log_info(msg: str) -> None:
+    _console_print(f"[INFO {datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+def log_warn(msg: str) -> None:
+    _console_print(f"[WARN {datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+def log_error(msg: str) -> None:
+    _console_print(f"[ERROR {datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+# Optional: try to force UTF-8 for friendlier output, but still keep ASCII safety above.
+def try_enable_utf8_stdout() -> None:
+    try:
+        import sys
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Py3.7+
+    except Exception:
+        pass
 
 # ----------------------------
 # Flag management
