@@ -27,6 +27,7 @@ from utils import (
     send_discord_message,
     is_discord_channel_enabled,
     backup_save_file,
+    current_headless_flag,
 )
 
 PID_FILE = RUNTIME_DIR / "log_monitor.pid"
@@ -93,8 +94,10 @@ def _write_logmon_state(active: bool, tailing_file: str | None = None, watching_
         "tailing_file": tailing_file,
         "watching_server": watching_server,
         "source": "monitor_log.py",
+        "headless": current_headless_flag(),
     }
     _atomic_write_json(LOG_MON_STATE, payload)
+
 
 def _pick_log_file() -> Optional[Path]:
     # Prefer absolute from config

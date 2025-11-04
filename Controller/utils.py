@@ -565,6 +565,13 @@ def headless_enabled() -> bool:
         return bool(config.get("headless_mode", False))
     except Exception:
         return False
+        
+def current_headless_flag() -> bool:
+    """Return True if config['headless_mode'] is enabled."""
+    try:
+        return bool(config.get("headless_mode", False))
+    except Exception:
+        return False
 
 # ----------------------------
 # Discord messaging

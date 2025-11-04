@@ -16,6 +16,7 @@ from utils import (
     autorestart_quiet_active,
     initiate_controlled_restart,
     send_discord_message,
+    current_headless_flag,
 )
 
 # Cadence
@@ -51,7 +52,13 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         pass
 
 def _write_state(mode: str) -> None:
-    _atomic_write_json(STATE_FILE, {"ts": _now().isoformat() + "Z", "mode": mode, "pid": os.getpid()})
+    payload = {
+        "ts": _now().isoformat() + "Z",
+        "mode": mode,
+        "pid": os.getpid(),
+        "headless": current_headless_flag(),  # <-- added
+    }
+    _atomic_write_json(STATE_FILE, payload)
 
 def _write_pid() -> None:
     try: PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
