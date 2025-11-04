@@ -15,6 +15,7 @@ from utils import (
     check_for_steam_update,
     win_creationflags_for_headless, headless_enabled,
     current_headless_flag,
+    clear_runtime_markers, stop_all_vein_processes_aggressive, PID_SERVER,
 )
 
 # --------- small io helpers ---------
@@ -176,10 +177,7 @@ def main() -> int:
             "last_exit_code": None,
             "cwd": str(SERVER_DIR),
         })
-
-        # utils.start_vein_server() already wrote the runtime flag; the extra call is harmless,
-        # but we can skip it to avoid duplication:
-        # write_flag(proc.pid, "VeinServer", "")
+        PID_SERVER.write_text(str(proc.pid), encoding="utf-8")
 
         send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for joinable…", channel="startup")
         return 0

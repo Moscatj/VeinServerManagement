@@ -48,7 +48,9 @@ from utils import (
     stop_log_monitor, stop_crash_monitor, send_discord_message, backup_save_file,
     SAVE_FILE, clear_flag, stop_all_vein_processes_aggressive,
     list_all_vein_server_procs, set_autorestart_quiet_period,
-    begin_intentional_shutdown, end_intentional_shutdown
+    begin_intentional_shutdown, end_intentional_shutdown,
+    clear_runtime_markers, set_server_state, PID_SERVER,
+    is_feature_enabled,
 )
 
 # Optional: PRE_SHUTDOWN_WARN knob from config
@@ -103,16 +105,35 @@ def _warn_and_wait(seconds: int) -> None:
 
 
 def _normal_shutdown() -> None:
+    """
+    Orderly shutdown triggered by the GUI "Stop Server" button.
+
+    Guarantees:
+      - Monitors are stopped first (so they don't misclassify shutdown as a crash).
+      - Server processes are terminated (graceful -> forced).
+      - All runtime hints are cleared: server_running.flag, server.pid, server_state.json.
+      - Optional backup and Discord notification are attempted, but never block shutdown.
+    """
     print("🛑 Shutdown requested…")
 
-    # 1) Mark intent + quiet window and clear the running flag immediately
+    # 0) Enter quiet window (prevents auto-restart / crash heuristics)
     begin_intentional_shutdown(window_sec=int(config.get("shutdown_quiet_seconds", 300)))
+
+    # 1) Immediately clear "server is up" hints so the GUI can't stick green
     try:
         clear_flag()
     except Exception:
         pass
+    try:
+        PID_SERVER.unlink(missing_ok=True)   # server.pid
+    except Exception:
+        pass
+    try:
+        set_server_state(False, pid=0)       # server_state.json -> {process_running:false, pid:0}
+    except Exception:
+        pass
 
-    # 2) Stop monitors first (so nothing misclassifies the stop)
+    # 2) Stop monitors first (best signal quality; avoid crash false-positives)
     print("• Stopping monitors…")
     try:
         stop_log_monitor()
@@ -123,38 +144,65 @@ def _normal_shutdown() -> None:
     except Exception:
         _stop_py_process("crash_monitor.py")
 
-    # Optional user warning
+    # Optional user countdown/warning before killing the game process
     if PRE_SHUTDOWN_WARN:
         _warn_and_wait(PRE_SHUTDOWN_WARN)
 
-    # 3) Stop the server
-    running = list_all_vein_server_procs(verbose=True)
+    # 3) Stop the server (graceful -> forced via aggressive helper)
+    try:
+        running = list_all_vein_server_procs(verbose=True)
+    except Exception:
+        running = []
+
     if not running:
         print("ℹ️ No server process found.")
         try:
-            send_discord_message("ℹ️ Shutdown requested, but server not running.", channel="shutdown")
+            send_discord_message("ℹ️ Shutdown requested, but server was not running.", channel="shutdown")
         except Exception:
             pass
     else:
         pids = [p.pid for p in running]
         print(f"• Stopping server PIDs: {pids}")
-        stop_all_vein_processes_aggressive()
+        try:
+            stop_all_vein_processes_aggressive()
+        finally:
+            # Belt & suspenders: wipe hints again in case any step recreated/left them
+            try: clear_flag()
+            except Exception: pass
+            try: PID_SERVER.unlink(missing_ok=True)
+            except Exception: pass
+            try: set_server_state(False, pid=0, last_exit_code=0)
+            except Exception: pass
 
-    # 4) Backup + notify
+    # 4) Backup + notify (feature-gated and non-blocking)
+    zip_path = None
+    backup_disabled = False
     try:
-        backup_save_file(SAVE_FILE, reason="Shutdown")
+        backup_disabled = not is_feature_enabled("enable_backups")
+    except Exception:
+        # If we can't read config helper, assume enabled and try anyway
+        backup_disabled = False
+
+    try:
+        if backup_disabled:
+            print("ℹ️ Backups disabled via config; skipping shutdown backup.")
+            zip_path = None
+        else:
+            zip_path = backup_save_file(SAVE_FILE, reason="Shutdown")
     except Exception as e:
         print(f"⚠️ Backup failed: {e}")
+        zip_path = None
+
+    # Discord notify with specific wording
     try:
-        send_discord_message("🛑 Server shutdown complete. Backup created.", channel="shutdown")
+        if backup_disabled:
+            send_discord_message("🛑 Server shutdown complete. (No backup: backups disabled in config.)", channel="shutdown")
+        elif zip_path:
+            send_discord_message(f"🛑 Server shutdown complete. Backup created: {zip_path.name}", channel="shutdown")
+        else:
+            send_discord_message("🛑 Server shutdown complete. (Backup skipped or failed.)", channel="shutdown")
     except Exception:
         pass
-
-    # 5) Clear locks and end intent
-    _clear_locks()
-    end_intentional_shutdown()
-    print("✅ Shutdown complete.")
-
 
 def _emergency_shutdown() -> None:
     print("[Shutdown][EMERGENCY] Attempting best-effort stop…")
@@ -166,7 +214,6 @@ def _emergency_shutdown() -> None:
     _clear_locks()
     print("[Shutdown][EMERGENCY] Done. Fix config.json and rerun normally.")
 
-
 def main() -> None:
     # If config imports worked, run the normal path; else do an emergency stop
     try:
@@ -174,7 +221,6 @@ def main() -> None:
         _normal_shutdown()
     except Exception:
         _emergency_shutdown()
-
 
 if __name__ == "__main__":
     main()

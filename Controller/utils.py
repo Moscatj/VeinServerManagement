@@ -67,6 +67,10 @@ RESTART_STAMP: Path  = RUNTIME_DIR / "last_restart_at.txt"
 # State flag (authoritative “server is running” record) → in Runtime
 STATE_FLAG: Path = RUNTIME_DIR / "server_running.flag"
 
+# Runtime file
+PID_SERVER: Path   = RUNTIME_DIR / "server.pid"
+SERVER_STATE: Path = RUNTIME_DIR / "server_state.json"
+
 # New: explicit “we are intentionally shutting down” marker
 SHUTDOWN_FLAG: Path = RUNTIME_DIR / "shutdown_in_progress.flag"
 
@@ -213,6 +217,30 @@ def is_shutdown_in_progress(max_age_seconds: int = 900) -> bool:
         return age <= max_age_seconds
     except Exception:
         return False
+        
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+def set_server_state(process_running: bool, pid: int = 0, **extra) -> None:
+    data = {"process_running": bool(process_running), "pid": int(pid), **extra}
+    _atomic_write_json(SERVER_STATE, data)
+
+def clear_pid_file() -> None:
+    try: PID_SERVER.unlink(missing_ok=True)
+    except Exception: pass
+
+def clear_runtime_markers() -> None:
+    # one place to clean all “server is up” hints
+    clear_flag()
+    clear_pid_file()
+    try: SERVER_STATE.unlink(missing_ok=True)
+    except Exception: pass
 
 # ----------------------------
 # Process discovery & lifecycle
@@ -238,10 +266,9 @@ def find_running_server(
     return None
 
 def stop_vein_server(timeout: int | None = None) -> bool:
-    """Attempt to gracefully stop a running Vein server process."""
     proc = find_running_server()
     if not proc:
-        clear_flag()  # NEW: ensure stale flag is gone
+        clear_runtime_markers()   # NEW
         return True
     try:
         proc.terminate()
@@ -249,24 +276,20 @@ def stop_vein_server(timeout: int | None = None) -> bool:
         pass
     try:
         proc.wait(timeout=timeout or int(config.get("shutdown_timeout_sec", 60)))
-        clear_flag()  # NEW
+        clear_runtime_markers()   # NEW
+        set_server_state(False, pid=0, last_exit_code=0)  # NEW
         return True
     except Exception:
         pass
+    # force-kill fallback
     try:
         subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        clear_flag()  # NEW
+        clear_runtime_markers()   # NEW
+        set_server_state(False, pid=0, last_exit_code=-1) # NEW
         return True
     except Exception:
         return False
-
-def _exe_matches_any(path_or_name: str, patterns: list[str]) -> bool:
-    s = (path_or_name or "").lower()
-    for pat in patterns:
-        if fnmatch.fnmatch(s, pat.lower()):
-            return True
-    return False
 
 def _is_vein_server_process(p: psutil.Process) -> bool:
     """True if this process looks like a Vein dedicated server, even when cwd is missing."""
@@ -368,11 +391,13 @@ def stop_all_vein_processes_aggressive() -> list[int]:
                 continue
         _powershell_kill_by_fullpaths(exe_paths)
 
-    # Ensure runtime flag is cleared after aggressive stop
+    # Ensure runtime state is cleared after aggressive stop
     try:
-        clear_flag()
+        clear_runtime_markers()
+        set_server_state(False, pid=0, last_exit_code=-1)
     except Exception:
         pass
+
 
     return sorted(set(acted))
     
@@ -534,15 +559,13 @@ def start_vein_server(
     if proc.poll() is None:
         try:
             write_flag(proc.pid, os.path.basename(str(exe)), MAP_URL or "")
-            try:
-                # Ultra-cheap presence indicator for other components
-                STATE_FLAG.touch(exist_ok=True)
-            except Exception:
-                pass
+            PID_SERVER.write_text(str(proc.pid), encoding="utf-8")      # NEW
+            set_server_state(True, pid=proc.pid, last_start_utc=datetime.utcnow().isoformat()+"Z",
+                             exe=os.path.basename(str(exe)), cwd=str(server_dir))
         except Exception as e:
-            print(f"[Start] Warning: failed to write server_running.flag: {e}")
+            print(f"[Start] Warning: failed to persist runtime state: {e}")
 
-    return proc
+        return proc
 
 def is_server_running() -> bool:
     return find_running_server() is not None

@@ -276,11 +276,20 @@ class StatusPoller(QtCore.QRunnable):
         rp = _runtime_paths(self.cfg_path)
         rt = _rt_paths(self.cfg_path)
 
-        # Server
-        srv_on = _file_exists(rp["state_flag"])
+        # --- Server status: PID is truth source ---
         ss = self._read_json(rp["server_state"])
-        if ss:
-            srv_on = bool(ss.get("process_running", srv_on))
+        pid_txt = str(ss.get("pid", "") or "").strip()
+        # Fallback to flag’s PID if present:
+        if not pid_txt:
+            try:
+                flag = self._read_json(rp["state_flag"])
+                pid_txt = str(flag.get("pid", "") or "").strip()
+            except Exception:
+                pid_txt = ""
+        srv_green = self._pid_alive(pid_txt)
+
+        # Keep a legacy boolean for existing wiring
+        srv_on = bool(srv_green)
 
         # Log monitor
         lm_pid  = self._read_text(rt["pid_log"])
@@ -292,11 +301,8 @@ class StatusPoller(QtCore.QRunnable):
                 from datetime import datetime
                 lu = lms["last_updated"].replace("Z", "")
                 dt = datetime.fromisoformat(lu)
-
-                # Use GUI hb baseline; window = clamp(2*hb, 30..900)
                 hb = max(10, int(rp.get("hb_seconds", 60)))
                 window = max(30, min(900, 2 * hb))
-
                 lm_fresh = (datetime.utcnow() - dt).total_seconds() <= window
             except Exception:
                 lm_fresh = False
