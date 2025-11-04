@@ -163,29 +163,39 @@ def _runtime_paths(cfg_path: str) -> dict:
     cfg = _load_cfg_for_runtime(cfg_path)
     rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
     server_dir = Path(cfg.get("server_dir") or ROOT.parent)
-    monitor = cfg.get("monitor", {}) if isinstance(cfg.get("monitor", {}), dict) else {}
-    state_file = monitor.get("state_file") or (ROOT / "Tools" / "WebAdmin" / "server_state.json")
-    # --- heartbeat seconds used by the GUI freshness window
-    # Prefer the top-level (the one monitor_log.py uses), fall back to nested, then 60
+
+    # Heartbeat sizing (GUI’s freshness window)
     hb_top = cfg.get("monitor_heartbeat_interval_seconds", None)
     hb_nested = (cfg.get("monitor", {}) or {}).get("heartbeat_interval_seconds", None)
     try:
         hb = int(hb_top if hb_top is not None else (hb_nested if hb_nested is not None else 60))
     except Exception:
         hb = 60
+
+    # --- FIX: server_state must live in Runtime, not under "monitor.state_file"
+    server_state = rt / "server_state.json"
+
+    # Log monitor state path (allow override via monitor.state_file)
+    monitor = cfg.get("monitor", {}) if isinstance(cfg.get("monitor", {}), dict) else {}
+    state_log = Path(monitor.get("state_file") or (rt / "log_monitor_state.json"))
+
     return {
         "runtime_dir": rt,
         "state_flag": rt / "server_running.flag",
         "shutdown_flag": rt / "shutdown_in_progress.flag",
-        "server_state": Path(state_file),
+        "server_state": server_state,
         "crash_state": rt / "crash_monitor_state.json",
         "logs_dir": Path(cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")),
         "absolute_log_file": Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None,
         "backup_root": Path(cfg.get("backup_root") or (ROOT / "Backups")),
         "features": cfg.get("features", {}),
+
         "log_monitor_enabled": bool(cfg.get("features", {}).get("enable_log_monitor", True)),
         "crash_monitor_enabled": bool(cfg.get("features", {}).get("enable_crash_monitor", True)),
+
+        # Use a clear, generous freshness window: clamp(2*hb, 30..900)
         "hb_seconds": hb,
+        "state_log": state_log,
     }
 
 def _resolve_logfile(cfg_path: str, overrides: Dict[str, str]) -> Path:
@@ -287,14 +297,15 @@ class StatusPoller(QtCore.QRunnable):
         if lms and "last_updated" in lms:
             try:
                 from datetime import datetime
-                lu = lms["last_updated"].replace("Z","")
+                lu = lms["last_updated"].replace("Z", "")
                 dt = datetime.fromisoformat(lu)
-                # Size the window off the SAME heartbeat the log monitor uses.
-                hb = max(10, int(rp.get("hb_seconds", 60)))
-                # generous, but bounded: 1×..3× heartbeat, clamped 30..900s
-                window = max(30, min(900, max(hb, min(3*hb, 2*hb))))
-                lm_fresh = (datetime.utcnow() - dt).total_seconds() <= window
 
+                # Use the same heartbeat baseline the monitor uses (rp["hb_seconds"])
+                hb = max(10, int(rp.get("hb_seconds", 60)))
+                # Clear, generous window: 2× heartbeat, clamped to 30..900s
+                window = max(30, min(900, 2 * hb))
+
+                lm_fresh = (datetime.utcnow() - dt).total_seconds() <= window
             except Exception:
                 lm_fresh = False
 
@@ -529,11 +540,32 @@ class Main(QtWidgets.QMainWindow):
         self.use_defaults: bool = bool(q.value("use_defaults", True))
         self.overrides: Dict[str, str] = dict(q.value("overrides", {}) or {})
 
+        # --- Build UI first (creates tabs, checkboxes, buttons, etc.)
         self._ui()
+        # --- Wire signals next (uses widgets created by _ui)
         self._signals()
+
+        # --- Initialize tail buffers/handles BEFORE tail_start()
+        self._buf_game: list[str] = []
+        self._buf_lm:   list[str] = []
+        self._buf_cm:   list[str] = []
+        self.tail_game = None
+        self.tail_lm   = None
+        self.tail_cm   = None
+
+        # Single periodic flush timer for all tails
+        if not hasattr(self, "flush_timer"):
+            self.flush_timer = QtCore.QTimer(self)
+            self.flush_timer.setInterval(250)
+            self.flush_timer.timeout.connect(self._flush_tail)
+            self.flush_timer.start()
+
+        # --- Config & watchers
         self.refresh_cfgs()
         self.load_json()
         self.watch_json()
+
+        # --- Start tailing now that everything is initialized
         self.tail_start()
 
         # --- Background status polling (every 2s, non-blocking)
@@ -542,13 +574,6 @@ class Main(QtWidgets.QMainWindow):
         self._status_timer.setInterval(2000)
         self._status_timer.timeout.connect(self._kick_status_poll)
         self._status_timer.start()
-
-        # Throttled flush for any log text appends
-        self._tail_buffer: List[str] = []
-        self._tail_flush = QtCore.QTimer(self)
-        self._tail_flush.setInterval(250)
-        self._tail_flush.timeout.connect(self._flush_tail)
-        self._tail_flush.start()
 
         self._restore_state()
 
@@ -684,19 +709,23 @@ class Main(QtWidgets.QMainWindow):
         self.json.setFont(QtGui.QFont("Consolas", 10)); JsonHL(self.json.document())
         main.addWidget(self.json)
 
-        # LOG tail (heavy: default OFF when log monitor feature is enabled)
+        # RIGHT: Logs with tabs
         right = QtWidgets.QWidget(); main.addWidget(right)
         rv = QtWidgets.QVBoxLayout(right); rv.setContentsMargins(0,0,0,0)
-        cbar = QtWidgets.QHBoxLayout(); rv.addLayout(cbar)
-        self.chk_tail = QtWidgets.QCheckBox("Tail Enabled"); self.chk_tail.setChecked(True)
-        self.chk_follow = QtWidgets.QCheckBox("Follow"); self.chk_follow.setChecked(True)
-        self.b_clearlog = QtWidgets.QPushButton("Clear")
-        cbar.addWidget(self.chk_tail); cbar.addWidget(self.chk_follow); cbar.addStretch(1); cbar.addWidget(self.b_clearlog)
-        self.log = QtWidgets.QPlainTextEdit(); self.log.setReadOnly(True); self.log.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        rv.addWidget(self.log, 1)
 
-        main.setStretchFactor(0, 3); main.setStretchFactor(1, 2); main.setStretchFactor(2, 3)
-        main.setSizes([700, 520, 600])
+        cbar = QtWidgets.QHBoxLayout(); rv.addLayout(cbar)
+        self.chk_live = QtWidgets.QCheckBox("Live (follow)"); self.chk_live.setChecked(True)
+        self.b_clearlog = QtWidgets.QPushButton("Clear")
+        cbar.addWidget(self.chk_live); cbar.addStretch(1); cbar.addWidget(self.b_clearlog)
+
+        self.logTabs = QtWidgets.QTabWidget()
+        self.log_game = QtWidgets.QPlainTextEdit(); self.log_game.setReadOnly(True); self.log_game.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.log_lm   = QtWidgets.QPlainTextEdit(); self.log_lm.setReadOnly(True);   self.log_lm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.log_cm   = QtWidgets.QPlainTextEdit(); self.log_cm.setReadOnly(True);   self.log_cm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.logTabs.addTab(self.log_game, "Game Log")
+        self.logTabs.addTab(self.log_lm,   "Log Monitor")
+        self.logTabs.addTab(self.log_cm,   "Crash Monitor")
+        rv.addWidget(self.logTabs, 1)
 
         # compact state line under everything
         self.state_box = QtWidgets.QTextBrowser(); self.state_box.setMaximumHeight(120)
@@ -714,7 +743,9 @@ class Main(QtWidgets.QMainWindow):
         self.b_validate.clicked.connect(self.validate_json)
         self.filter.textChanged.connect(self._apply_filter)
         self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
-        self.b_clearlog.clicked.connect(self.log.clear)
+        self.b_clearlog.clicked.connect(self._clear_current_log)
+        self.chk_live.toggled.connect(self._retail)
+
 
         self.btn_logs.clicked.connect(lambda: self._open_folder(self._resolved_paths()["log_file"].parent))
         self.btn_rt.clicked.connect(lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"]))
@@ -754,9 +785,6 @@ class Main(QtWidgets.QMainWindow):
         if not name: return
         self.config_path = str(Path(self.ed_cfgdir.text().strip()).joinpath(name))
         self.load_json()
-        rp = _runtime_paths(self.config_path)
-        if rp.get("log_monitor_enabled", True):
-            self.chk_tail.setChecked(False)
         self.watch_json()
 
     # ------------------------------- JSON IO ----------------------------------
@@ -889,50 +917,96 @@ class Main(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    def tail_start(self): self._retail()
+    def _clear_current_log(self):
+        w = self.logTabs.currentWidget()
+        if isinstance(w, QtWidgets.QPlainTextEdit):
+            w.clear()
+
+    def tail_start(self):
+        self._retail()
+
+    def _tail_stop_all(self):
+        for t in (self.tail_game, self.tail_lm, self.tail_cm):
+            try:
+                if t:
+                    t.stop()
+                    t.deleteLater()
+            except Exception:
+                pass
+        self.tail_game = self.tail_lm = self.tail_cm = None
 
     def _retail(self):
-        try:
-            if hasattr(self, "tail") and self.tail:
-                self.tail.stop(); self.tail.deleteLater()
-        except Exception:
-            pass
-        if not self.chk_tail.isChecked():
-            self._status("Tail disabled.")
+        # stop existing tails
+        self._tail_stop_all()
+
+        # respect the single “Live (follow)” checkbox
+        if not self.chk_live.isChecked():
+            self._status("Live view disabled.")
             return
-        p = self._resolved_paths()["log_file"]
-        if not p.exists():
-            self._status(f"Log file not found: {p}")
-            return
-        self.tail = FileTail(p)
-        self.tail.chunk.connect(self._on_log_line)
-        self.tail.start()
-        self._status(f"Tailing: {p}")
+
+        # Game log (Vein/Saved/Logs/Vein.log or absolute)
+        p_game = self._resolved_paths()["log_file"]
+        if p_game.exists():
+            self.tail_game = FileTail(p_game)
+            self.tail_game.chunk.connect(self._on_game_line)
+            self.tail_game.start()
+            self._status(f"Tailing game: {p_game}")
+        else:
+            self._status(f"Game log not found: {p_game}")
+
+        # Management logs (monitors): mgmt_log_dir/monitor_log.stdout.log, crash_monitor.stdout.log
+        cfg = _load_cfg_for_runtime(self.config_path)
+        mgmt_log_dir = Path(cfg.get("mgmt_log_dir", ROOT / "Logs"))
+        lm_file = mgmt_log_dir / "monitor_log.stdout.log"
+        cm_file = mgmt_log_dir / "crash_monitor.stdout.log"
+
+        if lm_file.exists():
+            self.tail_lm = FileTail(lm_file)
+            self.tail_lm.chunk.connect(self._on_lm_line)
+            self.tail_lm.start()
+
+        if cm_file.exists():
+            self.tail_cm = FileTail(cm_file)
+            self.tail_cm.chunk.connect(self._on_cm_line)
+            self.tail_cm.start()
 
     @QtCore.Slot(str)
-    def _on_log_line(self, s: str):
-        # buffer lines; UI flushes at 250ms cadence
-        self._tail_buffer.append(s)
+    def _on_game_line(self, s: str):
+        self._buf_game.append(s)
+
+    @QtCore.Slot(str)
+    def _on_lm_line(self, s: str):
+        self._buf_lm.append(s)
+
+    @QtCore.Slot(str)
+    def _on_cm_line(self, s: str):
+        self._buf_cm.append(s)
 
     def _flush_tail(self):
-        if not self._tail_buffer or not self.chk_tail.isChecked():
+        # keep logs from growing unbounded even when paused
+        def cap(w: QtWidgets.QPlainTextEdit):
+            if w.document().characterCount() > 500_000:
+                w.clear()
+
+        if not self.chk_live.isChecked():
+            for w in (self.log_game, self.log_lm, self.log_cm):
+                cap(w)
             return
-        chunk = "".join(self._tail_buffer)
-        self._tail_buffer.clear()
 
-        # Cap size to keep UI snappy
-        if self.log.document().characterCount() > 500_000:
-            self.log.clear()
+        def flush_buf(buf: list[str], widget: QtWidgets.QPlainTextEdit):
+            if not buf:
+                return
+            chunk = "".join(buf)
+            buf.clear()
+            cap(widget)
+            widget.moveCursor(QtGui.QTextCursor.End)
+            widget.insertPlainText(chunk)
+            widget.moveCursor(QtGui.QTextCursor.End)
 
-        if self.chk_follow.isChecked():
-            self.log.moveCursor(QtGui.QTextCursor.End)
-            self.log.insertPlainText(chunk)
-            self.log.moveCursor(QtGui.QTextCursor.End)
-        else:
-            pos = self.log.verticalScrollBar().value()
-            self.log.moveCursor(QtGui.QTextCursor.End)
-            self.log.insertPlainText(chunk)
-            self.log.verticalScrollBar().setValue(pos)
+        flush_buf(self._buf_game, self.log_game)
+        flush_buf(self._buf_lm,   self.log_lm)
+        flush_buf(self._buf_cm,   self.log_cm)
+
 
     # ------------------------ Server / monitors -------------------------------
     def _resolved_paths(self) -> Dict[str, Path]:
