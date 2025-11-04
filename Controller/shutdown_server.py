@@ -13,6 +13,9 @@ CONTROLLER_DIR = Path(__file__).resolve().parent
 MGMT_ROOT      = CONTROLLER_DIR.parent
 CONFIG_DIR     = MGMT_ROOT / "Config"
 
+# Send a final Discord warning this many seconds before shutdown (0 = disabled)
+COUNTDOWN_FINAL_WARNING_AT = 10
+
 # Ensure module import path
 if str(CONTROLLER_DIR) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_DIR))
@@ -94,15 +97,27 @@ def _clear_locks() -> None:
 def _warn_and_wait(seconds: int) -> None:
     if seconds <= 0:
         return
+    # First heads-up to Discord
     try:
-        send_discord_message(f"⚠️ Server will shut down in **{seconds} seconds**…", channel="shutdown")
+        send_discord_message(
+            f"⚠️ Intentional shutdown in **{seconds} seconds**. Please finish up.",
+            channel="shutdown"
+        )
     except Exception:
         pass
-    print(f"⚠️ Pre-shutdown warning window: {seconds}s")
-    for i in range(seconds, 0, -1):
-        print(f"…{i}")
-        time.sleep(1)
 
+    print(f"[Shutdown] Warning window: {seconds}s")
+    for remaining in range(seconds, 0, -1):
+        # Optional final warning
+        if COUNTDOWN_FINAL_WARNING_AT and remaining == COUNTDOWN_FINAL_WARNING_AT:
+            try:
+                send_discord_message(
+                    f"⚠️ Shutdown in **{COUNTDOWN_FINAL_WARNING_AT} seconds**…",
+                    channel="shutdown"
+                )
+            except Exception:
+                pass
+        time.sleep(1)
 
 def _normal_shutdown() -> None:
     """
@@ -114,48 +129,55 @@ def _normal_shutdown() -> None:
       - All runtime hints are cleared: server_running.flag, server.pid, server_state.json.
       - Optional backup and Discord notification are attempted, but never block shutdown.
     """
-    print("🛑 Shutdown requested…")
+    print("[Shutdown] Intentional shutdown requested…")
 
     # 0) Enter quiet window (prevents auto-restart / crash heuristics)
     begin_intentional_shutdown(window_sec=int(config.get("shutdown_quiet_seconds", 300)))
 
-    # 1) Immediately clear "server is up" hints so the GUI can't stick green
+    # Let Discord know this was operator-initiated
     try:
-        clear_flag()
-    except Exception:
-        pass
-    try:
-        PID_SERVER.unlink(missing_ok=True)   # server.pid
-    except Exception:
-        pass
-    try:
-        set_server_state(False, pid=0)       # server_state.json -> {process_running:false, pid:0}
+        send_discord_message("🛑 Intentional shutdown initiated from GUI.", channel="shutdown")
     except Exception:
         pass
 
-    # 2) Stop monitors first (best signal quality; avoid crash false-positives)
-    print("• Stopping monitors…")
+    # 1) Immediately clear “server is up” hints so the GUI can't stick green
+    try: clear_flag(); PID_SERVER.unlink(missing_ok=True); set_server_state(False, pid=0)
+    except Exception: pass
+
+    # 2) Stop monitors first (avoid crash false-positives)
+    print("[Shutdown] Stopping monitors…")
+    monitors_stopped = True
     try:
         stop_log_monitor()
     except Exception:
+        monitors_stopped = False
         _stop_py_process("monitor_log.py")
     try:
         stop_crash_monitor()
     except Exception:
+        monitors_stopped = False
         _stop_py_process("crash_monitor.py")
 
-    # Optional user countdown/warning before killing the game process
+    try:
+        if monitors_stopped:
+            send_discord_message("📴 Monitors stopped cleanly.", channel="shutdown")
+        else:
+            send_discord_message("📴 Monitors stop requested (best effort).", channel="shutdown")
+    except Exception:
+        pass
+
+    # Optional heads-up countdown
     if PRE_SHUTDOWN_WARN:
         _warn_and_wait(PRE_SHUTDOWN_WARN)
 
-    # 3) Stop the server (graceful -> forced via aggressive helper)
+    # 3) Stop the server (graceful -> aggressive)
     try:
         running = list_all_vein_server_procs(verbose=True)
     except Exception:
         running = []
 
     if not running:
-        print("ℹ️ No server process found.")
+        print("[Shutdown] No server process found.")
         try:
             send_discord_message("ℹ️ Shutdown requested, but server was not running.", channel="shutdown")
         except Exception:
@@ -185,12 +207,12 @@ def _normal_shutdown() -> None:
 
     try:
         if backup_disabled:
-            print("ℹ️ Backups disabled via config; skipping shutdown backup.")
+            print("[Shutdown] Backups disabled via config; skipping shutdown backup.")
             zip_path = None
         else:
             zip_path = backup_save_file(SAVE_FILE, reason="Shutdown")
     except Exception as e:
-        print(f"⚠️ Backup failed: {e}")
+        print(f"[Shutdown] Backup failed: {e}")
         zip_path = None
 
     # Discord notify with specific wording
