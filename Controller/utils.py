@@ -53,6 +53,7 @@ from config_helper import (
 ROOT_DIR: Path = Path(__file__).resolve().parent
 SERVER_DIR: Path = Path(get_path("server_dir"))
 BACKUP_ROOT: Path = Path(get_path("backup_root"))
+START_SCRIPT:   Path = ROOT_DIR / "Controller" / "start_server.py"
 
 #all ephemeral state goes under runtime_dir
 RUNTIME_DIR: Path = Path(get_path("runtime_dir") or (ROOT_DIR / "Runtime"))
@@ -480,26 +481,58 @@ def start_vein_server(
     ip: str = MULTI_HOME_IP,
     server_dir: Path = SERVER_DIR,
     extra_args: Optional[List[str]] = None,
+    *,
+    executable: Optional[str] = None,   # (optional) fully-qualified path to exe
+    cwd: Optional[str | Path] = None    # (optional) working directory
 ) -> Optional[subprocess.Popen]:
     """
     Launch the Vein server.
 
-    Behavior:
+    Behavior (unchanged):
       - When config['headless_mode'] == True:
           * Do NOT pass -log (prevents UE console window)
           * Spawn with CREATE_NO_WINDOW | DETACHED_PROCESS and stdio -> NUL
           * If the process exits immediately, fall back once to visible mode
       - When False:
           * Ensure -log is present (visible console for debugging)
+
+    New:
+      - If 'executable' is provided, use it directly (no reselect).
+      - If 'cwd' is provided, use it as working dir; else use 'server_dir'.
+      - 'extra_args' here are merged with config EXTRA_LAUNCH_ARGS (call-site can override).
     """
-    exe = _choose_executable(server_dir, EXECUTABLE_NAMES)
-    if not exe:
-        print("[Start] No server executable found in candidates.")
-        return None
+    # -------- Resolve exe and CWD (new behavior, non-breaking) --------
+    if executable:
+        exe = Path(executable).expanduser()
+    else:
+        exe = _choose_executable(server_dir, EXECUTABLE_NAMES)
+        if not exe:
+            print("[Start] No server executable found in candidates.")
+            return None
+
+    workdir = Path(cwd).expanduser() if cwd is not None else Path(server_dir)
 
     headless = bool(config.get("headless_mode", False))
     enable_query_port = bool(config.get("enable_query_port", True))
     abs_log_file = str(config.get("absolute_log_file", "") or "")
+
+    # Helper to merge args without dupes (last-write-wins for flags that appear once)
+    def _merged_launch_args(extra_from_call: Optional[List[str]]) -> List[str]:
+        base = list(EXTRA_LAUNCH_ARGS or [])
+        tail = list(extra_from_call or [])
+        if not base:
+            return tail
+        if not tail:
+            return base
+        # simple merge preferring call-site duplicates (keep order)
+        merged = list(base)
+        for a in tail:
+            try:
+                i = merged.index(a)
+                merged[i] = a
+            except ValueError:
+                merged.append(a)
+        return merged
 
     def build_args(visible_console: bool) -> List[str]:
         args: List[str] = [str(exe)]
@@ -510,7 +543,8 @@ def start_vein_server(
             args.append(map_url)
 
         # Dedicated server flag
-        args.append("-server")
+        if "-server" not in args:
+            args.append("-server")
 
         # Capacity / network binding
         if max_players and int(max_players) > 0:
@@ -543,11 +577,8 @@ def start_vein_server(
         # Stability flags
         args.extend(["-Unattended", "-NoCrashDialog"])
 
-        # Additional args from config/caller
-        if EXTRA_LAUNCH_ARGS:
-            args.extend(EXTRA_LAUNCH_ARGS)
-        if extra_args:
-            args.extend(extra_args)
+        # Additional args from config/caller (call-site overrides duplicates)
+        args.extend(_merged_launch_args(extra_args))
 
         return args
 
@@ -568,7 +599,7 @@ def start_vein_server(
                 with open(os.devnull, "wb") as devnull:
                     return subprocess.Popen(
                         args,
-                        cwd=str(server_dir),
+                        cwd=str(workdir),
                         stdin=devnull,
                         stdout=devnull,
                         stderr=devnull,
@@ -578,7 +609,7 @@ def start_vein_server(
             else:
                 return subprocess.Popen(
                     args,
-                    cwd=str(server_dir),
+                    cwd=str(workdir),
                     creationflags=creationflags
                 )
         except Exception as e:
@@ -605,9 +636,14 @@ def start_vein_server(
     if proc.poll() is None:
         try:
             write_flag(proc.pid, os.path.basename(str(exe)), MAP_URL or "")
-            PID_SERVER.write_text(str(proc.pid), encoding="utf-8")      # NEW
-            set_server_state(True, pid=proc.pid, last_start_utc=datetime.utcnow().isoformat()+"Z",
-                             exe=os.path.basename(str(exe)), cwd=str(server_dir))
+            PID_SERVER.write_text(str(proc.pid), encoding="utf-8")
+            set_server_state(
+                True,
+                pid=proc.pid,
+                last_start_utc=datetime.utcnow().isoformat() + "Z",
+                exe=os.path.basename(str(exe)),
+                cwd=str(workdir)
+            )
         except Exception as e:
             print(f"[Start] Warning: failed to persist runtime state: {e}")
 
@@ -930,10 +966,6 @@ def stop_crash_monitor() -> None:
 # ----------------------------
 # Orchestration helpers (restart + quiet windows)
 # ----------------------------
-RESTARTING_LOCK: Path = ROOT_DIR / "restarting.lock"
-RESTART_STAMP: Path  = ROOT_DIR / "last_restart_at.txt"
-START_SCRIPT: Path   = ROOT_DIR / "start_server.py"
-
 def initiate_controlled_restart(reason: str = "unknown") -> bool:
     """
     Fire-and-forget restart respecting a simple throttle window.

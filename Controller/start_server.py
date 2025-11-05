@@ -17,6 +17,15 @@ from utils import (
     current_headless_flag,
     clear_runtime_markers, stop_all_vein_processes_aggressive, PID_SERVER,
 )
+from Tools.config_io import load_and_validate_config
+
+# --- Config path resolution (shared by this module & spawned children) ---
+def _default_config_path() -> Path:
+    # Prefer explicit env first (your BATs set VEIN_CONFIG); otherwise fall back to repo default
+    return Path(os.environ.get("VEIN_CONFIG") or (Path(__file__).parents[1] / "Config" / "config.json"))
+
+CONFIG_PATH: Path = _default_config_path()
+CONFIG_DIR:  Path = CONFIG_PATH.parent
 
 # --------- small io helpers ---------
 def _atomic_write_json(path: Path, payload: dict) -> None:
@@ -65,8 +74,9 @@ def _spawn_py(script_name: str) -> bool:
 
         cmd = _py_argv() + [str(script)]
         env = os.environ.copy()
-        # ensure VEIN_CONFIG is visible to the child
-        env.setdefault("VEIN_CONFIG", str(Path(config.get("config_path", os.environ.get("VEIN_CONFIG", "")) or (CONFIG_DIR / "config.json"))))
+        # Ensure children see the same config file path
+        env.setdefault("VEIN_CONFIG", str(CONFIG_PATH))
+
         # propagate PYEXE if you’re launching helpers from a BAT later
         env.setdefault("PYEXE", os.environ.get("PYEXE", "py -3"))
 
@@ -140,9 +150,22 @@ def _steam_update_if_enabled() -> None:
 
 # --------- main orchestrator ---------
 def main() -> int:
-    state_path = _server_state_path()
+    # 0) Load + validate config once (paths, exe choice, hb knobs)
+    from Tools.config_io import load_and_validate_config
+    vcfg = load_and_validate_config(CONFIG_PATH)  # CONFIG_PATH should already point to Config/config.json
 
-    # Let monitors know to chill during boot
+    SERVER_DIR_PATH: Path = vcfg.server_dir
+    RUNTIME_DIR_PATH: Path = vcfg.runtime_dir
+    SELECTED_EXE: Path = vcfg.selected_exe
+    EXTRA_ARGS = vcfg.raw.get("extra_launch_args", [])
+
+    # Paths/pids based on validated runtime dir
+    state_path = RUNTIME_DIR_PATH / "server_state.json"
+    pid_log    = RUNTIME_DIR_PATH / "log_monitor.pid"
+    # If you have a different PID path global, keep it, else derive here:
+    pid_server_path = PID_SERVER if 'PID_SERVER' in globals() else (RUNTIME_DIR_PATH / "server.pid")
+
+    # 1) Let monitors know to chill during boot
     create_startup_lock()
     try:
         _atomic_write_json(state_path, {
@@ -150,23 +173,21 @@ def main() -> int:
             "pid": 0,
             "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "exe": None,
-            "cwd": str(SERVER_DIR),
+            "cwd": str(SERVER_DIR_PATH),
             "headless": current_headless_flag(),
         })
 
-        # Startup narration
+        # 2) Startup narration
         send_discord_message("🚀 Vein server preflight starting…", channel="startup")
 
-        # (1) Steam check/update (optional)
+        # 3) Steam check/update (optional)
         _steam_update_if_enabled()
 
-        # (2) Start monitors BEFORE launching server so log monitor can watch the whole boot
+        # 4) Start monitors BEFORE launching server so log monitor watches whole boot
         _start_monitors()
-        
+
         # Verify log monitor actually started; if not, re-spawn once
         try:
-            runtime = Path(config.get("runtime_dir") or (Path(__file__).parents[1] / "Runtime"))
-            pid_log = runtime / "log_monitor.pid"
             time.sleep(1.5)  # small settle
             if not pid_log.exists():
                 _spawn_py("monitor_log.py")  # fire one more time
@@ -174,13 +195,55 @@ def main() -> int:
         except Exception:
             pass
 
-        # (3) Optional quiet window to suppress crash monitor jitters during boot
-        startup_quiet = int(config.get("startup_quiet_seconds", 120))
+        # 5) Optional quiet window to suppress crash monitor jitters during boot
+        #    (prefer the new monitor.* home if you added it; fall back to legacy key)
+        startup_quiet = int(
+            (vcfg.raw.get("monitor", {}) or {}).get("startup_quiet_seconds",
+                vcfg.raw.get("startup_quiet_seconds", 120))
+        )
         if startup_quiet > 0:
             set_autorestart_quiet_period(startup_quiet)
 
-        # (4) Launch server (utils handles headless/visible & flag write)
-        proc = start_vein_server()
+        # 6) Launch server (prefer explicit exe + cwd).
+        try:
+            # Debug: show which exe we’re about to launch
+            send_discord_message(f"🧩 Selected exe: {SELECTED_EXE}", channel="startup")
+
+            # Preflight: verify the exe actually exists
+            if not SELECTED_EXE.exists():
+                # Try to locate an alternative
+                found = []
+                for name in vcfg.server_executables:
+                    cand = vcfg.server_dir / name
+                    if cand.exists():
+                        found.append(str(cand))
+                # Report what we found
+                send_discord_message(
+                    "❌ Selected exe not found.\n"
+                    f"• Tried: {SELECTED_EXE}\n"
+                    f"• server_dir: {vcfg.server_dir}\n"
+                    f"• Found alternatives: {found or 'none'}",
+                    channel="startup"
+                )
+                # If there is a match, switch to first found
+                if found:
+                    SELECTED_EXE = Path(found[0])
+                    send_discord_message(f"🔄 Falling back to {SELECTED_EXE}", channel="startup")
+
+            # Attempt to launch
+            proc = start_vein_server(
+                executable=str(SELECTED_EXE),
+                cwd=str(SERVER_DIR_PATH),
+                extra_args=list(map(str, EXTRA_ARGS))
+            )
+
+        except TypeError:
+            # Fallback: legacy signature compatibility
+            os.environ["VEIN_SELECTED_EXE"] = str(SELECTED_EXE)
+            os.environ["VEIN_SERVER_CWD"] = str(SERVER_DIR_PATH)
+            os.environ["VEIN_EXTRA_ARGS"] = " ".join(map(str, EXTRA_ARGS))
+            proc = start_vein_server()
+
         if proc is None:
             send_discord_message("❌ Start failed: no executable or launch error.", channel="startup")
             _atomic_write_json(state_path, {
@@ -188,27 +251,32 @@ def main() -> int:
                 "pid": 0,
                 "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "last_exit_code": -1,
-                "cwd": str(SERVER_DIR),
+                "cwd": str(SERVER_DIR_PATH),
                 "headless": current_headless_flag(),
             })
             return 1
 
-        # (5) Mark running; monitors (log) will later report “joinable”
+        # 7) Mark running; monitors (log) will later report “joinable”
         _atomic_write_json(state_path, {
             "process_running": True,
             "pid": proc.pid,
             "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "last_exit_code": None,
-            "cwd": str(SERVER_DIR),
+            "cwd": str(SERVER_DIR_PATH),
         })
-        PID_SERVER.write_text(str(proc.pid), encoding="utf-8")
+        try:
+            pid_server_path.write_text(str(proc.pid), encoding="utf-8")
+        except Exception:
+            pass
 
-        send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for  able…", channel="startup")
+        send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for joinable…", channel="startup")
+
         return 0
 
     finally:
         # Release startup lock so crash monitor behaves normally post-boot
         clear_startup_lock()
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

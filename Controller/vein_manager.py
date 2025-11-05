@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List
 from datetime import datetime, timezone
 from PySide6 import QtCore, QtGui, QtWidgets
+from Tools.config_io import load_and_validate_config
 
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
@@ -251,6 +252,18 @@ class StatusPoller(QtCore.QRunnable):
         self.cfg_path = cfg_path
         self.signals = StatusSnapshot()
         self._last_tasklist_at = 0.0
+       
+       #cache validated config + hb knobs once
+        vcfg = load_and_validate_config(cfg_path)
+        self.hb_seconds = vcfg.hb_seconds
+        self.fresh_mult = vcfg.fresh_window_multiplier
+        self.paths = {
+            "server_dir": vcfg.server_dir,
+            "runtime_dir": vcfg.runtime_dir,
+            "logs_dir": vcfg.logs_dir,
+            "save_dir": vcfg.save_dir,
+        }
+        self.selected_exe = vcfg.selected_exe  # if GUI needs to display/confirm
 
     # --- StatusPoller helpers --- 
     def _read_text(self, p: Path) -> str | None:
@@ -325,12 +338,10 @@ class StatusPoller(QtCore.QRunnable):
         # --- Server status: PID is truth source ---
         ss = self._read_json(rp["server_state"])
         pid_txt = str(ss.get("pid", "") or "").strip()
-
         if not pid_txt:
             # Fallback to shutdown/intent flag’s PID if present
             flag = self._read_json(rp["state_flag"])
             pid_txt = str(flag.get("pid", "") or "").strip()
-
         srv_on = self._pid_alive(pid_txt)
 
         # --- Log monitor ---

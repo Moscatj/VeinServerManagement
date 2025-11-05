@@ -4,7 +4,7 @@
     "VeinServer.exe",
     "VeinServer-Win64-Test.exe"
   ],
-  "preferred_exe": "VeinServer-Win64-Test.exe",
+  "preferred_exe": "Vein/Binaries/Win64/VeinServer-Win64-Test.exe",
   "runtime_dir": "G:/Servers/VeinServer/VeinServerManagement/Runtime",
   "save_dir": "G:/Servers/VeinServer/Vein/Saved/SaveGames",
   "save_filenames": [
