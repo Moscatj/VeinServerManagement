@@ -48,11 +48,6 @@ def _controller_path(name: str) -> Path:
     return _controller_root() / "Controller" / name
 
 def _spawn_py(script_name: str) -> bool:
-    """
-    Start a Python helper (monitor_log.py / crash_monitor.py) headlessly with
-    stdout/stderr captured into mgmt_log_dir so the GUI can tail them.
-    Posts a Discord warning on failure with useful context.
-    """
     try:
         script = _controller_path(script_name)
         if not script.exists():
@@ -69,12 +64,18 @@ def _spawn_py(script_name: str) -> bool:
         stderr = open(log_dir / f"{script.stem}.stderr.log", "ab", buffering=0)
 
         cmd = _py_argv() + [str(script)]
-        # For visibility in the mgmt log:
+        env = os.environ.copy()
+        # ensure VEIN_CONFIG is visible to the child
+        env.setdefault("VEIN_CONFIG", str(Path(config.get("config_path", os.environ.get("VEIN_CONFIG", "")) or (CONFIG_DIR / "config.json"))))
+        # propagate PYEXE if you’re launching helpers from a BAT later
+        env.setdefault("PYEXE", os.environ.get("PYEXE", "py -3"))
+
         print(f"[Start] Spawning {script_name}: {' '.join(cmd)}  (cwd={_controller_root()})")
 
         subprocess.Popen(
             cmd,
             cwd=str(_controller_root()),
+            env=env,                     # <— add this
             creationflags=creationflags,
             stdout=stdout, stderr=stderr,
             close_fds=True
@@ -87,8 +88,21 @@ def _spawn_py(script_name: str) -> bool:
         return False
 
 def _start_monitors() -> None:
+    # Always begin with a clean slate
     stop_log_monitor()
     stop_crash_monitor()
+
+    # Clear stale flags/PIDs that can block a fresh boot
+    try:
+        runtime = Path(config.get("runtime_dir") or (Path(__file__).parents[1] / "Runtime"))
+        for fn in ("stop_log_monitor.flag", "log_monitor.pid",
+                   "stop_crash_monitor.flag", "crash_monitor.pid"):
+            try:
+                (runtime / fn).unlink(missing_ok=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     feats = dict(config.get("features", {}))
     wanted = []
@@ -110,7 +124,6 @@ def _start_monitors() -> None:
         send_discord_message("⚠️ Monitor spawn failed (see mgmt logs).", channel="startup")
     else:
         send_discord_message(f"🟢 Monitors started: {', '.join(started)}", channel="startup")
-
 
 def _steam_update_if_enabled() -> None:
     """Narrate Steam update; never hard-fail start if update fails."""
@@ -149,6 +162,17 @@ def main() -> int:
 
         # (2) Start monitors BEFORE launching server so log monitor can watch the whole boot
         _start_monitors()
+        
+        # Verify log monitor actually started; if not, re-spawn once
+        try:
+            runtime = Path(config.get("runtime_dir") or (Path(__file__).parents[1] / "Runtime"))
+            pid_log = runtime / "log_monitor.pid"
+            time.sleep(1.5)  # small settle
+            if not pid_log.exists():
+                _spawn_py("monitor_log.py")  # fire one more time
+                time.sleep(1.0)
+        except Exception:
+            pass
 
         # (3) Optional quiet window to suppress crash monitor jitters during boot
         startup_quiet = int(config.get("startup_quiet_seconds", 120))
@@ -179,7 +203,7 @@ def main() -> int:
         })
         PID_SERVER.write_text(str(proc.pid), encoding="utf-8")
 
-        send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for joinable…", channel="startup")
+        send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for  able…", channel="startup")
         return 0
 
     finally:

@@ -1,33 +1,28 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
+chcp 65001 >nul
 
-rem --- Resolve roots ---
-pushd "%~dp0\.." >nul 2>&1
-set "VEIN_MGMT_ROOT=%CD%"
-set "VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
-set "VEIN_MGMT_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
-set "PYEXE=py -3"
+rem Resolve repo root (this file is in ...\Scripts\)
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "VEIN_MGMT_ROOT=%%~fI"
+set "VEIN_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
+set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
 
-if not defined VEIN_CONFIG if exist "%VEIN_MGMT_CONFIG%" set "VEIN_CONFIG=%VEIN_MGMT_CONFIG%"
+rem Prefer venv\pythonw.exe; else try pyw -3 (windowless launcher); else pythonw.exe on PATH
+if exist "%VEIN_MGMT_ROOT%\venv\Scripts\pythonw.exe" (
+  set "PYWIN=%VEIN_MGMT_ROOT%\venv\Scripts\pythonw.exe"
+) else (
+  where pyw >nul 2>nul
+  if %ERRORLEVEL%==0 (
+    set "PYWIN=pyw -3"
+  ) else (
+    set "PYWIN=pythonw.exe"
+  )
+)
 
-echo [env] VEIN_MGMT_ROOT=%VEIN_MGMT_ROOT%
-echo [env] VEIN_MGMT_CONTROLLER=%VEIN_MGMT_CONTROLLER%
-echo [env] VEIN_CONFIG=%VEIN_CONFIG%
-echo [env] PYEXE=%PYEXE%
+echo [env] ROOT=%VEIN_MGMT_ROOT%
+echo [env] CONFIG=%VEIN_CONFIG%
+rem Launch detached, no console window, working dir = Controller
+start "" /D "%VEIN_CONTROLLER%" %PYWIN% vein_manager.py --config "%VEIN_CONFIG%"
 
-set "GUI=%VEIN_MGMT_CONTROLLER%\vein_manager.py"
-echo [INFO] Launching: %GUI%
-popd >nul 2>&1
-
-rem ---- Windowless launch with verification (no double start) ----
-powershell -NoProfile -WindowStyle Hidden -Command ^
-  "$script = '%GUI%';" ^
-  "$p = Start-Process -FilePath 'pyw' -ArgumentList '-3',('""'+$script+'""') -PassThru;" ^
-  "Start-Sleep -Milliseconds 900;" ^
-  "if ($p.HasExited) { " ^
-  "  Write-Host '[WARN] Windowless launch failed quickly. Falling back to console...';" ^
-  "  & py -3 $script;" ^
-  "  pause" ^
-  "}"
-
-endlocal
+endlocal & exit /b 0

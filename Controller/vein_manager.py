@@ -4,7 +4,7 @@ from __future__ import annotations
 import json, os, sys, subprocess, time
 from pathlib import Path
 from typing import Any, Dict, Tuple, List
-from datetime import datetime
+from datetime import datetime, timezone
 from PySide6 import QtCore, QtGui, QtWidgets
 
 # ----------------------------- Environment -----------------------------------
@@ -252,23 +252,66 @@ class StatusPoller(QtCore.QRunnable):
         self.signals = StatusSnapshot()
         self._last_tasklist_at = 0.0
 
+    # --- StatusPoller helpers --- 
     def _read_text(self, p: Path) -> str | None:
         try: return p.read_text(encoding="utf-8").strip()
         except Exception: return None
 
     def _read_json(self, p: Path) -> dict:
         try:
-            with open(p, "r", encoding="utf-8") as f: return json.load(f)
-        except Exception: return {}
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
     def _pid_alive(self, pid_str: str | None) -> bool:
-        if not pid_str: return False
-        try: pid = int(pid_str)
-        except Exception: return False
-        # Throttle tasklist to avoid UI jank (but we're on worker anyway)
+        if not pid_str:
+            return False
         try:
+            pid = int(pid_str)
+        except Exception:
+            return False
+        try:
+            # NOTE: CREATE_NO_WINDOW constant should already exist in your module
             out = subprocess.check_output(["tasklist"], text=True, creationflags=CREATE_NO_WINDOW)
-            return any(f" {pid} " in (" " + line + " ") for line in out.splitlines())
+            # naive but robust: look for the pid as a standalone token
+            needle = f" {pid} "
+            return any(needle in (" " + line + " ") for line in out.splitlines())
+        except Exception:
+            return False
+
+    def _hb_knobs(self) -> tuple[int, float]:
+        """Read heartbeat knobs from config.json; return (hb_seconds, fresh_mult)."""
+        try:
+            with open(self.cfg_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            mon = cfg.get("monitor", {})
+            hb = int(mon.get("heartbeat_seconds", 60))
+            fresh_mult = float(mon.get("fresh_window_multiplier", 2.0))
+            # bounds
+            hb = max(5, hb)
+            fresh_mult = 0.25 if fresh_mult < 0.25 else (10.0 if fresh_mult > 10.0 else fresh_mult)
+            return hb, fresh_mult
+        except Exception:
+            return 60, 2.0
+
+    def _is_fresh(self, state_path: Path, hb_seconds: int, mult: float) -> bool:
+        """True if last_updated is within window; tolerant of bad/missing files."""
+        try:
+            data = self._read_json(state_path)
+            lu = (data.get("last_updated") or "").strip()
+            if not lu:
+                return False
+            # Make timezone-aware; ISO with 'Z' → '+00:00'
+            from datetime import datetime, timezone
+            lu_norm = lu.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(lu_norm)
+            if dt.tzinfo is None:
+                # assume UTC if writer forgot tz
+                dt = dt.replace(tzinfo=timezone.utc)
+            window = max(30, min(900, int(hb_seconds * mult)))
+            age = (datetime.now(timezone.utc) - dt).total_seconds()
+            return age <= window
         except Exception:
             return False
 
@@ -276,81 +319,126 @@ class StatusPoller(QtCore.QRunnable):
         rp = _runtime_paths(self.cfg_path)
         rt = _rt_paths(self.cfg_path)
 
+        # --- Heartbeat knobs used by both monitors and GUI freshness
+        hb_seconds, fresh_mult = self._hb_knobs()
+
         # --- Server status: PID is truth source ---
         ss = self._read_json(rp["server_state"])
         pid_txt = str(ss.get("pid", "") or "").strip()
-        # Fallback to flag’s PID if present:
+
         if not pid_txt:
-            try:
-                flag = self._read_json(rp["state_flag"])
-                pid_txt = str(flag.get("pid", "") or "").strip()
-            except Exception:
-                pid_txt = ""
-        srv_green = self._pid_alive(pid_txt)
+            # Fallback to shutdown/intent flag’s PID if present
+            flag = self._read_json(rp["state_flag"])
+            pid_txt = str(flag.get("pid", "") or "").strip()
 
-        # Keep a legacy boolean for existing wiring
-        srv_on = bool(srv_green)
+        srv_on = self._pid_alive(pid_txt)
 
-        # Log monitor
-        lm_pid  = self._read_text(rt["pid_log"])
-        lm_on   = self._pid_alive(lm_pid)
-        lm_fresh = False
-        lms = self._read_json(rt["state_log"])
-        if lms and "last_updated" in lms:
-            try:
-                from datetime import datetime
-                lu = lms["last_updated"].replace("Z", "")
-                dt = datetime.fromisoformat(lu)
-                hb = max(10, int(rp.get("hb_seconds", 60)))
-                window = max(30, min(900, 2 * hb))
-                lm_fresh = (datetime.utcnow() - dt).total_seconds() <= window
-            except Exception:
-                lm_fresh = False
+        # --- Log monitor ---
+        lm_pid = self._read_text(rt["pid_log"])
+        lm_on = self._pid_alive(lm_pid)
+        lm_fresh = self._is_fresh(rt["state_log"], hb_seconds, fresh_mult)
 
-        # Crash monitor
+        # --- Crash monitor ---
         cm_pid = self._read_text(rt["pid_crash"])
-        cm_on  = self._pid_alive(cm_pid)
-        cs     = self._read_json(rp["crash_state"])
-        mode   = cs.get("mode", "unknown") if cs else "unknown"
+        cm_on = self._pid_alive(cm_pid)
+        # Use the same state file namespace as runtime paths
+        cs = self._read_json(rt["state_crash"])
+        # Backward compatibility: support the older crash_state path if present
+        if not cs:
+            cs = self._read_json(rp.get("crash_state", rt["state_crash"]))
+        mode = (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
 
+        # Emit compact snapshot consumed by the UI
         self.signals.ready.emit({
             "server": bool(srv_on),
             "logmon": bool(lm_on),
             "logmon_fresh": bool(lm_fresh),
             "crashmon": bool(cm_on),
-            "crash_mode": mode,
+            "crash_mode": mode,  # "running" | "stopped" | "restart_pending" | "unknown"
         })
 
 # --------------------------- Log tail (throttled) -----------------------------
 class FileTail(QtCore.QObject):
     chunk = QtCore.Signal(str)
-    def __init__(self, path: Path, parent=None):
+
+    def __init__(self, path_provider: callable, parent=None):
+        """
+        path_provider() -> Path
+        Returns the *current* file to follow. May change over time.
+        """
         super().__init__(parent)
-        self.path = path
+        self._path_provider = path_provider
+        self._file: Path | None = None
         self._pos = 0
+        self._last_sig = (0, 0.0)  # (size, mtime)
         self.t = QtCore.QTimer(self)
         self.t.timeout.connect(self.poll)
-        self.t.setInterval(1000)
+        self.t.setInterval(300)
+
     def start(self):
         self._pos = 0
-        try:
-            with self.path.open("rb") as f:
-                f.seek(0, 2)
-                self._pos = f.tell()
-        except FileNotFoundError:
-            pass
+        self._open_current(end=True)
         self.t.start()
-    def stop(self): self.t.stop()
-    def poll(self):
+
+    def stop(self):
+        self.t.stop()
+
+    def _open_current(self, end: bool):
+        p = self._path_provider()
+        self._file = p if p and p.exists() else None
+        self._pos = 0
+        self._last_sig = (0, 0.0)
+        if not self._file:
+            return
         try:
-            with self.path.open("rb") as f:
+            with self._file.open("rb") as f:
+                if end:
+                    f.seek(0, 2)
+                self._pos = f.tell()
+                st = self._file.stat()
+                self._last_sig = (st.st_size, st.st_mtime)
+        except FileNotFoundError:
+            self._file = None
+
+    def _signature_changed(self) -> bool:
+        if not self._file or not self._file.exists():
+            return True
+        try:
+            st = self._file.stat()
+            size, mt = st.st_size, st.st_mtime
+            old_size, old_mt = self._last_sig
+            # rotation/truncate: size dropped or mtime went backwards/changed with smaller size
+            return (size < old_size) or (size == 0 and old_size > 0) or (mt != old_mt and size < old_size)
+        except Exception:
+            return True
+
+    def poll(self):
+        # If provider says the path changed, reopen.
+        p = self._path_provider()
+        if not p or not p.exists() or (self._file and str(p) != str(self._file)):
+            self._open_current(end=False)
+
+        if not self._file:
+            return
+
+        # Detect rotation/truncation
+        if self._signature_changed():
+            self._open_current(end=False)
+            if not self._file:
+                return
+
+        try:
+            with self._file.open("rb") as f:
                 f.seek(self._pos)
-                b = f.read(65536)
+                b = f.read(262144)
                 if b:
                     self._pos = f.tell()
+                    st = self._file.stat()
+                    self._last_sig = (st.st_size, st.st_mtime)
                     self.chunk.emit(b.decode("utf-8", "replace"))
         except FileNotFoundError:
-            pass
+            self._open_current(end=False)
+
 
 # ----------------------- JSON syntax highlight -------------------------------
 class JsonHL(QtGui.QSyntaxHighlighter):
@@ -917,6 +1005,20 @@ class Main(QtWidgets.QMainWindow):
         w = self.logTabs.currentWidget()
         if isinstance(w, QtWidgets.QPlainTextEdit):
             w.clear()
+    
+    def _current_game_log_path(self) -> Path:
+        # Prefer the monitor’s notion of the active file if available
+        rt = _rt_paths(self.config_path)
+        lms = self._safe_json(rt["state_log"])
+        if lms and lms.get("tailing_file"):
+            try:
+                p = Path(lms["tailing_file"])
+                if p.exists():
+                    return p
+            except Exception:
+                pass
+        # Fallback to resolved default (absolute_log_file or Logs/Vein.log)
+        return self._resolved_paths()["log_file"]
 
     def tail_start(self):
         self._retail()
@@ -932,37 +1034,41 @@ class Main(QtWidgets.QMainWindow):
         self.tail_game = self.tail_lm = self.tail_cm = None
 
     def _retail(self):
-        # stop existing tails
         self._tail_stop_all()
 
-        # respect the single “Live (follow)” checkbox
         if not self.chk_live.isChecked():
             self._status("Live view disabled.")
             return
 
-        # Game log (Vein/Saved/Logs/Vein.log or absolute)
-        p_game = self._resolved_paths()["log_file"]
-        if p_game.exists():
-            self.tail_game = FileTail(p_game)
+        # Provider that re-evaluates the active game log path dynamically
+        def game_provider() -> Path:
+            try:
+                return self._current_game_log_path()
+            except Exception:
+                return self._resolved_paths()["log_file"]
+
+        # Game log (rotation-aware)
+        gp = game_provider()
+        if gp and gp.exists():
+            self.tail_game = FileTail(game_provider)
             self.tail_game.chunk.connect(self._on_game_line)
             self.tail_game.start()
-            self._status(f"Tailing game: {p_game}")
+            self._status(f"Tailing game: {gp}")
         else:
-            self._status(f"Game log not found: {p_game}")
+            self._status(f"Game log not found: {gp}")
 
-        # Management logs (monitors): mgmt_log_dir/monitor_log.stdout.log, crash_monitor.stdout.log
+        # Management logs (stdout files) – unchanged
         cfg = _load_cfg_for_runtime(self.config_path)
         mgmt_log_dir = Path(cfg.get("mgmt_log_dir", ROOT / "Logs"))
         lm_file = mgmt_log_dir / "monitor_log.stdout.log"
         cm_file = mgmt_log_dir / "crash_monitor.stdout.log"
 
         if lm_file.exists():
-            self.tail_lm = FileTail(lm_file)
+            self.tail_lm = FileTail(lambda: lm_file)
             self.tail_lm.chunk.connect(self._on_lm_line)
             self.tail_lm.start()
-
         if cm_file.exists():
-            self.tail_cm = FileTail(cm_file)
+            self.tail_cm = FileTail(lambda: cm_file)
             self.tail_cm.chunk.connect(self._on_cm_line)
             self.tail_cm.start()
 
@@ -1047,7 +1153,7 @@ class Main(QtWidgets.QMainWindow):
         spawn(f'{_pyexe()} "{mon_py}" --follow', mon_py.parent, env=env)
         self._status("Log monitor starting…")
         if _runtime_paths(self.config_path)["log_monitor_enabled"]:
-            self.chk_tail.setChecked(False)
+            self.chk_live.setChecked(True)
 
     def stop_lm(self):
         rp = _rt_paths(self.config_path)
@@ -1148,6 +1254,13 @@ class Main(QtWidgets.QMainWindow):
         else:
             self.lblLogUptime.setText("Uptime: —")
 
+        # Hint the tailer in case path switched (next poll will re-open)
+        if self.tail_game:
+            try:
+                _ = self._current_game_log_path()  # will be read by provider on next poll
+            except Exception:
+                pass
+
         cs = self._safe_json(rp["crash_state"])
         self.lblCrashDot.setStyleSheet(dot(cm_on))
         self.lblCrashLast.setText(f"Last heartbeat: {_age_str(cs.get('ts'))}")
@@ -1157,6 +1270,39 @@ class Main(QtWidgets.QMainWindow):
             f"Server flag: {'present' if _file_exists(rp['state_flag']) else 'absent'}   |   "
             f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}"
         )
+        
+                # Auto-(re)start log monitor if:
+        #   - server is running,
+        #   - log monitor feature is enabled in config,
+        #   - and monitor isn't running or marked fresh
+        if not hasattr(self, "_lm_autostart_last"):
+            self._lm_autostart_last = 0.0
+        try:
+            server_on = bool(snap.get("server", False))
+            lm_on = bool(snap.get("logmon", False))
+            lm_fresh = bool(snap.get("logmon_fresh", False))
+            now = time.time()
+
+            cfg = _load_cfg_for_runtime(self.config_path)
+            features = cfg.get("features", {})
+            logmon_enabled = features.get("enable_log_monitor", True)
+
+            # also check if a manual stop flag exists to respect user intent
+            rt = _rt_paths(self.config_path)
+            manual_stop = rt["stop_log"].exists() if "stop_log" in rt else False
+
+            if (
+                server_on
+                and logmon_enabled
+                and not lm_on
+                and not manual_stop
+                and (now - self._lm_autostart_last) > 5.0
+            ):
+                self._lm_autostart_last = now
+                self.start_lm()
+        except Exception:
+            pass
+
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:

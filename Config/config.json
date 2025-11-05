@@ -4,6 +4,7 @@
     "VeinServer.exe",
     "VeinServer-Win64-Test.exe"
   ],
+  "preferred_exe": "VeinServer-Win64-Test.exe",
   "runtime_dir": "G:/Servers/VeinServer/VeinServerManagement/Runtime",
   "save_dir": "G:/Servers/VeinServer/Vein/Saved/SaveGames",
   "save_filenames": [
@@ -20,7 +21,7 @@
     "-SteamSockets"
   ],
   "headless_mode": true,
-  "show_monitor_window": true,
+  "show_monitor_window": false,
   "multi_home_ip": "0.0.0.0",
   "game_port": 7777,
   "query_port": 27015,
@@ -86,11 +87,15 @@
   "kill_ue_helpers_on_shutdown": true,
   "monitor": {
     "enable": true,
+    "heartbeat_seconds": 60,
+    "fresh_window_multiplier": 2.0,
     "state_refresh_seconds": 15,
     "heartbeat_interval_seconds": 300,
     "state_file": "G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor_state.json",
     "wait_for_server_start_seconds": 600,
     "wait_for_log_appearance_seconds": 300,
+    "linger_when_server_down": true,
+    "recheck_newest_every_seconds": 5,
     "tail_poll_interval_ms": 500,
     "track": {
       "startup": true,

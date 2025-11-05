@@ -123,6 +123,14 @@ def _normal_shutdown() -> None:
         pass
 
     # 2) Stop monitors first
+    try:
+        rt = Path(os.environ.get("VEIN_CONFIG") or "").resolve().parent.parent / "Runtime"
+    except Exception:
+        rt = CONTROLLER_DIR.parent / "Runtime"
+    for fn in ("stop_log_monitor.flag","log_monitor.pid","stop_crash_monitor.flag","crash_monitor.pid"):
+        try: (rt / fn).unlink(missing_ok=True)
+        except Exception: pass
+        
     print("[Shutdown] Stopping monitors…")
     monitors_stopped = True
     try:
