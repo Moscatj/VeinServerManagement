@@ -142,6 +142,20 @@ UE_HELPERS = [
     "UnrealCEFSubProcess.exe",
 ]
 
+# Match an exe/name against a list of patterns (supports wildcards like VeinServer-*.exe)
+def _exe_matches_any(name: str | None, patterns: list[str]) -> bool:
+    if not name:
+        return False
+    name = name.strip()
+    for pat in patterns:
+        try:
+            if fnmatch.fnmatch(name, pat):
+                return True
+        except Exception:
+            # be defensive; ignore a bad pattern
+            pass
+    return False
+
 def _resolve_save_file() -> Path:
     """Pick the first existing save; else return the first configured filename path."""
     for name in SAVE_FILENAMES:
