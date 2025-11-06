@@ -50,13 +50,15 @@ from config_helper import (
 # ----------------------------
 # Resolved config & constants
 # ----------------------------
-ROOT_DIR: Path = Path(__file__).resolve().parent
+
+PROJECT_ROOT   = Path(__file__).resolve().parents[1] 
+CONTROLLER_DIR = PROJECT_ROOT / "Controller"
 SERVER_DIR: Path = Path(get_path("server_dir"))
 BACKUP_ROOT: Path = Path(get_path("backup_root"))
-START_SCRIPT:   Path = ROOT_DIR / "Controller" / "start_server.py"
+START_SCRIPT   = (CONTROLLER_DIR / "start_server.py").resolve()
 
 #all ephemeral state goes under runtime_dir
-RUNTIME_DIR: Path = Path(get_path("runtime_dir") or (ROOT_DIR / "Runtime"))
+RUNTIME_DIR: Path = Path(get_path("runtime_dir") or (PROJECT_ROOT / "Runtime"))
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
 # Coordination files
@@ -987,9 +989,29 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
             return False
 
         RESTARTING_LOCK.write_text(reason, encoding="utf-8")
-        subprocess.Popen([sys.executable, str(START_SCRIPT)], cwd=str(ROOT_DIR))
+        # Ensure child sees the same config and launcher
+        env = os.environ.copy()
+        # carry current config path if one is already set in the parent
+        if os.environ.get("VEIN_CONFIG"):
+            env["VEIN_CONFIG"] = os.environ["VEIN_CONFIG"]
+        # ensure children know how to spawn python helpers (used by start_server to spawn monitors)
+        env.setdefault("PYEXE", sys.executable)  # prefer exact interpreter over "py -3"
+
+        # Hide child console if headless
+        creationflags = win_creationflags_for_headless()
+
+        subprocess.Popen(
+            [sys.executable, str(START_SCRIPT)],
+            cwd=str(PROJECT_ROOT),
+            env=env,
+            creationflags=creationflags,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
         RESTART_STAMP.write_text(str(now), encoding="utf-8")
-        time.sleep(2)
+
+        # Give start_server a short head start to create startup lock/quiet window
+        time.sleep(int(config.get("restart_settle_seconds", 5)))
         return True
     finally:
         try:

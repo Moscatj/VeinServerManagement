@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json, os, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from config_helper import config, is_feature_enabled
 from utils import (
-    RUNTIME_DIR,
     STATE_FLAG,
     find_running_server,
     is_shutdown_in_progress,
@@ -32,15 +31,33 @@ BREAKER_WINDOW_MIN     = int(config.get("crash_loop_window_minutes", 10))
 BREAKER_COOLDOWN_SEC   = int(config.get("crash_loop_cooldown_seconds", 600))
 
 # Runtime files
-PID_FILE    = Path(RUNTIME_DIR) / "crash_monitor.pid"
-STATE_FILE  = Path(RUNTIME_DIR) / "crash_monitor_state.json"
-STOP_FLAG   = Path(RUNTIME_DIR) / "stop_crash_monitor.flag"
-RESTART_LOG = Path(RUNTIME_DIR) / "restart_state.json"
-BREAKER     = Path(RUNTIME_DIR) / "breaker.tripped"
-LAST_CRASH_NOTIFY = Path(RUNTIME_DIR) / "crash_notify.last"
+#PID_FILE    = Path(RUNTIME_DIR) / "crash_monitor.pid"
+#STATE_FILE  = Path(RUNTIME_DIR) / "crash_monitor_state.json"
+#STOP_FLAG   = Path(RUNTIME_DIR) / "stop_crash_monitor.flag"
+#RESTART_LOG = Path(RUNTIME_DIR) / "restart_state.json"
+#BREAKER     = Path(RUNTIME_DIR) / "breaker.tripped"
+#LAST_CRASH_NOTIFY = Path(RUNTIME_DIR) / "crash_notify.last"
+
+def _rt() -> dict:
+    base = Path(config.get("runtime_dir") or Path(__file__).parents[1] / "Runtime")
+    base = base.expanduser()
+    try: base.mkdir(parents=True, exist_ok=True)
+    except Exception: pass
+    return {
+        "runtime": base,
+        "pid":     base / "crash_monitor.pid",
+        "stop":    base / "crash_monitor.stop",
+        # unified file the GUI should read
+        "state":   base / "crash_monitor.state.json",
+        # legacy file (kept in sync for backward compatibility)
+        "state_legacy": base / "crash_monitor_state.json",
+        "restart_log":  base / "restart_state.json",
+        "breaker":      base / "breaker.tripped",
+        "last_notify":  base / "crash_notify.last",
+    }
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
     try:
@@ -51,53 +68,72 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
     except Exception:
         pass
 
-def _write_state(mode: str) -> None:
-    payload = {
-        "ts": _now().isoformat() + "Z",
+def _write_state_mode(mode: str, *, active: bool | None = None, watching: bool | None = None) -> None:
+    """
+    Write unified crash monitor state AND legacy state file.
+    """
+    r = _rt()
+    payload_unified = {
+        "active": bool(active if active is not None else (mode in ("startup","watching"))),
+        "tailing_file": None,                   # crash monitor doesn't tail a file
+        "watching_server": bool(watching if watching is not None else (mode == "watching")),
+        "last_updated": _now().isoformat(),     # tz-aware ISO
+        "mode": mode,                           # keep mode for UI
+    }
+    _atomic_write_json(r["state"], payload_unified)
+
+    # legacy compatibility payload (keep fields people might parse)
+    legacy = {
+        "ts": _now().isoformat(),
         "mode": mode,
         "pid": os.getpid(),
-        "headless": current_headless_flag(),  # <-- added
+        "headless": current_headless_flag(),
     }
-    _atomic_write_json(STATE_FILE, payload)
+    _atomic_write_json(r["state_legacy"], legacy)
 
 def _write_pid() -> None:
-    try: PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+    r = _rt()
+    try: r["pid"].write_text(str(os.getpid()), encoding="utf-8")
     except Exception: pass
 
 def _clear_pid_and_stopflag() -> None:
-    for p in (PID_FILE, STOP_FLAG):
+    r = _rt()
+    for p in (r["pid"], r["stop"]):
         try: p.unlink(missing_ok=True)
         except Exception: pass
 
 def _debounced_crash_notify(msg: str) -> None:
+    r = _rt()
     try:
-        last = int(LAST_CRASH_NOTIFY.read_text(encoding="utf-8").strip() or "0")
+        last = int(r["last_notify"].read_text(encoding="utf-8").strip() or "0")
     except Exception:
         last = 0
     now = int(time.time())
     if now - last >= CRASH_NOTIFY_DEBOUNCE:
-        send_discord_message(msg, channel="crash_monitor")
-        try: LAST_CRASH_NOTIFY.write_text(str(now), encoding="utf-8")
+        _send(msg)
+        try: r["last_notify"].write_text(str(now), encoding="utf-8")
         except Exception: pass
 
 def _send(msg: str) -> None:
     send_discord_message(msg, channel="crash_monitor")
 
 def _append_attempt(backoff_sec: int) -> None:
+    r = _rt()
     data = {}
     try:
-        data = json.loads(RESTART_LOG.read_text(encoding="utf-8"))
+        data = json.loads(r["restart_log"].read_text(encoding="utf-8"))
     except Exception:
         data = {}
     at = data.get("attempts", [])
-    at.append(_now().isoformat()+"Z")
+    at.append(_now().isoformat())
     data["attempts"] = at[-100:]
     data["last_backoff_sec"] = backoff_sec
-    _atomic_write_json(RESTART_LOG, data)
+    _atomic_write_json(r["restart_log"], data)
 
 def _count_attempts_in_window(minutes: int) -> int:
+    r = _rt()
     try:
-        data = json.loads(RESTART_LOG.read_text(encoding="utf-8"))
+        data = json.loads(r["restart_log"].read_text(encoding="utf-8"))
         at = data.get("attempts", [])
     except Exception:
         return 0
@@ -105,28 +141,39 @@ def _count_attempts_in_window(minutes: int) -> int:
     c = 0
     for iso in at:
         try:
-            if datetime.fromisoformat(iso.replace("Z","")) >= cutoff:
+            dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if dt >= cutoff:
                 c += 1
         except Exception:
             pass
     return c
 
 def _breaker_active() -> bool:
-    if not BREAKER.exists(): return False
+    r = _rt()
+    br = r["breaker"]
+    if not br.exists():
+        return False
     try:
-        until = int(BREAKER.read_text(encoding="utf-8").strip() or "0")
+        until = int(br.read_text(encoding="utf-8").strip() or "0")
         if int(time.time()) < until:
             return True
     except Exception:
         pass
-    try: BREAKER.unlink(missing_ok=True)
-    except Exception: pass
+    try:
+        br.unlink(missing_ok=True)
+    except Exception:
+        pass
     return False
 
 def _trip_breaker() -> None:
+    r = _rt()
     until = int(time.time()) + BREAKER_COOLDOWN_SEC
-    try: BREAKER.write_text(str(until), encoding="utf-8")
-    except Exception: pass
+    try:
+        r["breaker"].write_text(str(until), encoding="utf-8")
+    except Exception:
+        pass
     _send(f"⚠️ Crash loop detected — breaker tripped for {BREAKER_COOLDOWN_SEC}s.")
 
 def _next_backoff(prev: int) -> int:
@@ -142,7 +189,7 @@ def main() -> None:
     print("[CrashMon] Starting crash monitor…")
     _send("🟢 Crash monitor started.")
     _write_pid()
-    _write_state("startup")
+    _write_state_mode("startup", active=True, watching=False)
 
     last_idle_notice_at = None
     announced_watching = False
@@ -150,66 +197,57 @@ def main() -> None:
 
     while True:
         # Stop flag
-        if STOP_FLAG.exists():
+        if _rt()["stop"].exists():
             _send("🛑 Crash monitor stop requested; exiting.")
-            _write_state("stopped")
+            _write_state_mode("stopped", active=False, watching=False)
             _clear_pid_and_stopflag()
             return
 
-        # Live disable
+        # live disable
         if not is_feature_enabled("enable_crash_monitor"):
-            _write_state("disabled")
+            _write_state_mode("disabled", active=False, watching=False)
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
-        # Intentional shutdown
+        # intentional shutdown
         if is_shutdown_in_progress():
-            _write_state("intentional_shutdown")
+            _write_state_mode("intentional_shutdown", active=True, watching=False)
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
-        # Breaker cooldown
+        # breaker
         if _breaker_active():
-            _write_state("breaker_cooldown")
+            _write_state_mode("breaker_cooldown", active=True, watching=False)
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
-        # Determine server state
+        # determine server state
         flag_present = STATE_FLAG.exists()
         process_running = find_running_server() is not None
 
-        # Idle (no flag yet)
         if not flag_present:
-            _write_state("idle")
-            now_local = datetime.now()
-            if last_idle_notice_at is None:
-                _send("🟡 Crash monitor idle: server flag not present (offline).")
-                last_idle_notice_at = now_local
-                announced_watching = False
-            elif now_local - last_idle_notice_at >= timedelta(minutes=IDLE_NOTIFY_MINUTES):
-                _send("🟡 Crash monitor idle (still waiting for server flag)…")
-                last_idle_notice_at = now_local
-            time.sleep(MONITOR_INTERVAL_SEC)
-            continue
-
-        # Watching
-        if process_running:
-            _write_state("watching")
-            if not announced_watching:
-                _send("🧭 Crash monitor active: watching for unexpected exit.")
-                announced_watching = True
-            # Healthy: reset attempt history if we’ve been up a while
-            try:
-                data = {"attempts": []}
-                _atomic_write_json(RESTART_LOG, data)
-            except Exception:
-                pass
+            _write_state_mode("idle", active=True, watching=False)
             backoff = 0
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
-        # Crash condition: flag present, process missing
-        _write_state("restart_pending")
+        if process_running:
+            _write_state_mode("watching", active=True, watching=True)
+            if not announced_watching:
+                _send("🧭 Crash monitor active: watching for unexpected exit.")
+                announced_watching = True
+                backoff = 0
+            time.sleep(MONITOR_INTERVAL_SEC)
+            continue
+
+        # crash condition
+        if find_running_server() is not None:
+            # transient read; treat as watching again
+            _write_state_mode("watching", active=True, watching=True)
+            time.sleep(MONITOR_INTERVAL_SEC)
+            continue
+
+        _write_state_mode("restart_pending", active=True, watching=False)
 
         # Respect quiet windows
         if startup_grace_active(180) or autorestart_quiet_active():
@@ -230,15 +268,17 @@ def main() -> None:
         # Debounced notification + controlled restart
         _debounced_crash_notify("❌ Crash detected. Attempting controlled restart…")
         ok = initiate_controlled_restart(reason="proc_missing")
+        ok = initiate_controlled_restart(reason="proc_missing")
         if ok:
             _send("🔄 Auto-restart initiated by crash monitor.")
+            _append_attempt(BACKOFF_SEC)           # ← only here, after ok=True
+            backoff = 0
+            time.sleep(int(config.get("restart_settle_seconds", 5)))
+            continue
         else:
-            # Throttled or already restarting — don’t spam
-            pass
-
-        _append_attempt(sleep_for)
-        # Small buffer before next loop
-        time.sleep(2)
+            # already restarting or throttle — don’t count as an attempt
+            time.sleep(MONITOR_INTERVAL_SEC)
+            continue
 
 if __name__ == "__main__":
     try:

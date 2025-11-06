@@ -15,6 +15,7 @@ from utils import (
     check_for_steam_update,
     win_creationflags_for_headless, headless_enabled,
     current_headless_flag,
+    RESTARTING_LOCK,
     clear_runtime_markers, stop_all_vein_processes_aggressive, PID_SERVER,
 )
 from Tools.config_io import load_and_validate_config
@@ -40,6 +41,12 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 def _server_state_path() -> Path:
     runtime = Path(config.get("runtime_dir") or (Path(__file__).parents[1] / "Runtime"))
     return runtime / "server_state.json"
+
+def _clear_restart_lock():
+    try:
+        RESTARTING_LOCK.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 def _py_argv() -> list[str]:
     """
@@ -159,6 +166,17 @@ def main() -> int:
     SELECTED_EXE: Path = vcfg.selected_exe
     EXTRA_ARGS = vcfg.raw.get("extra_launch_args", [])
 
+    # --- DEBUG breadcrumb ---
+    try:
+        from datetime import datetime
+        (RUNTIME_DIR / "restart_debug.log").write_text(
+            f"{datetime.utcnow().isoformat()}Z  start_server.py entry\n",
+            encoding="utf-8"
+        )
+    except Exception:
+        pass
+    # -------------------------
+
     # Paths/pids based on validated runtime dir
     state_path = RUNTIME_DIR_PATH / "server_state.json"
     pid_log    = RUNTIME_DIR_PATH / "log_monitor.pid"
@@ -254,6 +272,7 @@ def main() -> int:
                 "cwd": str(SERVER_DIR_PATH),
                 "headless": current_headless_flag(),
             })
+            _clear_restart_lock()
             return 1
 
         # 7) Mark running; monitors (log) will later report “joinable”
@@ -269,6 +288,7 @@ def main() -> int:
         except Exception:
             pass
 
+        _clear_restart_lock()
         send_discord_message(f"✅ Server process started (PID {proc.pid}). Waiting for joinable…", channel="startup")
 
         return 0
@@ -276,6 +296,7 @@ def main() -> int:
     finally:
         # Release startup lock so crash monitor behaves normally post-boot
         clear_startup_lock()
+        _clear_restart_lock()
 
 
 if __name__ == "__main__":
