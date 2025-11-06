@@ -39,17 +39,18 @@ BREAKER_COOLDOWN_SEC   = int(config.get("crash_loop_cooldown_seconds", 600))
 #LAST_CRASH_NOTIFY = Path(RUNTIME_DIR) / "crash_notify.last"
 
 def _rt() -> dict:
-    base = Path(config.get("runtime_dir") or Path(__file__).parents[1] / "Runtime")
-    base = base.expanduser()
+    base = Path(config.get("runtime_dir") or Path(__file__).parents[1] / "Runtime").expanduser()
     try: base.mkdir(parents=True, exist_ok=True)
     except Exception: pass
     return {
         "runtime": base,
         "pid":     base / "crash_monitor.pid",
-        "stop":    base / "crash_monitor.stop",
-        # unified file the GUI should read
+        # Primary flag name used by GUI:
+        "stop":    base / "stop_crash_monitor.flag",
+        # Accept old name too (for compatibility):
+        "stop_legacy": base / "crash_monitor.stop",
+        # unified + legacy state files
         "state":   base / "crash_monitor.state.json",
-        # legacy file (kept in sync for backward compatibility)
         "state_legacy": base / "crash_monitor_state.json",
         "restart_log":  base / "restart_state.json",
         "breaker":      base / "breaker.tripped",
@@ -98,7 +99,7 @@ def _write_pid() -> None:
 
 def _clear_pid_and_stopflag() -> None:
     r = _rt()
-    for p in (r["pid"], r["stop"]):
+    for p in (r["pid"], r["stop"], r["stop_legacy"]):
         try: p.unlink(missing_ok=True)
         except Exception: pass
 
@@ -116,6 +117,11 @@ def _debounced_crash_notify(msg: str) -> None:
 
 def _send(msg: str) -> None:
     send_discord_message(msg, channel="crash_monitor")
+
+# --- helper: did someone request we stop? (support both flag names) ---
+def _stop_requested() -> bool:
+    r = _rt()
+    return r["stop"].exists() or r["stop_legacy"].exists()
 
 def _append_attempt(backoff_sec: int) -> None:
     r = _rt()
@@ -193,11 +199,12 @@ def main() -> None:
 
     last_idle_notice_at = None
     announced_watching = False
+    missing_count = 0
     backoff = 0
 
     while True:
-        # Stop flag
-        if _rt()["stop"].exists():
+        
+        if _stop_requested():
             _send("🛑 Crash monitor stop requested; exiting.")
             _write_state_mode("stopped", active=False, watching=False)
             _clear_pid_and_stopflag()
@@ -228,6 +235,7 @@ def main() -> None:
         if not flag_present:
             _write_state_mode("idle", active=True, watching=False)
             backoff = 0
+            missing_count = 0
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
@@ -236,17 +244,26 @@ def main() -> None:
             if not announced_watching:
                 _send("🧭 Crash monitor active: watching for unexpected exit.")
                 announced_watching = True
-                backoff = 0
+            backoff = 0
+            missing_count = 0
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
-        # crash condition
+        # transient double-check: if we see it again, revert to watching
         if find_running_server() is not None:
-            # transient read; treat as watching again
+            _write_state_mode("watching", active=True, watching=True)
+            missing_count = 0
+            time.sleep(MONITOR_INTERVAL_SEC)
+            continue
+
+        # count consecutive misses before declaring a crash
+        missing_count += 1
+        if missing_count < 2:
             _write_state_mode("watching", active=True, watching=True)
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 
+        # now treat as real crash
         _write_state_mode("restart_pending", active=True, watching=False)
 
         # Respect quiet windows
@@ -267,16 +284,15 @@ def main() -> None:
 
         # Debounced notification + controlled restart
         _debounced_crash_notify("❌ Crash detected. Attempting controlled restart…")
-        ok = initiate_controlled_restart(reason="proc_missing")
-        ok = initiate_controlled_restart(reason="proc_missing")
+        ok = initiate_controlled_restart(reason="proc_missing")  # ← only once
         if ok:
             _send("🔄 Auto-restart initiated by crash monitor.")
-            _append_attempt(BACKOFF_SEC)           # ← only here, after ok=True
+            _append_attempt(sleep_for)   # ← use the actual backoff we slept
             backoff = 0
+            missing_count = 0
             time.sleep(int(config.get("restart_settle_seconds", 5)))
-            continue
         else:
-            # already restarting or throttle — don’t count as an attempt
+            # already restarting or throttled — don’t count as attempt
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
 

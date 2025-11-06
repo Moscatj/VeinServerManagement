@@ -14,6 +14,8 @@ CONFIG_DIR     = MGMT_ROOT / "Config"
 # Send a final Discord warning this many seconds before shutdown (0 = disable)
 COUNTDOWN_FINAL_WARNING_AT = 10
 
+print(f"[ShutdownScript] argv={sys.argv} parent_pid={os.getppid()}")
+
 # Ensure module import path
 if str(CONTROLLER_DIR) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_DIR))

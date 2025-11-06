@@ -298,20 +298,35 @@ def find_running_server(
     executable_names: Optional[List[str]] = None,
     server_dir: Optional[Path] = None,
 ) -> Optional[psutil.Process]:
-    """Discover an existing Vein server by executable name (and optional cwd match)."""
     names = executable_names or EXECUTABLE_NAMES
     sdir = str((server_dir or SERVER_DIR).resolve())
+
+    # Pass 1: exact name + matching cwd (best case)
     for p in psutil.process_iter(attrs=["pid", "name", "exe", "cwd"]):
         try:
             pname = (p.info.get("name") or "")
             pexe  = os.path.basename(p.info.get("exe") or "")
             pcwd  = p.info.get("cwd") or ""
-            if pname in names or pexe in names:
-                if pcwd and os.path.abspath(pcwd) != sdir:
-                    continue
+            if (pname in names or pexe in names) and pcwd and os.path.abspath(pcwd) == sdir:
                 return p
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+
+    # Pass 2: exact name only (cwd might be empty/inaccessible)
+    for p in psutil.process_iter(attrs=["pid", "name", "exe"]):
+        try:
+            pname = (p.info.get("name") or "")
+            pexe  = os.path.basename(p.info.get("exe") or "")
+            if pname in names or pexe in names:
+                return p
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Pass 3: wildcard image patterns (Shipping/Dev variants)
+    for p in psutil.process_iter(attrs=["pid", "name", "exe"]):
+        if _is_vein_server_process(p):
+            return p
+
     return None
 
 def stop_vein_server(timeout: int | None = None) -> bool:
@@ -320,6 +335,7 @@ def stop_vein_server(timeout: int | None = None) -> bool:
         clear_runtime_markers()   # NEW
         return True
     try:
+        send_discord_message("🛑 stop_vein_server(): requesting graceful shutdown of server process.", channel="startup")
         proc.terminate()
     except Exception:
         pass
@@ -395,6 +411,8 @@ def stop_all_vein_processes_aggressive() -> list[int]:
     if not procs:
         return acted
     timeout = int(config.get("shutdown_timeout_sec", 60))
+
+    send_discord_message("🛑 stop_all_vein_processes_aggressive(): killing all VeinServer processes.", channel="startup")
 
     # Phase 1: psutil tree terminate/kill
     for p in procs:
@@ -999,6 +1017,8 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
 
         # Hide child console if headless
         creationflags = win_creationflags_for_headless()
+
+        send_discord_message(f"🔄 Crash monitor initiated controlled restart (reason={reason}).", channel="startup")
 
         subprocess.Popen(
             [sys.executable, str(START_SCRIPT)],
