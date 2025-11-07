@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import List, Optional
 import json, sys, shutil
 
+try:
+    from ruamel.yaml import YAML
+    _HAVE_RUAMEL = True
+except Exception:
+    _HAVE_RUAMEL = False
+
 @dataclass(frozen=True)
 class ValidConfig:
     # raw
@@ -34,9 +40,28 @@ class ValidConfig:
     backups: dict
     discord: dict
 
-def _fatal(msg: str) -> "NoReturn":  # type: ignore
-    print(f"[FATAL] {msg}")
-    sys.exit(1)
+def _is_yaml(p: Path) -> bool:
+    s = p.suffix.lower()
+    return s in (".yaml", ".yml")
+
+def _read_cfg_any(p: Path) -> dict:
+    txt = p.read_text(encoding="utf-8")
+    if _is_yaml(p):
+        if not _HAVE_RUAMEL:
+            raise RuntimeError("config is YAML but ruamel.yaml is not installed")
+        y = YAML()
+        y.preserve_quotes = True
+        doc = y.load(txt)
+        return dict(doc) if isinstance(doc, dict) else {}
+    else:
+        import json as _json
+        return _json.loads(txt)
+
+def _fatal(msg: str, fatal: bool = True) -> "NoReturn":  # type: ignore
+    if fatal:
+        print(f"[FATAL] {msg}")
+        sys.exit(1)
+    raise RuntimeError(msg)
 
 def _warn(msg: str) -> None:
     print(f"[WARN]  {msg}")
@@ -47,18 +72,17 @@ def _info(msg: str) -> None:
 def _as_path(v) -> Path:
     return Path(str(v)).expanduser()
 
-def _choose_exe(server_dir: Path, exes: List[str], preferred: Optional[str]) -> Path:
+def _choose_exe(server_dir: Path, exes: List[str], preferred: Optional[str], *, fatal: bool) -> Path:
     if not exes:
-        _fatal("server_executables is empty in config.json")
+        _fatal("server_executables is empty in config file", fatal=fatal)
     # prefer explicit preferred_exe if set
     if preferred:
-        pe = server_dir / preferred
-        return pe
-    # otherwise: prefer any that contains '-Test', else first
+        return server_dir / preferred
     for name in exes:
         if "-Test" in name:
             return server_dir / name
     return server_dir / exes[0]
+
 
 def _bound(v, lo, hi, cast):
     try:
@@ -69,19 +93,19 @@ def _bound(v, lo, hi, cast):
     if x > hi: return hi
     return x
 
-def load_and_validate_config(cfg_path: str | Path) -> ValidConfig:
+def load_and_validate_config(cfg_path: str | Path, fatal: bool = True) -> ValidConfig:
     p = Path(cfg_path)
     if not p.exists():
-        _fatal(f"Config file not found: {p}")
+        _fatal(f"Config file not found: {p}", fatal=fatal)
     try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
+        raw = _read_cfg_any(p)
     except Exception as e:
-        _fatal(f"Could not parse config JSON: {e}")
+        _fatal(f"Could not parse config file: {e}", fatal=fatal)
 
     # --- Required path-ish keys
     for req in ("server_dir", "runtime_dir", "logs_dir", "save_dir"):
         if req not in raw:
-            _fatal(f"Missing '{req}' in config.json")
+            _fatal(f"Missing '{req}' in config file", fatal=fatal)
 
     server_dir = _as_path(raw["server_dir"])
     runtime_dir = _as_path(raw["runtime_dir"])
@@ -95,7 +119,7 @@ def load_and_validate_config(cfg_path: str | Path) -> ValidConfig:
     # --- Executable selection
     exes = list(raw.get("server_executables", []))
     preferred = (raw.get("preferred_exe") or "").strip() or None
-    selected = _choose_exe(server_dir, exes, preferred)
+    selected = _choose_exe(server_dir, exes, preferred, fatal=fatal)
 
     # --- Heartbeat knobs
     mon = raw.get("monitor", {}) or {}

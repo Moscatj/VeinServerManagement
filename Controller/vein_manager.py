@@ -21,11 +21,72 @@ APP_NAME = "VeinManager"
 def _pyexe() -> str:
     return PYEXE_ENV.strip() or ("py -3" if os.name == "nt" else sys.executable)
 
-def first_json_in(folder: Path):
-    try: return sorted(folder.glob("*.json"))[0]
-    except IndexError: return None
+def first_cfg_in(folder: Path):
+    cands = _list_config_files(folder)
+    return (folder / cands[0]) if cands else None
 
-DEFAULT_CONFIG = Path(ENV.get("VEIN_CONFIG") or (first_json_in(CONFIG_DIR) or CONFIG_DIR / "config.json"))
+DEFAULT_CONFIG = Path(ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CONFIG_DIR / "config.yaml")))
+
+#----------------- config IO (YAML+JSON) --------------------------------------
+from typing import Tuple as _Tuple
+try:
+    from ruamel.yaml import YAML  # comment-preserving round-trip
+    _HAVE_RUAMEL = True
+except Exception:
+    _HAVE_RUAMEL = False
+
+def _is_yaml_path(p: str) -> bool:
+    s = (p or "").lower()
+    return s.endswith(".yaml") or s.endswith(".yml")
+
+def _load_any_config(path: str):
+    """
+    Returns (obj, kind, ydoc) where:
+      - obj: Python dict/list tree
+      - kind: "yaml" or "json"
+      - ydoc: ruamel.yaml round-trip doc if YAML (else None)
+    """
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}, "json", None
+    txt = p.read_text(encoding="utf-8")
+    if _is_yaml_path(path):
+        if not _HAVE_RUAMEL:
+            raise RuntimeError("YAML selected but ruamel.yaml is not installed.")
+        y = YAML()
+        y.preserve_quotes = True
+        y.width = 4096
+        ydoc = y.load(txt)
+        # ruamel can yield CommentedMap/Seq; treat it as 'obj'
+        return ydoc, "yaml", ydoc
+    else:
+        import json
+        return json.loads(txt), "json", None
+
+def _dump_any_config(obj, kind: str, ydoc=None) -> str:
+    from io import StringIO
+    if kind == "yaml":
+        if not _HAVE_RUAMEL:
+            raise RuntimeError("Cannot write YAML without ruamel.yaml.")
+        y = YAML()
+        y.preserve_quotes = True
+        y.width = 4096
+        # When editing via KV rows we mutate ydoc (comment-preserving).
+        # If only raw text changed, we won't call this.
+        sio = StringIO()
+        y.dump(ydoc if ydoc is not None else obj, sio)
+        return sio.getvalue()
+    else:
+        import json
+        return json.dumps(obj, indent=2)
+
+def _list_config_files(folder: Path) -> list[str]:
+    files = []
+    files += [p.name for p in folder.glob("*.json")]
+    files += [p.name for p in folder.glob("*.yaml")]
+    files += [p.name for p in folder.glob("*.yml")]
+    return sorted(files)
 
 # ------------------------- Subprocess helpers --------------------------------
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -95,13 +156,8 @@ def proc_exists_by_cmdline(substr: str) -> bool:
 
 # --------------------------- Runtime helpers ---------------------------------
 def _rt_paths(cfg_path: str) -> dict:
-    from json import load
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = load(f)
-    except Exception:
-        cfg = {}
-    rt = Path(cfg.get("runtime_dir") or (Path(__file__).parent.parent / "Runtime"))
+    cfg = _load_cfg_for_runtime(cfg_path)
+    rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
     return {
         "rt": rt,
         "pid_crash": rt / "crash_monitor.pid",
@@ -109,7 +165,7 @@ def _rt_paths(cfg_path: str) -> dict:
         "stop_crash": rt / "stop_crash_monitor.flag",
         "stop_log": rt / "stop_log_monitor.flag",
         "state_crash": rt / "crash_monitor_state.json",
-        "state_log":   Path(cfg.get("monitor", {}).get("state_file") or (rt / "log_monitor_state.json")),
+        "state_log": Path((cfg.get("monitor", {}) or {}).get("state_file") or (rt / "log_monitor_state.json")),
     }
 
 def _file_text(p: Path) -> str | None:
@@ -155,8 +211,8 @@ def _wait_for_monitor_exit(pid_file: Path, timeout_sec: int = 30) -> bool:
 # ----------------------- Config helpers (paths, logs) -------------------------
 def _load_cfg_for_runtime(cfg_path: str) -> dict:
     try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        obj, kind, _ = _load_any_config(cfg_path)
+        return dict(obj) if isinstance(obj, dict) else {}
     except Exception:
         return {}
 
@@ -254,7 +310,7 @@ class StatusPoller(QtCore.QRunnable):
         self._last_tasklist_at = 0.0
        
        #cache validated config + hb knobs once
-        vcfg = load_and_validate_config(cfg_path)
+        vcfg = load_and_validate_config(cfg_path, fatal=False)
         self.hb_seconds = vcfg.hb_seconds
         self.fresh_mult = vcfg.fresh_window_multiplier
         self.paths = {
@@ -294,19 +350,18 @@ class StatusPoller(QtCore.QRunnable):
             return False
 
     def _hb_knobs(self) -> tuple[int, float]:
-        """Read heartbeat knobs from config.json; return (hb_seconds, fresh_mult)."""
+        """Read heartbeat knobs from the config (YAML or JSON)."""
         try:
-            with open(self.cfg_path, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            mon = cfg.get("monitor", {})
-            hb = int(mon.get("heartbeat_seconds", 60))
+            obj, kind, _ = _load_any_config(self.cfg_path)  # reuse the GUI's universal loader
+            mon = (obj.get("monitor", {}) or {}) if isinstance(obj, dict) else {}
+            hb = int(mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", 60)))
             fresh_mult = float(mon.get("fresh_window_multiplier", 2.0))
-            # bounds
             hb = max(5, hb)
             fresh_mult = 0.25 if fresh_mult < 0.25 else (10.0 if fresh_mult > 10.0 else fresh_mult)
             return hb, fresh_mult
         except Exception:
             return 60, 2.0
+
 
     def _is_fresh(self, state_path: Path, hb_seconds: int, mult: float) -> bool:
         """True if last_updated is within window; tolerant of bad/missing files."""
@@ -657,8 +712,8 @@ class Main(QtWidgets.QMainWindow):
 
         # 4) config load + JSON watches
         self.refresh_cfgs()
-        self.load_json()
-        self.watch_json()
+        self.load_config_text()
+        self.watch_config()
 
         # 5) now it’s safe to start tailing
         self.tail_start()
@@ -739,9 +794,9 @@ class Main(QtWidgets.QMainWindow):
         lv = QtWidgets.QVBoxLayout(left); lv.setContentsMargins(0,0,0,0)
 
         topbar = QtWidgets.QHBoxLayout(); lv.addLayout(topbar)
-        self.b_reload = QtWidgets.QPushButton("Reload JSON")
+        self.b_reload = QtWidgets.QPushButton("Reload Config")
         self.b_validate = QtWidgets.QPushButton("Validate")
-        self.b_save = QtWidgets.QPushButton("Save JSON (atomic)")
+        self.b_save = QtWidgets.QPushButton("Save Config (atomic)")
         self.filter = QtWidgets.QLineEdit(); self.filter.setPlaceholderText("Filter keys…")
         self.b_clearfilter = QtWidgets.QPushButton("Clear")
         topbar.addWidget(self.b_reload); topbar.addWidget(self.b_validate); topbar.addWidget(self.b_save); topbar.addStretch(1)
@@ -825,7 +880,7 @@ class Main(QtWidgets.QMainWindow):
         # compact state line under everything
         self.state_box = QtWidgets.QTextBrowser(); self.state_box.setMaximumHeight(120)
         v.addWidget(self.state_box)
-        self.lbl_watch = QtWidgets.QLabel("Watching for external JSON changes…"); v.addWidget(self.lbl_watch)
+        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…"); v.addWidget(self.lbl_watch)
 
     # ----------------------------- Signals ------------------------------------
     def _signals(self):
@@ -833,9 +888,9 @@ class Main(QtWidgets.QMainWindow):
         self.b_reload_cfgs.clicked.connect(self.refresh_cfgs)
         self.cb_cfg.currentTextChanged.connect(self._cfg_selected)
 
-        self.b_reload.clicked.connect(self.load_json)
+        self.b_reload.clicked.connect(self.load_config_text)
         self.b_save.clicked.connect(self.save_atomic)
-        self.b_validate.clicked.connect(self.validate_json)
+        self.b_validate.clicked.connect(self.validate_config)
         self.filter.textChanged.connect(self._apply_filter)
         self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
         self.b_clearlog.clicked.connect(self._clear_current_log)
@@ -868,7 +923,7 @@ class Main(QtWidgets.QMainWindow):
         folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
         self.cb_cfg.blockSignals(True); self.cb_cfg.clear()
         if folder.exists():
-            files = sorted([p.name for p in folder.glob("*.json")])
+            files = _list_config_files(folder)
             self.cb_cfg.addItems(files)
             if files:
                 cur = Path(self.config_path).name if self.config_path else ""
@@ -879,25 +934,31 @@ class Main(QtWidgets.QMainWindow):
     def _cfg_selected(self, name: str):
         if not name: return
         self.config_path = str(Path(self.ed_cfgdir.text().strip()).joinpath(name))
-        self.load_json()
-        self.watch_json()
+        self.load_config_text()
+        self.watch_config()
 
     # ------------------------------- JSON IO ----------------------------------
-    def load_json(self):
+    def load_config_text(self):
+        """Load raw text + parsed object. If YAML, keep a ruamel round-trip doc for comment-safe edits."""
+        self._yaml_doc = None
+        self._cfg_kind = "json"
         try:
+            obj, kind, ydoc = _load_any_config(self.config_path)
+            self._cfg_kind = kind
+            self._yaml_doc = ydoc  # CommentedMap/Seq when YAML, else None
+            self._data = obj if isinstance(obj, dict) else {}
+            # Set editor text to the file's raw bytes, not a re-dump (preserves formatting/comments)
             with open(self.config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except FileNotFoundError:
-            data = {}
+                raw = f.read()
+            self.json.blockSignals(True)
+            self.json.setPlainText(raw)
+            self.json.blockSignals(False)
+            self._build_tabs(self._data)
+            self._status(f"Loaded {kind.upper()}.")
         except Exception as e:
+            self._data = {}
+            self.json.setPlainText("")
             self._status(f"Load error: {e}")
-            return
-        self._data = data
-        self.json.blockSignals(True)
-        self.json.setPlainText(json.dumps(data, indent=2))
-        self.json.blockSignals(False)
-        self._build_tabs(data)
-        self._status("Loaded JSON.")
 
     def _build_tabs(self, data: dict):
         for vbox in self.tab_layouts.values():
@@ -965,25 +1026,51 @@ class Main(QtWidgets.QMainWindow):
         self._apply_filter(self.filter.text())
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
-        data = self._data; cur = data
+        # 1) update the in-memory dict (used to rebuild tabs/filter/etc.)
+        cur = self._data
         for p in path[:-1]:
             if p not in cur or not isinstance(cur[p], dict):
                 cur[p] = {}
             cur = cur[p]
         cur[path[-1]] = val
-        self._data = data
+
+        # 2) also reflect the change into the round-trip YAML doc when applicable
+        if self._cfg_kind == "yaml" and self._yaml_doc is not None:
+            ycur = self._yaml_doc
+            try:
+                for p in path[:-1]:
+                    if p not in ycur or not hasattr(ycur[p], "keys"):
+                        ycur[p] = {}  # ruamel will create a CommentedMap
+                    ycur = ycur[p]
+                ycur[path[-1]] = val
+                new_text = _dump_any_config(self._data, "yaml", ydoc=self._yaml_doc)
+            except Exception:
+                # fall back to raw text (do nothing)
+                new_text = self.json.toPlainText()
+        else:
+            # JSON: re-dump pretty
+            new_text = _dump_any_config(self._data, "json")
+
+        # 3) push text to the editor (this is what Save uses)
         self.json.blockSignals(True)
-        self.json.setPlainText(json.dumps(data, indent=2))
+        self.json.setPlainText(new_text)
         self.json.blockSignals(False)
 
-    def validate_json(self):
+    def validate_config(self):
         try:
-            json.loads(self.json.toPlainText())
-            self._status("JSON parses ✅")
+            if _is_yaml_path(self.config_path):
+                if not _HAVE_RUAMEL: raise RuntimeError("ruamel.yaml not installed")
+                y = YAML(); y.preserve_quotes = True
+                y.load(self.json.toPlainText())
+            else:
+                import json as _json
+                _json.loads(self.json.toPlainText())
+            self._status("Config parses ✅")
         except Exception as e:
-            self._status(f"JSON parse error: {e}")
+            self._status(f"Parse error: {e}")
 
     def save_atomic(self):
+        """Save exactly what’s in the text editor. (KV edits keep text in sync.)"""
         try:
             path = Path(self.config_path)
             tmp = path.with_suffix(path.suffix + ".tmp")
@@ -991,14 +1078,14 @@ class Main(QtWidgets.QMainWindow):
             with tmp.open("w", encoding="utf-8") as f:
                 f.write(self.json.toPlainText())
             os.replace(tmp, path)
-            self._status("Saved JSON atomically.")
+            self._status("Saved atomically.")
         except Exception as e:
             self._status(f"Save failed: {e}")
         finally:
             QtCore.QTimer.singleShot(250, lambda: setattr(self, "_saving", False))
 
     # ---------------------------- Watch / tail --------------------------------
-    def watch_json(self):
+    def watch_config(self):
         try:
             if hasattr(self, "watcher"):
                 for p in self.watcher.files():
@@ -1008,7 +1095,7 @@ class Main(QtWidgets.QMainWindow):
             if Path(self.config_path).exists():
                 self.watcher.addPath(self.config_path)
             self.watcher.fileChanged.connect(lambda _:
-                (self._saving and None) or QtCore.QTimer.singleShot(300, self.load_json))
+                (self._saving and None) or QtCore.QTimer.singleShot(300, self.load_config_text))
         except Exception:
             pass
 

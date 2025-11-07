@@ -1,24 +1,24 @@
 @echo off
-rem Keep it simple: NO setlocal / endlocal block
+setlocal EnableExtensions EnableDelayedExpansion
 
-rem --- Resolve ServerManagment root (parent of Scripts) ---
-pushd "%~dp0\.." >nul 2>&1
+rem --- Resolve management root from this file path ---
+set "THIS_DIR=%~dp0"
+for %%~ in (.) do rem noop
+rem If env_setup.bat lives in Scripts\, VEIN_MGMT_ROOT is .. from there:
+pushd "%THIS_DIR%\.."
 set "VEIN_MGMT_ROOT=%CD%"
+popd
+
 set "VEIN_MGMT_SCRIPTS=%VEIN_MGMT_ROOT%\Scripts"
 set "VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
-set "VEIN_MGMT_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
 
-rem Preferred Python launcher (caller can override)
-set "PYEXE=py -3"
-
-rem Default VEIN_CONFIG if not already set
-if not defined VEIN_CONFIG if exist "%VEIN_MGMT_CONFIG%" set "VEIN_CONFIG=%VEIN_MGMT_CONFIG%"
-
+rem --- SAFE logging (avoid parentheses or escape them) ---
 echo [env] VEIN_MGMT_ROOT=%VEIN_MGMT_ROOT%
 echo [env] VEIN_MGMT_SCRIPTS=%VEIN_MGMT_SCRIPTS%
 echo [env] VEIN_MGMT_CONTROLLER=%VEIN_MGMT_CONTROLLER%
-if defined VEIN_CONFIG (echo [env] VEIN_CONFIG=%VEIN_CONFIG%) else (echo [env] VEIN_CONFIG=(unset))
-echo [env] PYEXE=%PYEXE%
 
-popd >nul 2>&1
+rem Example: if you must touch PATH, do NOT echo it and always quote sets:
+rem set "PATH=%PATH%;C:\Program Files\Common Files\SomeTool\bin"
+rem If you must echo text with parentheses, escape them like: echo ^(Controller^)
+
 exit /b 0

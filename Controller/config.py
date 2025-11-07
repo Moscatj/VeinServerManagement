@@ -12,7 +12,7 @@ Also honors env:
 """
 
 from __future__ import annotations
-import json, os
+import json, os, yaml
 from pathlib import Path
 from typing import Any, Dict
 
@@ -38,8 +38,10 @@ def _candidate_configs(mgmt_root: Path) -> list[Path]:
     cands: list[Path] = []
     if env_cfg:
         cands.append(Path(env_cfg))
-    cands.append(mgmt_root / "Config" / "config.json")  # preferred new location
-    cands.append((mgmt_root / "Controller" / "config.json")) # legacy side-by-side
+    cands.append(mgmt_root / "Config" / "config.yaml")  # Try YAML first
+    cands.append(mgmt_root / "Config" / "config.yml")
+    cands.append(mgmt_root / "Config" / "config.json")  
+    cands.append((mgmt_root / "Controller" / "config.json")) 
     return [p for p in cands if str(p).strip()]
 
 
@@ -163,17 +165,14 @@ def _validate(cfg: Dict[str, Any]) -> None:
     if problems:
         raise ValueError("Config validation failed:\n- " + "\n- ".join(problems))
 
-
-def _load_first_existing(paths: list[Path]) -> tuple[Path, Dict[str, Any]]:
+def _load_first_existing(paths: list[Path]) -> tuple[Path, dict]:
     for p in paths:
-        try:
-            if p and p.exists():
-                with p.open("r", encoding="utf-8") as f:
-                    return p, json.load(f)
-        except Exception:
-            pass
-    raise FileNotFoundError("config.json not found in: " + " | ".join(map(str, paths)))
-
+        if p and p.exists():
+            with p.open("r", encoding="utf-8") as f:
+                if p.suffix.lower() in (".yaml", ".yml"):
+                    return p, yaml.safe_load(f)
+                return p, json.load(f)
+    raise FileNotFoundError("config file not found in: " + " | ".join(map(str, paths)))
 
 def load_config() -> Dict[str, Any]:
     """Load and cache config.json; raise if missing/invalid."""
