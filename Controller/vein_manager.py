@@ -10,7 +10,7 @@ from Tools.config_io import load_and_validate_config
 
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
-ROOT = Path(ENV.get("VEIN_MGMT_ROOT", r"G:\Servers\VeinServer\ServerManagment"))
+ROOT = Path(ENV.get("VEIN_MGMT_ROOT", r"G:\Servers\VeinServer\VeinServerManagement"))
 CONFIG_DIR = ROOT / "Config"
 CTRL_DIR   = ROOT / "Controller"
 RUNTIME_FALLBACK = ROOT / "Runtime"
@@ -530,6 +530,36 @@ class JsonHL(QtGui.QSyntaxHighlighter):
         for m in re.finditer(r'\bnull\b', text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["0"])
 
+# ----------------------- YAML syntax highlight -------------------------------
+class YamlHL(QtGui.QSyntaxHighlighter):
+    def __init__(self, doc):
+        super().__init__(doc)
+        self.c = {}
+    def highlightBlock(self, text):
+        import re
+        def f(hex): q = QtGui.QTextCharFormat(); q.setForeground(QtGui.QColor(hex)); return q
+        self.c.setdefault("k", f("#7FB3D5"))   # keys
+        self.c.setdefault("s", f("#ABEBC6"))   # strings
+        self.c.setdefault("n", f("#F7DC6F"))   # numbers
+        self.c.setdefault("b", f("#F5B7B1"))   # booleans
+        self.c.setdefault("c", f("#7F8C8D"))   # comments
+        # comments
+        for m in re.finditer(r'\s#.*$', text):
+            self.setFormat(m.start(), m.end() - m.start(), self.c["c"])
+        # keys (key:)
+        for m in re.finditer(r'^\s*([A-Za-z0-9_\-\.]+)\s*:(?!:)', text):
+            self.setFormat(m.start(1), m.end(1) - m.start(1), self.c["k"])
+        # quoted strings
+        for m in re.finditer(r'\"([^\"\\]|\\.)*\"|\'([^\']|\\\')*\'', text):
+            self.setFormat(m.start(), m.end() - m.start(), self.c["s"])
+        # numbers
+        for m in re.finditer(r'(?<![\w\.])(-?\d+(\.\d+)?)', text):
+            self.setFormat(m.start(), m.end() - m.start(), self.c["n"])
+        # booleans/null
+        for m in re.finditer(r'\b(true|false|on|off|yes|no|null)\b', text, re.IGNORECASE):
+            self.setFormat(m.start(), m.end() - m.start(), self.c["b"])
+
+
 # ------------------------------ Advanced Dialog -------------------------------
 class AdvancedDialog(QtWidgets.QDialog):
     """Optional overrides. Defaults come from config, these persist in QSettings."""
@@ -854,6 +884,11 @@ class Main(QtWidgets.QMainWindow):
 
         self.tabs.addTab(mon_tab, "Monitors")
 
+        # store the original tab titles by index for stable lookups/titles
+        self._tab_base_titles = {i: self.tabs.tabText(i) for i in range(self.tabs.count())}
+        # map index <-> base name so we can fetch the correct layout even if titles are decorated with counts
+        self._tab_index_to_name = {i: self._tab_base_titles[i] for i in range(self.tabs.count())}
+
         # JSON editor
         self.json = QtWidgets.QPlainTextEdit(); self.json.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
         self.json.setFont(QtGui.QFont("Consolas", 10)); JsonHL(self.json.document())
@@ -939,19 +974,21 @@ class Main(QtWidgets.QMainWindow):
 
     # ------------------------------- JSON IO ----------------------------------
     def load_config_text(self):
-        """Load raw text + parsed object. If YAML, keep a ruamel round-trip doc for comment-safe edits."""
         self._yaml_doc = None
         self._cfg_kind = "json"
         try:
             obj, kind, ydoc = _load_any_config(self.config_path)
             self._cfg_kind = kind
-            self._yaml_doc = ydoc  # CommentedMap/Seq when YAML, else None
+            self._yaml_doc = ydoc
             self._data = obj if isinstance(obj, dict) else {}
-            # Set editor text to the file's raw bytes, not a re-dump (preserves formatting/comments)
             with open(self.config_path, "r", encoding="utf-8") as f:
                 raw = f.read()
             self.json.blockSignals(True)
             self.json.setPlainText(raw)
+            # swap highlighter
+            if hasattr(self, "_hl") and self._hl:
+                self._hl.setDocument(None)
+            self._hl = YamlHL(self.json.document()) if kind == "yaml" else JsonHL(self.json.document())
             self.json.blockSignals(False)
             self._build_tabs(self._data)
             self._status(f"Loaded {kind.upper()}.")
@@ -961,67 +998,64 @@ class Main(QtWidgets.QMainWindow):
             self._status(f"Load error: {e}")
 
     def _build_tabs(self, data: dict):
+        # Clear all tabs
         for vbox in self.tab_layouts.values():
             while vbox.count():
                 w = vbox.takeAt(0).widget()
                 if w: w.deleteLater()
         self.rows.clear()
-        def add(tab: str, key: str, path: Tuple[str, ...], val: Any):
-            row = KVRow(key, path, val); row.changed.connect(self._row_changed)
-            self.tab_layouts[tab].addWidget(row); self.rows[path] = row
 
-        # Paths
-        for k in ["server_dir","save_dir","logs_dir","absolute_log_file","backup_root","map_path","runtime_dir"]:
-            if k in data: add("Paths", k, (k,), data[k])
-        # Server
-        for k in ["server_output_mode","multi_home_ip","game_port","query_port","enable_query_port",
-                  "extra_launch_args","max_players","show_monitor_window","headless_mode"]:
-            if k in data: add("Server", k, (k,), data[k])
-        # Steam/Updates
-        for k in ["steamcmd_path","app_id","auto_update_on_start","steam_update_validate","steam_update_beta",
-                  "steam_update_beta_password","steam_update_retries","steam_update_timeout_seconds"]:
-            if k in data: add("Steam/Updates", k, (k,), data[k])
-        # Backups
-        for k in ["max_backups","backup_max_age_days","backup_folders","nightly_backup"]:
-            if k in data: add("Backups", k, (k,), data[k])
-        # Monitor (simple flat fields)
-        for k in ["monitor_heartbeat_interval_seconds","monitor_log_wait_timeout_seconds","crash_monitor_interval_seconds",
-                  "crash_monitor_idle_notify_minutes","log_rotation_retries","log_rotation_retry_sleep_seconds",
-                  "preboot_shutdown","backup_on_detect","shutdown_timeout_sec","pre_shutdown_warning_seconds",
-                  "stale_flag_delay_sec","restart_throttle_seconds","startup_quiet_seconds","crash_snippet_lines",
-                  "logout_backup_debounce_seconds","autosave_backup_cooldown_seconds","kill_ue_helpers_on_shutdown"]:
-            if k in data: add("Monitor (simple)", k, (k,), data[k])
-        # Monitor (advanced nested)
-        mon = data.get("monitor", {})
-        if isinstance(mon, dict):
-            for k in ["enable","heartbeat_interval_seconds","state_file","wait_for_server_start_seconds",
-                      "wait_for_log_appearance_seconds","tail_poll_interval_ms"]:
-                if k in mon: add("Monitor (advanced)", f"monitor.{k}", ("monitor",k), mon[k])
-            for sub in ["track","notify","backups"]:
-                sd = mon.get(sub, {})
-                if isinstance(sd, dict):
-                    for k,v in sd.items():
-                        add("Monitor (advanced)", f"monitor.{sub}.{k}", ("monitor",sub,k), v)
-        # Features
+        def _looks_path_key(k: str) -> bool:
+            k = (k or "").lower()
+            return any(t in k for t in ("path", "file", "dir", "folder", "root"))
+
+        def _add(tab: str, label: str, path: Tuple[str, ...], val: Any):
+            row = KVRow(label, path, val); row.changed.connect(self._row_changed)
+            self.tab_layouts[tab].addWidget(row)
+            self.rows[path] = row
+
+        # 1) Top-level scalars grouped smartly
+        for k, v in sorted(data.items(), key=lambda kv: kv[0]):
+            if isinstance(v, (dict, list)):  # handled below
+                continue
+            tab = "Paths" if _looks_path_key(k) else "Server" if k.startswith(("server_", "multi_home", "game_", "query_", "enable_query")) or k in {"max_players", "extra_launch_args", "headless_mode", "show_monitor_window"} \
+                else "Steam/Updates" if k.startswith(("steam", "app_id")) \
+                else "Backups" if "backup" in k.lower() \
+                else "Monitor (simple)" if "monitor" in k.lower() or "crash" in k.lower() \
+                else "Top-level"
+            _add(tab, k, (k,), v)
+
+        # 2) features.*
         feats = data.get("features", {})
         if isinstance(feats, dict):
-            for k,v in feats.items():
-                add("Features", f"features.{k}", ("features",k), v)
-        # Top-level scalars not covered
-        skip = {"features","monitor","server_dir","save_dir","logs_dir","absolute_log_file","backup_root","map_path","runtime_dir",
-                "server_output_mode","multi_home_ip","game_port","query_port","enable_query_port","extra_launch_args",
-                "max_players","show_monitor_window","headless_mode","steamcmd_path","app_id","auto_update_on_start","steam_update_validate",
-                "steam_update_beta","steam_update_beta_password","steam_update_retries","steam_update_timeout_seconds",
-                "max_backups","backup_max_age_days","backup_folders","nightly_backup",
-                "monitor_heartbeat_interval_seconds","monitor_log_wait_timeout_seconds","crash_monitor_interval_seconds",
-                "crash_monitor_idle_notify_minutes","log_rotation_retries","log_rotation_retry_sleep_seconds","preboot_shutdown",
-                "backup_on_detect","shutdown_timeout_sec","pre_shutdown_warning_seconds","stale_flag_delay_sec",
-                "restart_throttle_seconds","startup_quiet_seconds","crash_snippet_lines","logout_backup_debounce_seconds",
-                "autosave_backup_cooldown_seconds","kill_ue_helpers_on_shutdown"}
-        for k,v in data.items():
-            if k in skip: continue
-            if isinstance(v,(bool,int,float,str)):
-                add("Top-level", k, (k,), v)
+            for k, v in sorted(feats.items(), key=lambda kv: kv[0]):
+                _add("Features", f"features.{k}", ("features", k), v)
+
+        # 3) monitor.* (deep, recursive)
+        def walk_monitor(prefix: Tuple[str, ...], node: Any):
+            if isinstance(node, dict):
+                for ck, cv in sorted(node.items(), key=lambda kv: kv[0]):
+                    walk_monitor(prefix + (ck,), cv)
+            else:
+                label = ".".join(prefix)
+                _add("Monitor (advanced)", f"{label}", ("monitor",) + tuple(prefix[1:]) if prefix and prefix[0] == "monitor" else prefix, node)
+
+        mon = data.get("monitor", {})
+        if isinstance(mon, dict):
+            walk_monitor(("monitor",), mon)
+
+        # 4) Any nested dicts not covered (e.g., future blocks)
+        known = {"features", "monitor"}
+        for k, v in sorted(data.items(), key=lambda kv: kv[0]):
+            if k in known or not isinstance(v, dict):
+                continue
+            # Drop unknown dict keys into Top-level with dotted labels (one level deep)
+            for ck, cv in sorted(v.items(), key=lambda kv: kv[0]):
+                if isinstance(cv, (dict, list)):
+                    continue  # keep concise; they’ll still be editable via raw pane
+                _add("Top-level", f"{k}.{ck}", (k, ck), cv)
+
+        # Stretchers & initial filter pass
         for vbox in self.tab_layouts.values(): vbox.addStretch(1)
         self._apply_filter(self.filter.text())
 
@@ -1412,8 +1446,40 @@ class Main(QtWidgets.QMainWindow):
 
     def _apply_filter(self, t: str):
         t = (t or "").strip().lower()
-        for row in self.rows.values():
-            row.setVisible((t in row.label_text.lower()) if t else True)
+
+        # Show/hide rows and count matches per tab
+        per_tab = {i: 0 for i in range(self.tabs.count())}
+
+        for path, row in self.rows.items():
+            label = row.label_text.lower()
+            match = (t in label) if t else True
+            row.setVisible(match)
+
+        # Count visible rows per tab by scanning each tab container
+        for i in range(self.tabs.count()):
+            base_name = self._tab_index_to_name.get(i, self.tabs.tabText(i))
+            lay = self.tab_layouts.get(base_name)
+            count = 0
+            if lay:
+                for idx in range(lay.count()):
+                    w = lay.itemAt(idx).widget()
+                    if w and isinstance(w, KVRow) and w.isVisible():
+                        count += 1
+            per_tab[i] = count
+
+        # Update tab titles with counts (e.g., "Paths (3)") and keep layouts addressable
+        for i in range(self.tabs.count()):
+            base = self._tab_base_titles.get(i, self.tabs.tabText(i))
+            self.tabs.setTabText(i, f"{base} ({per_tab[i]})" if t else base)
+
+
+        # Auto-jump if current tab has zero matches and others have >0
+        cur = self.tabs.currentIndex()
+        if t and per_tab.get(cur, 0) == 0:
+            for i in range(self.tabs.count()):
+                if per_tab[i] > 0:
+                    self.tabs.setCurrentIndex(i)
+                    break
 
     def _status(self, s: str): self.status.setText(f"Status: {s}")
 
