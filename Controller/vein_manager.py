@@ -1,7 +1,7 @@
 # vein_manager.py — Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
 # Requires: PySide6; Windows is assumed for process checks and startfile
 from __future__ import annotations
-import json, os, sys, subprocess, time
+import json, os, sys, subprocess, time, re
 from pathlib import Path
 from typing import Any, Dict, Tuple, List
 from datetime import datetime, timezone
@@ -309,7 +309,7 @@ class StatusPoller(QtCore.QRunnable):
         self.signals = StatusSnapshot()
         self._last_tasklist_at = 0.0
        
-       #cache validated config + hb knobs once
+        #cache validated config + hb knobs once
         vcfg = load_and_validate_config(cfg_path, fatal=False)
         self.hb_seconds = vcfg.hb_seconds
         self.fresh_mult = vcfg.fresh_window_multiplier
@@ -695,6 +695,21 @@ class KVRow(QtWidgets.QWidget):
         h.addWidget(editor)
         self.editor = editor
 
+    def value(self):
+        # checkbox
+        if isinstance(self.editor, QtWidgets.QCheckBox):
+            return bool(self.editor.isChecked())
+        # line edits (inside the wrapper widget or direct)
+        edits = self.editor.findChildren(QtWidgets.QLineEdit) or \
+                ([self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else [])
+        if edits:
+            return edits[0].text()
+        return None
+
+    def scrollToMe(self):
+        # simple focus helper used by search jump
+        self.setFocus()
+
     def set_value(self, value: Any):
         if isinstance(self.editor, QtWidgets.QCheckBox):
             self.editor.blockSignals(True); self.editor.setChecked(bool(value)); self.editor.blockSignals(False)
@@ -740,10 +755,11 @@ class Main(QtWidgets.QMainWindow):
         self.flush_timer.timeout.connect(self._flush_tail)
         self.flush_timer.start()
 
-        # 4) config load + JSON watches
+        # 4) config list + watch; first selection is applied after the combo is populated
         self.refresh_cfgs()
-        self.load_config_text()
         self.watch_config()
+        # Guarantee a real selection + load on first show
+        QtCore.QTimer.singleShot(0, self._apply_default_selection)
 
         # 5) now it’s safe to start tailing
         self.tail_start()
@@ -756,6 +772,17 @@ class Main(QtWidgets.QMainWindow):
         self._status_timer.start()
 
         self._restore_state()
+
+        # Maps
+        self._tab_base_titles = {i: self.tabs.tabText(i) for i in range(self.tabs.count())}
+        self._tab_index_to_name = {i: self._tab_base_titles[i] for i in range(self.tabs.count())}
+
+        # Row index by tab for search/result grouping
+        from collections import defaultdict
+        self._rows_by_tab = defaultdict(list)   # tab_name -> [KVRow]
+        self._search_tab_name = "Search"
+        self._search_tab_idx = None
+        self._hl = None  # for syntax highlighter swap
 
     # ------------------------------- UI --------------------------------------
     def _ui(self):
@@ -820,36 +847,56 @@ class Main(QtWidgets.QMainWindow):
         main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal); v.addWidget(main, 1)
 
         # LEFT: TABS
+        # LEFT: TABS
         left = QtWidgets.QWidget(); main.addWidget(left)
         lv = QtWidgets.QVBoxLayout(left); lv.setContentsMargins(0,0,0,0)
 
+        # top bar (buttons + filter)
         topbar = QtWidgets.QHBoxLayout(); lv.addLayout(topbar)
+
         self.b_reload = QtWidgets.QPushButton("Reload Config")
         self.b_validate = QtWidgets.QPushButton("Validate")
         self.b_save = QtWidgets.QPushButton("Save Config (atomic)")
         self.filter = QtWidgets.QLineEdit(); self.filter.setPlaceholderText("Filter keys…")
         self.b_clearfilter = QtWidgets.QPushButton("Clear")
-        topbar.addWidget(self.b_reload); topbar.addWidget(self.b_validate); topbar.addWidget(self.b_save); topbar.addStretch(1)
-        topbar.addWidget(QtWidgets.QLabel("Filter:")); topbar.addWidget(self.filter, 1); topbar.addWidget(self.b_clearfilter)
 
-        self.tabs = QtWidgets.QTabWidget(); lv.addWidget(self.tabs, 1)
+        # ... create self.b_reload, self.b_validate, self.b_save, self.filter, self.b_clearfilter
+        topbar.addWidget(self.b_reload)
+        topbar.addWidget(self.b_validate)
+        topbar.addWidget(self.b_save)
+        topbar.addStretch(1)
+        topbar.addWidget(self.filter)
+        topbar.addWidget(self.b_clearfilter)
+
+        # CREATE THE TABS WIDGET
+        self.tabs = QtWidgets.QTabWidget()
+        lv.addWidget(self.tabs, 1)
+
         self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
         self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
 
-        def add_tab(name: str):
+        def _make_tab_ui():
             w = QtWidgets.QWidget()
-            sv = QtWidgets.QVBoxLayout(w); sv.setContentsMargins(6,6,6,6); sv.setSpacing(6)
+            frame = QtWidgets.QVBoxLayout(w); frame.setContentsMargins(6,6,6,6); frame.setSpacing(6)
             scroll = QtWidgets.QScrollArea(); scroll.setWidgetResizable(True)
             container = QtWidgets.QWidget()
             vbox = QtWidgets.QVBoxLayout(container); vbox.setContentsMargins(0,0,0,0); vbox.setSpacing(6)
             scroll.setWidget(container)
-            sv.addWidget(scroll, 1)
+            frame.addWidget(scroll, 1)
+            return w, container, vbox
+
+        def _add_tab(name: str):
+            if name in self.tab_widgets:
+                return
+            w, container, vbox = _make_tab_ui()
             self.tabs.addTab(w, name)
             self.tab_widgets[name] = container
             self.tab_layouts[name] = vbox
 
+        self._add_tab = _add_tab  # expose helper for later
+
         for name in ["Paths","Server","Steam/Updates","Backups","Monitor (simple)","Monitor (advanced)","Features","Top-level"]:
-            add_tab(name)
+            _add_tab(name)
 
         # --- Monitors tab ---
         mon_tab = QtWidgets.QWidget()
@@ -956,21 +1003,71 @@ class Main(QtWidgets.QMainWindow):
 
     def refresh_cfgs(self):
         folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
+        files = []
         self.cb_cfg.blockSignals(True); self.cb_cfg.clear()
         if folder.exists():
             files = _list_config_files(folder)
             self.cb_cfg.addItems(files)
             if files:
                 cur = Path(self.config_path).name if self.config_path else ""
-                self.cb_cfg.setCurrentText(cur if cur in files else files[0])
+                chosen = cur if cur in files else files[0]
+                self.cb_cfg.setCurrentText(chosen)
         self.cb_cfg.blockSignals(False)
-        self._cfg_selected(self.cb_cfg.currentText())
+        name = self.cb_cfg.currentText() or (files[0] if files else "")
+        if name:
+            self._cfg_selected(name)
 
     def _cfg_selected(self, name: str):
         if not name: return
         self.config_path = str(Path(self.ed_cfgdir.text().strip()).joinpath(name))
         self.load_config_text()
         self.watch_config()
+
+    # -------------------------- Tab Helpers ---------------------------------
+    def _strip_cnt(self, s: str) -> str:
+        import re
+        return re.sub(r"\s\(\d+\)$", "", s or "")
+
+    def _rebuild_base_titles(self):
+        self._tab_base_titles = {
+            i: self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())
+        }
+        self._tab_index_to_name = dict(self._tab_base_titles)
+
+    def _ensure_search_tab(self):
+        names = [self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())]
+        if self._search_tab_name in names:
+            self._search_tab_idx = names.index(self._search_tab_name)
+            return
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w); v.setContentsMargins(6,6,6,6); v.setSpacing(4)
+        v.addStretch(1)
+        self.tabs.addTab(w, self._search_tab_name)
+        self._rebuild_base_titles()
+        self._search_tab_idx = self.tabs.count() - 1
+
+    def _remove_search_tab(self):
+        names = [self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())]
+        if self._search_tab_name in names:
+            idx = names.index(self._search_tab_name)
+            self.tabs.removeTab(idx)
+            self._search_tab_idx = None
+            self._rebuild_base_titles()
+
+    def _apply_default_selection(self):
+        """Ensure a concrete file is selected and loaded at startup."""
+        folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
+        files = _list_config_files(folder)
+        if not files:
+            return
+        want = Path(self.config_path).name if self.config_path else files[0]
+        if want not in files:
+            want = files[0]
+        # setting text may or may not emit; we call the loader explicitly afterwards
+        self.cb_cfg.blockSignals(True)
+        self.cb_cfg.setCurrentText(want)
+        self.cb_cfg.blockSignals(False)
+        self._cfg_selected(want)
 
     # ------------------------------- JSON IO ----------------------------------
     def load_config_text(self):
@@ -991,6 +1088,7 @@ class Main(QtWidgets.QMainWindow):
             self._hl = YamlHL(self.json.document()) if kind == "yaml" else JsonHL(self.json.document())
             self.json.blockSignals(False)
             self._build_tabs(self._data)
+            self._rebuild_base_titles()
             self._status(f"Loaded {kind.upper()}.")
         except Exception as e:
             self._data = {}
@@ -998,66 +1096,188 @@ class Main(QtWidgets.QMainWindow):
             self._status(f"Load error: {e}")
 
     def _build_tabs(self, data: dict):
-        # Clear all tabs
+        """Auto-build tabs from the config hierarchy.
+
+        Rules:
+        - Every top-level key that's a dict → its own tab (Title Cased).
+        - Top-level scalars → 'Top-level' tab.
+        - Nested dicts are flattened to dotted keys within their parent tab.
+        - Lists are rendered as comma-joined strings (still editable).
+        """
+        # Remove all dynamic tabs (keep Monitors and Search if present)
+        fixed = {"Monitors", getattr(self, "_search_tab_name", "Search")}
+        for i in reversed(range(self.tabs.count())):
+            base = self._strip_cnt(self.tabs.tabText(i))
+            if base not in fixed:
+                self.tabs.removeTab(i)
+
+        # clear existing row widgets BEFORE wiping the registries
         for vbox in self.tab_layouts.values():
             while vbox.count():
                 w = vbox.takeAt(0).widget()
                 if w: w.deleteLater()
+
+        # reset dynamic tab registries
+        self.tab_widgets.clear()
+        self.tab_layouts.clear()
+        self._rows_by_tab.clear()
         self.rows.clear()
 
-        def _looks_path_key(k: str) -> bool:
+        # Ensure a Top-level tab exists for scalars
+        self._add_tab("Top-level")
+
+        def tab_name_for_top_key(k: str) -> str:
+            # Pretty name (e.g., 'nightly_backup' -> 'Nightly Backup')
+            if not k: return "Top-level"
+            name = k.replace("_", " ").strip().title()
+            return name
+
+        def looks_path_key(k: str) -> bool:
             k = (k or "").lower()
             return any(t in k for t in ("path", "file", "dir", "folder", "root"))
 
-        def _add(tab: str, label: str, path: Tuple[str, ...], val: Any):
+        def _pretty_label(tab: str, full_label: str) -> str:
+            base = tab.lower().replace(" ", "_")
+            if base in ("top-level", "paths", "monitors", self._search_tab_name.lower()):
+                return _humanize_label(full_label)
+            low = full_label.lower()
+            pref = base + "."
+            trimmed = full_label[len(pref):] if low.startswith(pref) else full_label
+            return _humanize_label(trimmed)
+        
+        def _humanize_label(s: str) -> str:
+            # Replace underscores/dots with spaces, collapse whitespace, Title Case
+            s = s.replace("_", " ").replace(".", "•")
+            s = re.sub(r"\s+", " ", s).strip()
+            # Keep numbers/units intact; Title() is fine for these keys
+            return s.title()
+
+        def add_row(tab: str, label: str, path: tuple[str, ...], val: Any):
+            self._add_tab(tab)
+            # trim tab prefix from the visual label
+            label = _pretty_label(tab, label)
             row = KVRow(label, path, val); row.changed.connect(self._row_changed)
             self.tab_layouts[tab].addWidget(row)
             self.rows[path] = row
+            self._rows_by_tab[tab].append(row)
 
-        # 1) Top-level scalars grouped smartly
-        for k, v in sorted(data.items(), key=lambda kv: kv[0]):
-            if isinstance(v, (dict, list)):  # handled below
-                continue
-            tab = "Paths" if _looks_path_key(k) else "Server" if k.startswith(("server_", "multi_home", "game_", "query_", "enable_query")) or k in {"max_players", "extra_launch_args", "headless_mode", "show_monitor_window"} \
-                else "Steam/Updates" if k.startswith(("steam", "app_id")) \
-                else "Backups" if "backup" in k.lower() \
-                else "Monitor (simple)" if "monitor" in k.lower() or "crash" in k.lower() \
-                else "Top-level"
-            _add(tab, k, (k,), v)
-
-        # 2) features.*
-        feats = data.get("features", {})
-        if isinstance(feats, dict):
-            for k, v in sorted(feats.items(), key=lambda kv: kv[0]):
-                _add("Features", f"features.{k}", ("features", k), v)
-
-        # 3) monitor.* (deep, recursive)
-        def walk_monitor(prefix: Tuple[str, ...], node: Any):
+        def flatten_into_tab(tab: str, prefix: tuple[str, ...], node: Any):
             if isinstance(node, dict):
-                for ck, cv in sorted(node.items(), key=lambda kv: kv[0]):
-                    walk_monitor(prefix + (ck,), cv)
+                for ck in sorted(node.keys(), key=lambda s: str(s)):
+                    flatten_into_tab(tab, prefix + (ck,), node[ck])
+                return
+            label = ".".join(prefix)  # e.g., "backup_folders.Crash"
+            val = node if not isinstance(node, list) else ", ".join(str(x) for x in node)
+            add_row(tab, label, prefix, val)
+
+        # 1) Top-level pass: scalars → Top-level, dicts → own tab
+        dict_tabs: list[tuple[str, dict]] = []
+        for k in sorted(data.keys(), key=lambda s: str(s)):
+            v = data[k]
+            if isinstance(v, dict):
+                dict_tabs.append((k, v))
             else:
-                label = ".".join(prefix)
-                _add("Monitor (advanced)", f"{label}", ("monitor",) + tuple(prefix[1:]) if prefix and prefix[0] == "monitor" else prefix, node)
+                add_row("Top-level", k, (k,), v)
 
-        mon = data.get("monitor", {})
-        if isinstance(mon, dict):
-            walk_monitor(("monitor",), mon)
+        # 2) For each top-level dict, flatten into its own tab
+        for k, node in dict_tabs:
+            tname = tab_name_for_top_key(k)
+            if k == "features" and isinstance(node, dict):
+                # show just "enable_log_monitor", etc.
+                for fk in sorted(node.keys(), key=lambda s: str(s)):
+                    label = f"{k}.{fk}"                   # becomes just "enable_log_monitor" by _pretty_label
+                    add_row(tname, label, (k, fk), node[fk])
+            else:
+                flatten_into_tab(tname, (k,), node)
+        # 3) Paths convenience: if many 'path/dir' top-level keys exist, also mirror them into a 'Paths' tab
+        path_keys = [(k, data[k]) for k in data.keys() if not isinstance(data[k], dict) and looks_path_key(k)]
+        if path_keys:
+            self._add_tab("Paths")
+            for k, v in sorted(path_keys, key=lambda kv: kv[0]):
+                add_row("Paths", k, (k,), v)
 
-        # 4) Any nested dicts not covered (e.g., future blocks)
-        known = {"features", "monitor"}
-        for k, v in sorted(data.items(), key=lambda kv: kv[0]):
-            if k in known or not isinstance(v, dict):
-                continue
-            # Drop unknown dict keys into Top-level with dotted labels (one level deep)
-            for ck, cv in sorted(v.items(), key=lambda kv: kv[0]):
-                if isinstance(cv, (dict, list)):
-                    continue  # keep concise; they’ll still be editable via raw pane
-                _add("Top-level", f"{k}.{ck}", (k, ck), cv)
-
-        # Stretchers & initial filter pass
-        for vbox in self.tab_layouts.values(): vbox.addStretch(1)
+        # 4) Stretchers and filter pass
+        for vbox in self.tab_layouts.values():
+            vbox.addStretch(1)
         self._apply_filter(self.filter.text())
+
+    def _collect_matches(self, text: str, include_values: bool = True):
+        """Return list[(tab_name, KVRow)] that match the filter."""
+        t = (text or "").strip().lower()
+        if not t:
+            return []
+        hits = []
+        for tab_name, rows in self._rows_by_tab.items():
+            for r in rows:
+                label = r.label_text.lower()
+                ok = (t in label)
+                if not ok and include_values:
+                    try:
+                        val_s = str(r.value()).lower()
+                        ok = t in val_s
+                    except Exception:
+                        ok = False
+                if ok:
+                    hits.append((tab_name, r))
+        return hits
+
+    def _populate_search_tab(self, text: str):
+        if not text:
+            self._remove_search_tab()
+            return
+
+        self._ensure_search_tab()
+        w = self.tabs.widget(self._search_tab_idx)
+        lay = w.layout()
+
+        # Clear existing widgets
+        while lay.count() > 0:
+            item = lay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Group matches by their source tab
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for tab_name, row in self._collect_matches(text, include_values=True):
+            groups[tab_name].append(row)
+
+        if not groups:
+            lay.addWidget(QtWidgets.QLabel(f"No matches for “{text}”."))
+            lay.addStretch(1)
+            self.tabs.setCurrentIndex(self._search_tab_idx)
+            return
+
+        def jump_to_row(tab_name: str, row: "KVRow"):
+            # Switch to original tab and focus the row
+            idx = None
+            for i in range(self.tabs.count()):
+                base = self._tab_base_titles.get(i) or self.tabs.tabText(i)
+                if base == tab_name or self.tabs.tabText(i).startswith(tab_name):
+                    idx = i
+                    break
+            if idx is not None:
+                self.tabs.setCurrentIndex(idx)
+            row.setVisible(True)
+            if hasattr(row, "scrollToMe"):
+                row.scrollToMe()
+            row.setStyleSheet("background-color:#264653;")
+            QtCore.QTimer.singleShot(300, lambda: row.setStyleSheet(""))
+
+        # Build grouped result list
+        for tab_name in sorted(groups.keys()):
+            lay.addWidget(QtWidgets.QLabel(f"<b>{tab_name}</b>"))
+            for r in groups[tab_name]:
+                txt = f"{r.label_text}   →   {str(r.value())[:80]}"
+                btn = QtWidgets.QPushButton(txt)
+                btn.setCursor(QtCore.Qt.PointingHandCursor)
+                btn.setToolTip("Jump to original")
+                btn.clicked.connect(lambda _, tn=tab_name, row=r: jump_to_row(tn, row))
+                lay.addWidget(btn)
+
+        lay.addStretch(1)
+        # Show Search tab automatically while filtering
+        self.tabs.setCurrentIndex(self._search_tab_idx)
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
         # 1) update the in-memory dict (used to rebuild tabs/filter/etc.)
@@ -1403,7 +1623,7 @@ class Main(QtWidgets.QMainWindow):
             f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}"
         )
         
-                # Auto-(re)start log monitor if:
+        # Auto-(re)start log monitor if:
         #   - server is running,
         #   - log monitor feature is enabled in config,
         #   - and monitor isn't running or marked fresh
@@ -1447,39 +1667,37 @@ class Main(QtWidgets.QMainWindow):
     def _apply_filter(self, t: str):
         t = (t or "").strip().lower()
 
-        # Show/hide rows and count matches per tab
-        per_tab = {i: 0 for i in range(self.tabs.count())}
-
+        # Visibility pass for rows (so the left-side panels still filter)
         for path, row in self.rows.items():
             label = row.label_text.lower()
-            match = (t in label) if t else True
-            row.setVisible(match)
+            show = (t in label) if t else True
+            if not show and t:
+                # also match values to hide/show left-side rows consistently
+                try:
+                    show = t in str(row.value()).lower()
+                except Exception:
+                    pass
+            row.setVisible(show)
 
-        # Count visible rows per tab by scanning each tab container
+        # Count matches per tab using the index (not relying on current visibility)
+        all_hits = self._collect_matches(t, include_values=True) if t else []
+        counts_by_tabname = {}
+        for tab_name, _row in all_hits:
+            counts_by_tabname[tab_name] = counts_by_tabname.get(tab_name, 0) + 1
+
         for i in range(self.tabs.count()):
-            base_name = self._tab_index_to_name.get(i, self.tabs.tabText(i))
-            lay = self.tab_layouts.get(base_name)
-            count = 0
-            if lay:
-                for idx in range(lay.count()):
-                    w = lay.itemAt(idx).widget()
-                    if w and isinstance(w, KVRow) and w.isVisible():
-                        count += 1
-            per_tab[i] = count
+            base = self._tab_base_titles.get(i, self._strip_cnt(self.tabs.tabText(i)))
+            if not t:
+                self.tabs.setTabText(i, base)
+                continue
+            cnt = len(all_hits) if base == self._search_tab_name else counts_by_tabname.get(base, 0)
+            self.tabs.setTabText(i, f"{base} ({cnt})")
 
-        # Update tab titles with counts (e.g., "Paths (3)") and keep layouts addressable
-        for i in range(self.tabs.count()):
-            base = self._tab_base_titles.get(i, self.tabs.tabText(i))
-            self.tabs.setTabText(i, f"{base} ({per_tab[i]})" if t else base)
-
-
-        # Auto-jump if current tab has zero matches and others have >0
-        cur = self.tabs.currentIndex()
-        if t and per_tab.get(cur, 0) == 0:
-            for i in range(self.tabs.count()):
-                if per_tab[i] > 0:
-                    self.tabs.setCurrentIndex(i)
-                    break
+        # Populate or remove the Search tab
+        if t:
+            self._populate_search_tab(t)
+        else:
+            self._remove_search_tab()
 
     def _status(self, s: str): self.status.setText(f"Status: {s}")
 
