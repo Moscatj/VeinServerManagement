@@ -1,12 +1,14 @@
 # vein_manager.py — Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
-# Requires: PySide6; Windows is assumed for process checks and startfile
 from __future__ import annotations
+
+# --- stdlib imports first
 import json, os, sys, subprocess, time, re
 from pathlib import Path
 from typing import Any, Dict, Tuple, List
 from datetime import datetime, timezone
+import collections
+# --- Qt
 from PySide6 import QtCore, QtGui, QtWidgets
-from Tools.config_io import load_and_validate_config
 
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
@@ -17,14 +19,39 @@ RUNTIME_FALLBACK = ROOT / "Runtime"
 PYEXE_ENV  = ENV.get("PYEXE", "")
 APP_ORG = "RHG"
 APP_NAME = "VeinManager"
+LOGS_DIR = ROOT / "Logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Ensure we can import Tools/* even if PYTHONPATH wasn't set by the .bat
+if str(CTRL_DIR) not in sys.path:
+    sys.path.insert(0, str(CTRL_DIR))
+
+# Now it is safe to import Tools modules
+try:
+    from Tools.config_io import load_and_validate_config
+except Exception as e:
+    print(f"[FATAL] Could not import Tools.config_io from {CTRL_DIR}: {e}")
+    sys.exit(1)
 
 def _pyexe() -> str:
     return PYEXE_ENV.strip() or ("py -3" if os.name == "nt" else sys.executable)
+
+# --- move these helpers ABOVE DEFAULT_CONFIG ---
+def _is_yaml_path(p: str) -> bool:
+    s = (p or "").lower()
+    return s.endswith(".yaml") or s.endswith(".yml")
+
+def _list_config_files(folder: Path) -> list[str]:
+    files = [p.name for p in folder.glob("*.json")]
+    files += [p.name for p in folder.glob("*.yaml")]
+    files += [p.name for p in folder.glob("*.yml")]
+    return sorted(files)
 
 def first_cfg_in(folder: Path):
     cands = _list_config_files(folder)
     return (folder / cands[0]) if cands else None
 
+# compute DEFAULT_CONFIG only after helpers exist
 DEFAULT_CONFIG = Path(ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CONFIG_DIR / "config.yaml")))
 
 #----------------- config IO (YAML+JSON) --------------------------------------
@@ -38,6 +65,50 @@ except Exception:
 def _is_yaml_path(p: str) -> bool:
     s = (p or "").lower()
     return s.endswith(".yaml") or s.endswith(".yml")
+
+def _setup_process_logging():
+    """Redirect VeinManager stdout/stderr to Logs and capture crashes."""
+    try:
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        out = LOGS_DIR / f"VeinManager.{ts}.stdout.log"
+        err = LOGS_DIR / f"VeinManager.{ts}.stderr.log"
+
+        sys.stdout = open(out, "w", buffering=1, encoding="utf-8", errors="replace")
+        sys.stderr = open(err, "w", buffering=1, encoding="utf-8", errors="replace")
+
+        # Python unhandled exceptions → stderr file
+        def _excepthook(tp, val, tb):
+            import traceback
+            traceback.print_exception(tp, val, tb, file=sys.stderr)
+            sys.stderr.flush()
+        sys.excepthook = _excepthook
+
+        # Qt messages → stderr file
+        def _qt_msg_handler(mode, context, message):
+            try:
+                sys.stderr.write(f"[Qt] {message}\n")
+                sys.stderr.flush()
+            except Exception:
+                pass
+        try:
+            QtCore.qInstallMessageHandler(_qt_msg_handler)  # PySide6
+        except Exception:
+            pass
+
+        # Enable faulthandler if available
+        try:
+            import faulthandler
+            faulthandler.enable(sys.stderr)
+        except Exception:
+            pass
+
+        print("[VeinManager] Process logging initialized.")
+        print(f"[VeinManager] stdout: {out}")
+        print(f"[VeinManager] stderr: {err}")
+        sys.stdout.flush()
+    except Exception as e:
+        # Last-ditch: don’t crash if logging setup fails
+        print(f"[WARN] Failed to initialize process logging: {e}")
 
 def _load_any_config(path: str):
     """
@@ -118,6 +189,24 @@ def run_once(cmd: str, cwd: Path | None = None, timeout=60, env: dict | None = N
         p.kill()
         out, err = p.communicate()
     return p.returncode, out, err
+
+def spawn_logged(cmd: str, log_file: Path, cwd: Path | None = None, env: dict | None = None) -> subprocess.Popen:
+    """
+    Popen with stdout/stderr appended to a single log file.
+    """
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    f = open(log_file, "a", encoding="utf-8", errors="replace")
+    kw = {
+        "shell": True,
+        "cwd": str(cwd) if cwd else None,
+        "stdout": f,
+        "stderr": f,
+        "text": True,
+    }
+    kw.update(_hidden_kwargs())
+    if env is not None:
+        kw["env"] = env
+    return subprocess.Popen(cmd, **{k: v for k, v in kw.items() if v is not None})
 
 def tasklist_running(image_name: str) -> bool:
     if os.name != "nt" or not image_name.strip(): return False
@@ -645,6 +734,46 @@ class AdvancedDialog(QtWidgets.QDialog):
                 if val:
                     ov[k] = val
         return {"use_defaults": use_defs, "overrides": ov}
+    
+class CollapsibleBox(QtWidgets.QWidget):
+    """Simple collapsible section with a header and a container layout."""
+    def __init__(self, title: str):
+        super().__init__()
+        self._title_base = title
+        self._count = 0
+
+        self.toggle = QtWidgets.QToolButton(text=title, checkable=True, checked=True)
+        self.toggle.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(QtCore.Qt.DownArrow)
+        self.toggle.toggled.connect(self._on_toggled)
+
+        self.header = QtWidgets.QHBoxLayout()
+        self.header.setContentsMargins(0, 0, 0, 0)
+        self.header.addWidget(self.toggle)
+        self.header.addStretch(1)
+
+        self.container = QtWidgets.QWidget()
+        self.vbox = QtWidgets.QVBoxLayout(self.container)
+        self.vbox.setContentsMargins(8, 6, 8, 6)
+        self.vbox.setSpacing(6)
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 8, 0, 0)
+        outer.addLayout(self.header)
+        outer.addWidget(self.container)
+
+    def _on_toggled(self, on: bool):
+        self.container.setVisible(on)
+        self.toggle.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+
+    def layout_for_rows(self) -> QtWidgets.QVBoxLayout:
+        return self.vbox
+
+    def set_count(self, n: int, active: bool):
+        """Update header with a small count when filtering."""
+        self._count = n
+        suffix = f"  ({n})" if active else ""
+        self.toggle.setText(self._title_base + suffix)
 
 # ------------------------------ KV Row editor ---------------------------------
 class KVRow(QtWidgets.QWidget):
@@ -732,6 +861,10 @@ class Main(QtWidgets.QMainWindow):
         self.rows = {}
         self._saving = False
 
+        self._sections_by_tab = collections.defaultdict(dict)   # type: dict[str, dict[str, CollapsibleBox]]
+        self._rows_in_section = collections.defaultdict(list)   # type: dict[tuple[str, str], list[KVRow]]
+        self._section_keys_by_tab: dict[str, set[str]] = {}
+
         # settings
         q = QtCore.QSettings(APP_ORG, APP_NAME)
         self.use_defaults = bool(q.value("use_defaults", True))
@@ -778,8 +911,7 @@ class Main(QtWidgets.QMainWindow):
         self._tab_index_to_name = {i: self._tab_base_titles[i] for i in range(self.tabs.count())}
 
         # Row index by tab for search/result grouping
-        from collections import defaultdict
-        self._rows_by_tab = defaultdict(list)   # tab_name -> [KVRow]
+        self._rows_by_tab = collections.defaultdict(list)   # tab_name -> [KVRow]
         self._search_tab_name = "Search"
         self._search_tab_idx = None
         self._hl = None  # for syntax highlighter swap
@@ -1095,6 +1227,80 @@ class Main(QtWidgets.QMainWindow):
             self.json.setPlainText("")
             self._status(f"Load error: {e}")
 
+    # --- label helpers used by tab-building ---------------------------------
+    def _humanize_label(self, s: str) -> str:
+        import re
+        s = (s or "").replace("_", " ").replace(".", "•")
+        s = re.sub(r"\s+", " ", s).strip()
+        return s.title()
+
+    def _pretty_label(self, tab: str, full_label: str) -> str:
+        """Trim the tab's key prefix from a dotted label and title-case it."""
+        base = tab.lower().replace(" ", "_")
+        if base in ("top-level", "paths", "monitors", getattr(self, "_search_tab_name", "search").lower()):
+            return self._humanize_label(full_label)
+        low = full_label.lower()
+        pref = base + "."
+        trimmed = full_label[len(pref):] if low.startswith(pref) else full_label
+        return self._humanize_label(trimmed)
+
+    def _add_row_to_tab_or_section(self, tab: str, full_label: str,
+                               path: tuple[str, ...], val):
+        self._add_tab(tab)
+
+        # Only sectionize if the tab corresponds to path[0] AND the second-level key is a dict.
+        def _snake(s: str) -> str:
+            return (s or "").strip().lower().replace(" ", "_")
+
+        tab_base_snake = _snake(tab)
+        path0_snake = _snake(path[0]) if path else ""
+        # candidates determined earlier in _build_tabs:
+        section_keys = self._section_keys_by_tab.get(tab, set())
+
+        section_key = None
+        if (tab_base_snake == path0_snake and len(path) >= 2):
+            k2 = str(path[1])
+            if k2 in section_keys:
+                section_key = k2
+
+        # Choose layout: section container or tab root
+        if section_key is None:
+            layout = self.tab_layouts[tab]
+        else:
+            if section_key not in self._sections_by_tab[tab]:
+                box = CollapsibleBox(self._humanize_label(section_key))
+                self._sections_by_tab[tab][section_key] = box
+                self.tab_layouts[tab].addWidget(box)
+            layout = self._sections_by_tab[tab][section_key].layout_for_rows()
+
+        # Pretty label: trim 'Tab.' or 'Tab.Section.' prefix, then title-case
+        base = tab.lower().replace(" ", "_")
+        low = full_label.lower()
+        trimmed = full_label
+        if section_key is not None:
+            pref = f"{base}.{section_key.lower()}."
+            if low.startswith(pref):
+                trimmed = full_label[len(pref):]
+        else:
+            pref = base + "."
+            if low.startswith(pref):
+                trimmed = full_label[len(pref):]
+
+        label = self._humanize_label(trimmed)
+        row = KVRow(label, path, val)
+        row.changed.connect(self._row_changed)
+        
+        indent = max(0, len(path) - (2 if section_key else 1))
+        if indent and hasattr(row, "layout"):
+            row.layout().setContentsMargins(12 * indent, 0, 0, 0)
+
+        layout.addWidget(row)
+
+        self.rows[path] = row
+        self._rows_by_tab[tab].append(row)
+        if section_key is not None:
+            self._rows_in_section[(tab, section_key)].append(row)
+
     def _build_tabs(self, data: dict):
         """Auto-build tabs from the config hierarchy.
 
@@ -1104,6 +1310,9 @@ class Main(QtWidgets.QMainWindow):
         - Nested dicts are flattened to dotted keys within their parent tab.
         - Lists are rendered as comma-joined strings (still editable).
         """
+        self._sections_by_tab.clear()
+        self._rows_in_section.clear()
+
         # Remove all dynamic tabs (keep Monitors and Search if present)
         fixed = {"Monitors", getattr(self, "_search_tab_name", "Search")}
         for i in reversed(range(self.tabs.count())):
@@ -1136,39 +1345,14 @@ class Main(QtWidgets.QMainWindow):
             k = (k or "").lower()
             return any(t in k for t in ("path", "file", "dir", "folder", "root"))
 
-        def _pretty_label(tab: str, full_label: str) -> str:
-            base = tab.lower().replace(" ", "_")
-            if base in ("top-level", "paths", "monitors", self._search_tab_name.lower()):
-                return _humanize_label(full_label)
-            low = full_label.lower()
-            pref = base + "."
-            trimmed = full_label[len(pref):] if low.startswith(pref) else full_label
-            return _humanize_label(trimmed)
-        
-        def _humanize_label(s: str) -> str:
-            # Replace underscores/dots with spaces, collapse whitespace, Title Case
-            s = s.replace("_", " ").replace(".", "•")
-            s = re.sub(r"\s+", " ", s).strip()
-            # Keep numbers/units intact; Title() is fine for these keys
-            return s.title()
-
-        def add_row(tab: str, label: str, path: tuple[str, ...], val: Any):
-            self._add_tab(tab)
-            # trim tab prefix from the visual label
-            label = _pretty_label(tab, label)
-            row = KVRow(label, path, val); row.changed.connect(self._row_changed)
-            self.tab_layouts[tab].addWidget(row)
-            self.rows[path] = row
-            self._rows_by_tab[tab].append(row)
-
         def flatten_into_tab(tab: str, prefix: tuple[str, ...], node: Any):
             if isinstance(node, dict):
                 for ck in sorted(node.keys(), key=lambda s: str(s)):
                     flatten_into_tab(tab, prefix + (ck,), node[ck])
                 return
-            label = ".".join(prefix)  # e.g., "backup_folders.Crash"
+            label = ".".join(prefix)
             val = node if not isinstance(node, list) else ", ".join(str(x) for x in node)
-            add_row(tab, label, prefix, val)
+            self._add_row_to_tab_or_section(tab, label, prefix, val)
 
         # 1) Top-level pass: scalars → Top-level, dicts → own tab
         dict_tabs: list[tuple[str, dict]] = []
@@ -1177,16 +1361,22 @@ class Main(QtWidgets.QMainWindow):
             if isinstance(v, dict):
                 dict_tabs.append((k, v))
             else:
-                add_row("Top-level", k, (k,), v)
+                self._add_row_to_tab_or_section("Top-level", k, (k,), v)
 
         # 2) For each top-level dict, flatten into its own tab
         for k, node in dict_tabs:
             tname = tab_name_for_top_key(k)
+            # Decide which second-level keys become collapsible sections:
+            # Only dict-valued children one level below the tab root.
+            section_keys = {str(ck) for ck, cv in (node.items() if isinstance(node, dict) else [])
+                            if isinstance(cv, dict)}
+            self._section_keys_by_tab[tname] = section_keys
+
             if k == "features" and isinstance(node, dict):
                 # show just "enable_log_monitor", etc.
                 for fk in sorted(node.keys(), key=lambda s: str(s)):
                     label = f"{k}.{fk}"                   # becomes just "enable_log_monitor" by _pretty_label
-                    add_row(tname, label, (k, fk), node[fk])
+                    self._add_row_to_tab_or_section(tname, label, (k, fk), node[fk])
             else:
                 flatten_into_tab(tname, (k,), node)
         # 3) Paths convenience: if many 'path/dir' top-level keys exist, also mirror them into a 'Paths' tab
@@ -1194,7 +1384,7 @@ class Main(QtWidgets.QMainWindow):
         if path_keys:
             self._add_tab("Paths")
             for k, v in sorted(path_keys, key=lambda kv: kv[0]):
-                add_row("Paths", k, (k,), v)
+                self._add_row_to_tab_or_section("Paths", k, (k,), v)
 
         # 4) Stretchers and filter pass
         for vbox in self.tab_layouts.values():
@@ -1237,7 +1427,6 @@ class Main(QtWidgets.QMainWindow):
                 item.widget().deleteLater()
 
         # Group matches by their source tab
-        from collections import defaultdict
         groups = defaultdict(list)
         for tab_name, row in self._collect_matches(text, include_values=True):
             groups[tab_name].append(row)
@@ -1473,11 +1662,13 @@ class Main(QtWidgets.QMainWindow):
         if not py.exists():
             self._status("start_server.py not found."); return
         env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
+        srv_stdout = LOGS_DIR / "server.stdout.log"
         try:
-            spawn(f'{_pyexe()} "{py}"', py.parent, env=env)
+            spawn_logged(f'{_pyexe()} "{py}"', srv_stdout, py.parent, env=env)
             self._status("Server starting…")
         except Exception as e:
             self._status(f"Start failed: {e}")
+
 
     def stop_server(self):
         paths = self._resolved_paths()
@@ -1486,6 +1677,10 @@ class Main(QtWidgets.QMainWindow):
             self._status("shutdown_server.py not found."); return
         try:
             code, out, err = run_once(f'{_pyexe()} "{py}"', cwd=py.parent, timeout=180)
+            if out:
+                (LOGS_DIR / "vein_manager.subproc.out.log").write_text(out, encoding="utf-8")
+            if err:
+                (LOGS_DIR / "vein_manager.subproc.err.log").write_text(err, encoding="utf-8")
             self._status("Server stop requested." if code == 0 else f"Stop returned {code}. {err or out}")
         except Exception as e:
             self._status(f"Stop failed: {e}")
@@ -1502,8 +1697,15 @@ class Main(QtWidgets.QMainWindow):
         rp = _rt_paths(self.config_path)
         _rm(rp["stop_log"]); _rm(rp["pid_log"])
         env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
-        spawn(f'{_pyexe()} "{mon_py}" --follow', mon_py.parent, env=env)
-        self._status("Log monitor starting…")
+
+        # Write monitor stdout/stderr here:
+        lm_stdout = LOGS_DIR / "monitor_log.stdout.log"
+        try:
+            spawn_logged(f'{_pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env)
+            self._status("Log monitor starting…")
+        except Exception as e:
+            self._status(f"Log monitor start failed: {e}")
+
         if _runtime_paths(self.config_path)["log_monitor_enabled"]:
             self.chk_live.setChecked(True)
 
@@ -1540,8 +1742,13 @@ class Main(QtWidgets.QMainWindow):
         rp = _rt_paths(self.config_path)
         _rm(rp["stop_crash"]); _rm(rp["pid_crash"])
         env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
-        spawn(f'{_pyexe()} "{cm_py}"', cm_py.parent, env=env)
-        self._status("Crash monitor starting…")
+
+        cm_stdout = LOGS_DIR / "crash_monitor.stdout.log"
+        try:
+            spawn_logged(f'{_pyexe()} "{cm_py}"', cm_stdout, cm_py.parent, env=env)
+            self._status("Crash monitor starting…")
+        except Exception as e:
+            self._status(f"Crash monitor start failed: {e}")
 
     def stop_cm(self):
         rp = _rt_paths(self.config_path)
@@ -1699,6 +1906,17 @@ class Main(QtWidgets.QMainWindow):
         else:
             self._remove_search_tab()
 
+        # Update section counts and visibility
+        active_filter = bool(t)
+        for (tab, section), rows in self._rows_in_section.items():
+            visible = [r for r in rows if r.isVisible()]
+            box = self._sections_by_tab.get(tab, {}).get(section)
+            if not box:
+                continue
+            box.setVisible(len(visible) > 0 or not active_filter)  # hide empty sections when filtering
+            box.set_count(len(visible), active_filter)
+
+
     def _status(self, s: str): self.status.setText(f"Status: {s}")
 
     def _open_folder(self, p: Path):
@@ -1734,6 +1952,7 @@ class Main(QtWidgets.QMainWindow):
 
 # --------------------------------- main --------------------------------------
 def main():
+    _setup_process_logging()
     app = QtWidgets.QApplication(sys.argv)
     if os.name == "nt":
         app.setStyle("Fusion")
