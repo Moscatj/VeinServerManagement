@@ -1410,6 +1410,29 @@ class Main(QtWidgets.QMainWindow):
                 if ok:
                     hits.append((tab_name, r))
         return hits
+    
+    def _make_proxy_row(self, src_row: "KVRow") -> "KVRow":
+        """
+        Create an editable proxy KVRow for the Search tab that stays in sync with the
+        source row in its original tab. Editing either one updates the other and the
+        backing JSON/YAML via _row_changed.
+        """
+        path = tuple(src_row.path)
+        # capture the current value from the source editor
+        try:
+            cur_val = src_row.value()
+        except Exception:
+            cur_val = None
+
+        proxy = KVRow(src_row.label_text, path, cur_val)
+        # 1) when proxy changes → commit to data and push into the source row
+        proxy.changed.connect(self._row_changed)
+        proxy.changed.connect(lambda p, v: (self.rows.get(p) and self.rows[p].set_value(v)))
+
+        # 2) when source changes → mirror into the proxy row
+        src_row.changed.connect(lambda p, v: (proxy.set_value(v) if p == path else None))
+        return proxy
+
 
     def _populate_search_tab(self, text: str):
         if not text:
@@ -1420,14 +1443,15 @@ class Main(QtWidgets.QMainWindow):
         w = self.tabs.widget(self._search_tab_idx)
         lay = w.layout()
 
-        # Clear existing widgets
-        while lay.count() > 0:
-            item = lay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # Clear previous results
+        while lay.count():
+            it = lay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
 
-        # Group matches by their source tab
-        groups = defaultdict(list)
+        # Group matches by their source tab (for readability)
+        from collections import defaultdict as _dd
+        groups = _dd(list)
         for tab_name, row in self._collect_matches(text, include_values=True):
             groups[tab_name].append(row)
 
@@ -1437,35 +1461,16 @@ class Main(QtWidgets.QMainWindow):
             self.tabs.setCurrentIndex(self._search_tab_idx)
             return
 
-        def jump_to_row(tab_name: str, row: "KVRow"):
-            # Switch to original tab and focus the row
-            idx = None
-            for i in range(self.tabs.count()):
-                base = self._tab_base_titles.get(i) or self.tabs.tabText(i)
-                if base == tab_name or self.tabs.tabText(i).startswith(tab_name):
-                    idx = i
-                    break
-            if idx is not None:
-                self.tabs.setCurrentIndex(idx)
-            row.setVisible(True)
-            if hasattr(row, "scrollToMe"):
-                row.scrollToMe()
-            row.setStyleSheet("background-color:#264653;")
-            QtCore.QTimer.singleShot(300, lambda: row.setStyleSheet(""))
-
-        # Build grouped result list
+        # Build grouped, editable results
         for tab_name in sorted(groups.keys()):
-            lay.addWidget(QtWidgets.QLabel(f"<b>{tab_name}</b>"))
-            for r in groups[tab_name]:
-                txt = f"{r.label_text}   →   {str(r.value())[:80]}"
-                btn = QtWidgets.QPushButton(txt)
-                btn.setCursor(QtCore.Qt.PointingHandCursor)
-                btn.setToolTip("Jump to original")
-                btn.clicked.connect(lambda _, tn=tab_name, row=r: jump_to_row(tn, row))
-                lay.addWidget(btn)
+            box = CollapsibleBox(tab_name)
+            vbox = box.layout_for_rows()
+            for src_row in groups[tab_name]:
+                proxy = self._make_proxy_row(src_row)
+                vbox.addWidget(proxy)
+            lay.addWidget(box)
 
         lay.addStretch(1)
-        # Show Search tab automatically while filtering
         self.tabs.setCurrentIndex(self._search_tab_idx)
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
