@@ -1300,6 +1300,54 @@ class Main(QtWidgets.QMainWindow):
         self._rows_by_tab[tab].append(row)
         if section_key is not None:
             self._rows_in_section[(tab, section_key)].append(row)
+        self._index_row(tab, row)
+
+
+    # --- search normalization / indexing ------------------------------------
+    def _norm(self, s: str) -> str:
+        """
+        Normalize for fuzzy compare: lowercase and strip non [a-z0-9].
+        'Monitor.Recheck_Newest_Every_Seconds' -> 'monitorrechecknewesteveryseconds'
+        """
+        import re
+        return re.sub(r'[^a-z0-9]+', '', (s or '').lower())
+
+    def _index_row(self, tab_name: str, row: "KVRow"):
+        """
+        Build a token set for a row so the filter can match label, full dotted path,
+        snake path, and humanized variants.
+        """
+        if not hasattr(self, "_search_index"):
+            self._search_index = {}  # KVRow -> set[str]
+
+        label = row.label_text or ""
+        path = row.path or ()
+        dotted = ".".join(path)                     # e.g., monitor.recheck_newest_every_seconds
+        snake  = "_".join(path)                     # monitor_recheck_newest_every_seconds
+        spaced = " ".join(path)                     # monitor recheck newest every seconds
+
+        # Also allow "Tab.Section.Key" style lookups to feel natural in Search
+        section = None
+        for (t, s), rows in self._rows_in_section.items():
+            if t == tab_name and row in rows:
+                section = s
+                break
+        tab_path = ".".join([p for p in (tab_name, section) if p])  # "Monitor.track" etc.
+
+        raw_candidates = {
+            label,
+            dotted, snake, spaced,
+            f"{tab_path}.{label}" if tab_path else label,
+            f"{tab_path}.{dotted}" if tab_path else dotted,
+        }
+
+        # Keep both raw and normalized forms so substring matches still work
+        toks = set()
+        for r in raw_candidates:
+            if r:
+                toks.add(r.lower())
+                toks.add(self._norm(r))
+        self._search_index[row] = toks
 
     def _build_tabs(self, data: dict):
         """Auto-build tabs from the config hierarchy.
@@ -1331,6 +1379,8 @@ class Main(QtWidgets.QMainWindow):
         self.tab_layouts.clear()
         self._rows_by_tab.clear()
         self.rows.clear()
+
+        self._search_index = {}
 
         # Ensure a Top-level tab exists for scalars
         self._add_tab("Top-level")
@@ -1393,23 +1443,33 @@ class Main(QtWidgets.QMainWindow):
 
     def _collect_matches(self, text: str, include_values: bool = True):
         """Return list[(tab_name, KVRow)] that match the filter."""
-        t = (text or "").strip().lower()
+        t = (text or "").strip()
         if not t:
             return []
+
+        t_raw = t.lower()
+        t_norm = self._norm(t)
+
         hits = []
         for tab_name, rows in self._rows_by_tab.items():
             for r in rows:
-                label = r.label_text.lower()
-                ok = (t in label)
+                toks = (self._search_index.get(r) or set())
+
+                # 1) token-based match (raw or normalized substring)
+                ok = any((t_raw in tok) or (t_norm and t_norm in tok) for tok in toks)
+
+                # 2) optional value-based match (preserve old behavior)
                 if not ok and include_values:
                     try:
-                        val_s = str(r.value()).lower()
-                        ok = t in val_s
+                        val_s = str(r.value())
+                        ok = (t_raw in val_s.lower()) or (t_norm in self._norm(val_s))
                     except Exception:
                         ok = False
+
                 if ok:
                     hits.append((tab_name, r))
         return hits
+
     
     def _make_proxy_row(self, src_row: "KVRow") -> "KVRow":
         """
