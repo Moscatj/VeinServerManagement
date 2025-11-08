@@ -372,10 +372,14 @@ def _dot(on: bool, warn: bool=False) -> str:
     return f"background:{'#2ECC71' if on else '#E74C3C'};border-radius:6px;min-width:12px;min-height:12px;"
 
 def _age_str(iso_ts: str | None) -> str:
-    if not iso_ts: return "—"
+    if not iso_ts:
+        return "—"
     try:
-        dt = datetime.fromisoformat(iso_ts.replace("Z",""))
-        sec = max(0, int((datetime.utcnow() - dt).total_seconds()))
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        sec = max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
         if sec < 60: return f"{sec}s"
         if sec < 3600: return f"{sec//60}m {sec%60}s"
         return f"{sec//3600}h {(sec%3600)//60}m"
@@ -785,6 +789,7 @@ class KVRow(QtWidgets.QWidget):
         h = QtWidgets.QHBoxLayout(self)
         h.setContentsMargins(4, 2, 4, 2); h.setSpacing(6)
         lab = QtWidgets.QLabel(label); lab.setMinimumWidth(180); h.addWidget(lab)
+        self.label = lab
         if isinstance(value, bool):
             w = QtWidgets.QCheckBox(); w.setChecked(value)
             w.stateChanged.connect(lambda *_: self.changed.emit(self.path, bool(w.isChecked())))
@@ -854,6 +859,7 @@ class Main(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Vein Server Manager")
         self.resize(1380, 900)
+        self.setMinimumSize(1200, 720)     # keep the frame from collapsing/expanding
 
         # basic state
         self.config_dir = str(CONFIG_DIR)
@@ -1006,6 +1012,9 @@ class Main(QtWidgets.QMainWindow):
 
         self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
         self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
+        self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
+        self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
+        self._tab_pages: Dict[str, QtWidgets.QWidget] = {}   # <— add this
 
         def _make_tab_ui():
             w = QtWidgets.QWidget()
@@ -1016,12 +1025,13 @@ class Main(QtWidgets.QMainWindow):
             scroll.setWidget(container)
             frame.addWidget(scroll, 1)
             return w, container, vbox
-
+        
         def _add_tab(name: str):
             if name in self.tab_widgets:
                 return
             w, container, vbox = _make_tab_ui()
             self.tabs.addTab(w, name)
+            self._tab_pages[name] = w
             self.tab_widgets[name] = container
             self.tab_layouts[name] = vbox
 
@@ -1105,7 +1115,12 @@ class Main(QtWidgets.QMainWindow):
         self.b_reload.clicked.connect(self.load_config_text)
         self.b_save.clicked.connect(self.save_atomic)
         self.b_validate.clicked.connect(self.validate_config)
-        self.filter.textChanged.connect(self._apply_filter)
+ 
+        timer = QtCore.QTimer(self); timer.setSingleShot(True); timer.setInterval(120)
+        self.filter.textChanged.connect(lambda _: (timer.stop(), timer.start()))
+        timer.timeout.connect(lambda: self._apply_filter(self.filter.text()))
+
+
         self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
         self.b_clearlog.clicked.connect(self._clear_current_log)
         self.chk_live.toggled.connect(self._retail)
@@ -1157,34 +1172,105 @@ class Main(QtWidgets.QMainWindow):
 
     # -------------------------- Tab Helpers ---------------------------------
     def _strip_cnt(self, s: str) -> str:
-        import re
-        return re.sub(r"\s\(\d+\)$", "", s or "")
+        # "Monitor (3)" -> "Monitor"
+        return re.sub(r"\s+\(\d+\)$", "", s or "")
 
     def _rebuild_base_titles(self):
         self._tab_base_titles = {
             i: self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())
         }
         self._tab_index_to_name = dict(self._tab_base_titles)
+    
+    def _tab_index(self, name: str) -> int:
+        base = (name or "")
+        for i in range(self.tabs.count()):
+            if self._strip_cnt(self.tabs.tabText(i)) == base:
+                return i
+        return -1
 
-    def _ensure_search_tab(self):
-        names = [self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())]
-        if self._search_tab_name in names:
-            self._search_tab_idx = names.index(self._search_tab_name)
+    def _set_tab_count(self, name: str, count: int) -> None:
+        idx = self._tab_index(name)
+        if idx < 0:
             return
-        w = QtWidgets.QWidget()
-        v = QtWidgets.QVBoxLayout(w); v.setContentsMargins(6,6,6,6); v.setSpacing(4)
-        v.addStretch(1)
-        self.tabs.addTab(w, self._search_tab_name)
-        self._rebuild_base_titles()
-        self._search_tab_idx = self.tabs.count() - 1
+        base = self._strip_cnt(self.tabs.tabText(idx))
+        self.tabs.setTabText(idx, base if count <= 0 else f"{base} ({count})")
+
+    # --- Search tab helpers -------------------------------------------------
+    def _ensure_search_tab(self) -> str:
+        """Create the Search tab (lazy) and return its name."""
+        name = getattr(self, "_search_tab_name", "Search")
+        if name not in self.tab_layouts:
+            self._add_tab(name)
+        self._search_tab_idx = self._tab_index(name)
+        return name
+    
+    def _clear_layout(self, layout: QtWidgets.QLayout):
+        while True:
+            item = layout.takeAt(0)
+            if not item:
+                break
+            w = item.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+
+    def _rebuild_search_tab(self, matches: list[KVRow]) -> None:
+        """
+        Rebuild Search tab with nested collapsible groups:
+        Top-level → (optional) section → matching KVRow(s)
+        """
+        tab = self._ensure_search_tab()
+        vbox = self.tab_layouts[tab]
+        self._clear_layout(vbox)
+
+        # Collect matches by their 'top' (path[0]) and 'section' (path[1] when using sections)
+        grouped: dict[str, dict[str | None, list[KVRow]]] = {}
+        for row in matches:
+            path = row.path or ()
+            top = path[0] if path else "_misc"
+            # mirror the same "section" rule used by _add_row_to_tab_or_section
+            section = path[1] if len(path) >= 2 and top.lower() not in ("top-level", "paths", "monitors") else None
+            grouped.setdefault(top, {}).setdefault(section, []).append(row)
+
+        # Build UI
+        for top_key in sorted(grouped.keys(), key=str):
+            top_box = CollapsibleBox(self._humanize_label(top_key))
+            vbox.addWidget(top_box)
+            inner = top_box.layout_for_rows()
+
+            for section_key in sorted(grouped[top_key].keys(), key=lambda x: (x is not None, str(x))):
+                rows = grouped[top_key][section_key]
+                if section_key is None:
+                    # no section—just add rows
+                    for r in rows:
+                        # clone a lightweight display row sharing same editor widget type
+                        # but bind to the same Main change path
+                        clone = KVRow(r.label_text, r.path, r.value())
+                        clone.changed.connect(self._row_changed)
+                        inner.addWidget(clone)
+                else:
+                    sub_box = CollapsibleBox(self._humanize_label(section_key))
+                    inner.addWidget(sub_box)
+                    sub = sub_box.layout_for_rows()
+                    for r in rows:
+                        clone = KVRow(r.label_text, r.path, r.value())
+                        clone.changed.connect(self._row_changed)
+                        sub.addWidget(clone)
+
+        vbox.addStretch(1)
 
     def _remove_search_tab(self):
-        names = [self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())]
-        if self._search_tab_name in names:
-            idx = names.index(self._search_tab_name)
+        name = getattr(self, "_search_tab_name", "Search")
+        idx = self._tab_index(name)
+        if idx >= 0:
             self.tabs.removeTab(idx)
-            self._search_tab_idx = None
-            self._rebuild_base_titles()
+        # cleanup maps (safe even if keys aren’t present)
+        self._tab_pages.pop(name, None)
+        self.tab_widgets.pop(name, None)
+        self.tab_layouts.pop(name, None)
+        self._search_tab_idx = None
+        self._rebuild_base_titles()
+
 
     def _apply_default_selection(self):
         """Ensure a concrete file is selected and loaded at startup."""
@@ -1492,46 +1578,6 @@ class Main(QtWidgets.QMainWindow):
         # 2) when source changes → mirror into the proxy row
         src_row.changed.connect(lambda p, v: (proxy.set_value(v) if p == path else None))
         return proxy
-
-
-    def _populate_search_tab(self, text: str):
-        if not text:
-            self._remove_search_tab()
-            return
-
-        self._ensure_search_tab()
-        w = self.tabs.widget(self._search_tab_idx)
-        lay = w.layout()
-
-        # Clear previous results
-        while lay.count():
-            it = lay.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-
-        # Group matches by their source tab (for readability)
-        from collections import defaultdict as _dd
-        groups = _dd(list)
-        for tab_name, row in self._collect_matches(text, include_values=True):
-            groups[tab_name].append(row)
-
-        if not groups:
-            lay.addWidget(QtWidgets.QLabel(f"No matches for “{text}”."))
-            lay.addStretch(1)
-            self.tabs.setCurrentIndex(self._search_tab_idx)
-            return
-
-        # Build grouped, editable results
-        for tab_name in sorted(groups.keys()):
-            box = CollapsibleBox(tab_name)
-            vbox = box.layout_for_rows()
-            for src_row in groups[tab_name]:
-                proxy = self._make_proxy_row(src_row)
-                vbox.addWidget(proxy)
-            lay.addWidget(box)
-
-        lay.addStretch(1)
-        self.tabs.setCurrentIndex(self._search_tab_idx)
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
         # 1) update the in-memory dict (used to rebuild tabs/filter/etc.)
@@ -1935,52 +1981,96 @@ class Main(QtWidgets.QMainWindow):
                 return json.load(f)
         except Exception:
             return {}
+        
+    def _row_matched(self, r: "KVRow") -> bool:
+        return bool(getattr(r, "_match", False))
 
     def _apply_filter(self, t: str):
-        t = (t or "").strip().lower()
+        t = (t or "").strip()
+        active = bool(t)
 
-        # Visibility pass for rows (so the left-side panels still filter)
-        for path, row in self.rows.items():
-            label = row.label_text.lower()
-            show = (t in label) if t else True
-            if not show and t:
-                # also match values to hide/show left-side rows consistently
-                try:
-                    show = t in str(row.value()).lower()
-                except Exception:
-                    pass
-            row.setVisible(show)
+        import re
+        def norm(s: str) -> str:
+            s = (s or "")
+            s = s.replace("•", ".").replace("_", ".")
+            s = re.sub(r"\s+", ".", s)
+            return s.lower()
 
-        # Count matches per tab using the index (not relying on current visibility)
-        all_hits = self._collect_matches(t, include_values=True) if t else []
-        counts_by_tabname = {}
-        for tab_name, _row in all_hits:
-            counts_by_tabname[tab_name] = counts_by_tabname.get(tab_name, 0) + 1
+        def base_of_tabtext(txt: str) -> str:
+            return re.sub(r"\s+\(\d+\)$", "", txt or "")
 
-        for i in range(self.tabs.count()):
-            base = self._tab_base_titles.get(i, self._strip_cnt(self.tabs.tabText(i)))
-            if not t:
+        def set_tab_badge(tab_name: str, count: int, show_zero: bool) -> None:
+            idx = self._tab_index(tab_name)
+            if idx >= 0:
+                base = base_of_tabtext(self.tabs.tabText(idx))
+                self.tabs.setTabText(idx, base if (count <= 0 and not show_zero) else f"{base} ({count})")
+
+        if not active:
+            # show everything + clear badges + remove Search tab
+            for rows in self._rows_by_tab.values():
+                for r in rows:
+                    r._match = True         # reset match state
+                    r.setVisible(True)
+            for i in range(self.tabs.count()):
+                base = base_of_tabtext(self.tabs.tabText(i))
                 self.tabs.setTabText(i, base)
-                continue
-            cnt = len(all_hits) if base == self._search_tab_name else counts_by_tabname.get(base, 0)
-            self.tabs.setTabText(i, f"{base} ({cnt})")
-
-        # Populate or remove the Search tab
-        if t:
-            self._populate_search_tab(t)
-        else:
+                try: self.tabs.setTabVisible(i, True)
+                except Exception: pass
             self._remove_search_tab()
+            return
 
-        # Update section counts and visibility
-        active_filter = bool(t)
+        # ----- Active filter -----
+        nt = norm(t)
+        matches: list[KVRow] = []
+
+        # 1) Row visibility + record match state
+        for tab_name, rows in self._rows_by_tab.items():
+            for r in rows:
+                raw = ".".join(r.path)
+                human = r.label_text or ""
+                hay = " ".join([human, raw])
+
+                ok = nt in norm(hay)
+                if not ok:
+                    try:
+                        val_s = str(r.value())
+                        ok = nt in norm(val_s)
+                    except Exception:
+                        ok = False
+
+                r._match = bool(ok)     # <- store match state for counting
+                r.setVisible(ok)
+                if ok:
+                    matches.append(r)
+
+        # 2) Sections: show/hide by match, and set section counts by match flag
         for (tab, section), rows in self._rows_in_section.items():
-            visible = [r for r in rows if r.isVisible()]
+            mcount = sum(1 for r in rows if self._row_matched(r))
             box = self._sections_by_tab.get(tab, {}).get(section)
-            if not box:
-                continue
-            box.setVisible(len(visible) > 0 or not active_filter)  # hide empty sections when filtering
-            box.set_count(len(visible), active_filter)
+            if box:
+                box.setVisible(mcount > 0)
+                box.set_count(mcount, True)
 
+        # 3) Per-tab badges based on match flag (not .isVisible())
+        for tab_name, rows in self._rows_by_tab.items():
+            mcount = sum(1 for r in rows if self._row_matched(r))
+            set_tab_badge(tab_name, mcount, show_zero=True)
+
+        # 4) Keep all tabs visible during search
+        for i in range(self.tabs.count()):
+            try: self.tabs.setTabVisible(i, True)
+            except Exception: pass
+
+        # 5) Build/refresh the Search tab and badge it
+        search_tab = self._ensure_search_tab()
+        self._rebuild_search_tab(matches)
+        set_tab_badge(search_tab, len(matches), show_zero=True)
+
+        # 6) Autofocus Search
+        if self._search_tab_idx is None:
+            self._search_tab_idx = self._tab_index(search_tab)
+        if self._search_tab_idx is not None and self._search_tab_idx >= 0:
+            self.tabs.setCurrentIndex(self._search_tab_idx)
 
     def _status(self, s: str): self.status.setText(f"Status: {s}")
 
