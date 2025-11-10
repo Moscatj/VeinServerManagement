@@ -53,10 +53,37 @@ steam_update_timeout_seconds: 900
 max_backups: 10
 backup_max_age_days: 7  # Delete backups older than this many days.
 nightly_backup:
-  enable: false
+  enable: true
   max_backups: 14
   max_backup_age_days: 30
   discord_notify: true
+
+backups:
+  enable: true
+  root: "G:/Servers/VeinServer/VeinServerManagement/Backups"
+  folders:
+    Manual: "Manual"
+    AutoSave: "AutoSave"
+    LastPlayer: "LastPlayer"
+    Crash: "Crash"
+    Shutdown: "Shutdown"
+  retention:
+    default: {max_backups: 12, max_age_days: 14}
+    Crash: {max_backups: 8, max_age_days: 30}
+  events:
+    autosave:
+      enabled: true
+      cooldown_seconds: 300
+    last_player:
+      enabled: true
+      cooldown_seconds: 600
+    crash:
+      enabled: true
+      debounce_seconds: 120
+    shutdown:
+      enabled: true
+      # how fresh shutdown_in_progress.flag must be to count as an intentional shutdown
+      grace_seconds: 900
 
 # --- CRASH / RESTART BEHAVIOR -------------------------------------------------
 crash_monitor_interval_seconds: 60
@@ -96,7 +123,7 @@ features:  # Feature toggles (Discord + monitors).
   discord_startup: true
   discord_backups: true
   discord_crash_monitor: true
-  enable_autosave_backups: false
+  enable_autosave_backups: true
   enable_log_rotation: false
 
 # --- MONITOR (LOG MONITOR SETTINGS) -------------------------------------------
@@ -134,4 +161,4 @@ monitor:  # Log monitor behavior and notifications.
     monitor_status: true
   backups:
     on_player_logout: true
-    on_autosave: false
+    on_autosave: true

@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Optional
 from glob import glob
 
+from Tools import backups as _bk
+
 from utils import (
     config,
     LOGS_DIR,
@@ -80,6 +82,36 @@ RX_DISC     = re.compile(r"closed by peer|Logout|Connection closed", re.I)
 RX_AUTOSAVE = re.compile(r"LogVeinSaveGame: Saved save game to disk", re.I)
 
 RX_CRASH    = re.compile(r"Fatal error|Access violation|EXCEPTION_ACCESS_VIOLATION|Assertion failed|ensure\(!\)", re.I)
+
+_BEV = dict((config.get("backups", {}) or {}).get("events", {}) or {})
+
+_EVT_AUTOSAVE = dict(_BEV.get("autosave", {}) or {})
+_EVT_LAST    = dict(_BEV.get("last_player", {}) or {})
+_EVT_CRASH   = dict(_BEV.get("crash", {}) or {})
+_EVT_SHUT    = dict(_BEV.get("shutdown", {}) or {})
+
+AUTOSAVE_ENABLED   = bool(_EVT_AUTOSAVE.get("enabled", True))
+AUTOSAVE_COOLDOWN  = int(_EVT_AUTOSAVE.get("cooldown_seconds", int(config.get("autosave_backup_cooldown_seconds", 300))))
+
+LAST_ENABLED       = bool(_EVT_LAST.get("enabled", True))
+LAST_COOLDOWN      = int(_EVT_LAST.get("cooldown_seconds", 600))
+
+CRASH_ENABLED      = bool(_EVT_CRASH.get("enabled", True))
+CRASH_DEBOUNCE     = int(_EVT_CRASH.get("debounce_seconds", 120))
+
+SHUT_ENABLED       = bool(_EVT_SHUT.get("enabled", True))
+SHUT_GRACE         = int(_EVT_SHUT.get("grace_seconds", 900))
+
+# shutdown flag (we re-create the same path utils uses)
+SHUTDOWN_FLAG = RUNTIME_DIR / "shutdown_in_progress.flag"
+
+def _backup(reason: str) -> None:
+    """Fire a backup with the canonical Tools/backups engine."""
+    try:
+        _bk.make_backup(reason=reason, files=None, dst=None)
+    except Exception:
+        # silent on monitor; Tools/backups already prints and Discords meaningful errors
+        pass
 
 def _atomic_write_json(path: Path, data: dict):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -253,6 +285,11 @@ def monitor() -> None:
     ready_announced = False
     current_players: set[str] = set()
     last_autosave_ts = 0.0
+    last_lastplayer_ts = 0.0
+    last_crash_ts = 0.0
+    seen_server_up_once = False
+    last_seen_server_up = 0.0
+    shutdown_backup_done = False
 
     # rotation signature
     def _sig(p: Path) -> tuple[int, float]:
@@ -330,6 +367,8 @@ def monitor() -> None:
                     if RX_LISTEN.search(line) or RX_WORLD_UP.search(line) or RX_STEAM_OK.search(line):
                         if not ready_announced:
                             ready_announced = True
+                            seen_server_up_once = True
+                            last_seen_server_up = now
                             if NOTIFY_STARTUP or NOTIFY_JOINABLE:
                                 _discord("✅ Server is up and joinable.", channel="monitor")
 
@@ -356,26 +395,50 @@ def monitor() -> None:
 
                 # --- DISCONNECT ---
                 if TRACK_DISCONNECT and RX_DISC.search(line):
+                    # We don't know the name on every disconnect line; leave set-based logic as-is
                     if NOTIFY_DISC:
                         _discord("⬅️ A player disconnected.", channel="monitor")
-
-                # --- AUTOSAVE/BACKUP ---
-                if TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
-                    cooldown = int(config.get("autosave_backup_cooldown_seconds", 300))
-                    if (now - last_autosave_ts) > cooldown:
-                        last_autosave_ts = now
+                    # if the set is non-empty, conservatively drop one
+                    if current_players:
                         try:
-                            backup_save_file(None, reason="AutoSave")
+                            current_players.pop()
+                        except KeyError:
+                            pass
+                    # Last-player-out backup
+                    if LAST_ENABLED and not current_players and (now - last_lastplayer_ts) > LAST_COOLDOWN:
+                        last_lastplayer_ts = now
+                        _backup("LastPlayer")
+
+                    # --- AUTOSAVE/BACKUP ---
+                    if TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
+                        if AUTOSAVE_ENABLED and (now - last_autosave_ts) > AUTOSAVE_COOLDOWN:
+                            last_autosave_ts = now
+                            _backup("AutoSave")
                             if NOTIFY_AUTOSAVE:
                                 _discord("💾 Autosave detected — backup created.", channel="monitor")
-                        except Exception:
-                            pass
 
-                # --- CRASH SIGNATURE ---
-                if TRACK_CRASH and RX_CRASH.search(line):
-                    if NOTIFY_CRASH:
-                        _discord("💥 Crash signature in log! Check server.", channel="monitor")
+                    # --- CRASH SIGNATURE ---
+                    if TRACK_CRASH and RX_CRASH.search(line):
+                        if CRASH_ENABLED and (now - last_crash_ts) > CRASH_DEBOUNCE:
+                            last_crash_ts = now
+                            _backup("Crash")
+                            if NOTIFY_CRASH:
+                                _discord("💥 Crash signature in log! Backup created.", channel="monitor")
 
+                # After processing a chunk, detect clean shutdown -> backup once
+                # (no new lines typically appear; so we do this in the idle/loop too)
+                if SHUT_ENABLED:
+                    # server down detection: not tailing OR process gone
+                    proc_down = not is_server_running()
+                    flag_fresh = False
+                    try:
+                        if SHUTDOWN_FLAG.exists():
+                            flag_fresh = (now - SHUTDOWN_FLAG.stat().st_mtime) <= SHUT_GRACE
+                    except Exception:
+                        pass
+                    if proc_down and flag_fresh and seen_server_up_once and not shutdown_backup_done:
+                        _backup("Shutdown")
+                        shutdown_backup_done = True
     finally:
         _write_logmon_state(active=False, tailing_file=None, watching_server=False)
         _clear_pid()
