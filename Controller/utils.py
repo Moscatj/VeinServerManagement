@@ -29,6 +29,15 @@ import fnmatch
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from config_helper import (
+    config,
+    is_feature_enabled,
+    is_discord_channel_enabled,
+    get_path,
+    # NEW (for config summary only; not required for the shims)
+    backups_cfg,
+)
+
 
 import psutil  # pip install psutil
 #from Controller.utils import process, config_io, log_events, discord, backups
@@ -736,100 +745,53 @@ def send_discord_message(message: str, channel: str = "startup") -> None:
         print(f"[Discord] Failed to post message: {e}")
 
 # ----------------------------
-# Backups / restore / prune
+# Backups / restore / prune (delegates to Controller/Tools/backups.py)
 # ----------------------------
-def _backup_destination(reason: str, override: Optional[Path] = None) -> Path:
-    if override:
-        return override
-    folder = BACKUP_FOLDERS.get(reason, reason)
-    return BACKUP_ROOT / folder
+
+def _bk():
+    """
+    Lazy importer to avoid circular imports:
+    - Tools/backups.py imports utils for Discord helpers.
+    - So utils must only import backups at call time.
+    """
+    from Controller.Tools import backups as _backups  # type: ignore
+    return _backups
 
 def backup_save_file(
-    save_path: Optional[Path] = None,
+    save_path: Optional[Path] = None,   # kept for API compatibility (ignored)
     reason: str = "Manual",
     override_destination: Optional[Path] = None,
 ) -> Optional[Path]:
     """
-    Create a timestamped ZIP containing the current save file.
-    Gated by features.enable_backups so you can disable at runtime.
+    Thin shim: callers can keep using utils.backup_save_file().
+    Behavior is provided by Tools/backups.make_backup().
     """
-    if not is_feature_enabled("enable_backups"):
-        return None
-    path = save_path or SAVE_FILE
-    if not path.exists():
-        print("[Backup] Save file not found. Backup skipped.")
-        if is_discord_channel_enabled("backups"):
-            send_discord_message("⚠️ Backup skipped: save file missing.", channel="backups")
-        return None
-
-    dst_dir = _backup_destination(reason, override_destination)
-    dst_dir.mkdir(parents=True, exist_ok=True)
-
-    zip_path = dst_dir / f"Server_{reason}_{_timestamp()}.zip"
     try:
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(str(path), arcname=path.name)
-        print(f"[Backup] Created: {zip_path}")
-        cleanup_old_backups(dst_dir)
-        if is_discord_channel_enabled("backups"):
-            send_discord_message(f"💾 Backup created: `{zip_path.name}`", channel="backups")
-        return zip_path
+        # Tools/backups decides enablement + retention + paths.
+        return _bk().make_backup(reason=reason, files=None, dst=override_destination)
     except Exception as e:
-        print(f"[Backup] Failed to create zip: {e}")
+        print(f"[Backup] Shim failed: {e}")
         return None
 
 def cleanup_old_backups(folder: Path) -> None:
-    """Prune old backups by count and/or age using config retention knobs."""
+    """
+    Thin shim: callers can keep using utils.cleanup_old_backups(Path).
+    If folder is provided, we honor it; otherwise per-reason pruning happens in backups.py.
+    """
     try:
-        zips = sorted(folder.glob("*.zip"), key=lambda p: p.stat().st_mtime)
-        now = datetime.now()
-        for p in list(zips):
-            age_days  = (now - datetime.fromtimestamp(p.stat().st_mtime)).days
-            over_age  = age_days > int(config.get("backup_max_age_days", BACKUP_MAX_AGE_DAYS))
-            over_count = len(zips) > int(config.get("max_backups", MAX_BACKUPS))
-            if over_age or over_count:
-                p.unlink(missing_ok=True)
-                print(f"[Backup] Deleted old backup: {p}")
-                zips.remove(p)
+        _bk().prune_backups(path=folder)
     except Exception as e:
-        print(f"[Backup] Cleanup failed: {e}")
-
-def _latest_backup_zip() -> Optional[Path]:
-    """Find most recent backup zip across known reason folders + root."""
-    candidates: List[Path] = []
-    for sub in set(BACKUP_FOLDERS.values()):
-        d = BACKUP_ROOT / sub
-        if d.exists():
-            candidates.extend([p for p in d.glob("*.zip") if p.is_file()])
-    candidates.extend([p for p in BACKUP_ROOT.glob("*.zip") if p.is_file()])
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
+        print(f"[Backup] Cleanup shim failed: {e}")
 
 def auto_restore_save_file(save_path: Optional[Path] = None) -> bool:
     """
-    If the live save is missing, restore from the newest backup zip
-    that contains the same filename. Returns True if a restore occurred.
+    Restore a specific save filename from the newest archive that contains it.
     """
-    target = save_path or SAVE_FILE
-    if target.exists():
-        return False
-    latest = _latest_backup_zip()
-    if not latest:
-        print("[Restore] No backup archives found; nothing to restore.")
-        return False
-    target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with zipfile.ZipFile(latest, "r") as zf:
-            members = [m for m in zf.namelist() if os.path.basename(m) == target.name]
-            if not members:
-                print(f"[Restore] Backup {latest.name} does not contain {target.name}")
-                return False
-            zf.extract(members[0], path=str(target.parent))
-        print(f"[Restore] Restored {target.name} from {latest.name}")
-        return True
+        target_name = (save_path or SAVE_FILE).name
+        return bool(_bk().restore_from_latest(target_name))
     except Exception as e:
-        print(f"[Restore] Failed: {e}")
+        print(f"[Restore] Shim failed: {e}")
         return False
 
 # ----------------------------
@@ -1088,9 +1050,10 @@ def resolve_server_executable(
 
 def summarize_config() -> Dict[str, object]:
     exe = resolve_server_executable(SERVER_DIR, EXECUTABLE_NAMES)
+    bview = backups_cfg()  # unified, migrated view of backups.*
     return {
         "server_dir": str(SERVER_DIR),
-        "backup_root": str(BACKUP_ROOT),
+        "backup_root": str(bview.get("root") or get_path("backup_root")),
         "save_dir": str(SAVE_DIR),
         "logs_dir": str(LOGS_DIR),
         "executable_selected": str(exe) if exe else None,
@@ -1106,10 +1069,18 @@ def summarize_config() -> Dict[str, object]:
         "app_id": APP_ID or None,
         "features": {
             "enable_discord": bool(config.get("features", {}).get("enable_discord", True)),
-            "enable_backups": bool(config.get("features", {}).get("enable_backups", True)),
+            # keep for legacy UI until you remove it:
+            "enable_backups (legacy)": bool(config.get("features", {}).get("enable_backups", True)),
             "enable_steam_update": bool(config.get("features", {}).get("enable_steam_update", True)),
             "enable_crash_monitor": bool(config.get("features", {}).get("enable_crash_monitor", True)),
             "enable_log_rotation": bool(config.get("features", {}).get("enable_log_rotation", True)),
             "enable_query_port": bool(config.get("enable_query_port", True)),
-        }
+        },
+        # expose canonical backups view for the Manager UI
+        "backups": {
+            "enable": bool(bview.get("enable", True)),
+            "root": bview.get("root"),
+            "folders": bview.get("folders"),
+            "retention": bview.get("retention"),
+        },
     }

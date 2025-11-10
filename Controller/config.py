@@ -1,5 +1,5 @@
 """
-config.py  — resilient loader for config.json
+config.py  — resilient loader for config.ymal (legacy config.json)
 
 Search order for config.json:
   1) env VEIN_CONFIG (absolute path to a json file)
@@ -28,7 +28,7 @@ def _mgmt_root() -> Path:
     if env:
         return Path(env).resolve()
 
-    # Default: this file lives in ...\ServerManagment\Controller\config.py
+    # Default: this file lives in ...\ServerManagmen t\Controller\config.py
     controller_dir = Path(__file__).resolve().parent
     return controller_dir.parent  # -> ServerManagment
 
@@ -98,6 +98,19 @@ def _normalize_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
     for k in path_keys:
         if cfg.get(k):
             cfg[k] = _abs(cfg[k])
+
+    # normalize nested paths
+    b = cfg.get("backups")
+    if isinstance(b, dict):
+        if b.get("root"):     b["root"] = _abs(b["root"])
+        if b.get("save_dir"): b["save_dir"] = _abs(b["save_dir"])
+        cfg["backups"] = b
+
+    p = cfg.get("paths")
+    if isinstance(p, dict):
+        if p.get("save_dir"): p["save_dir"] = _abs(p["save_dir"])
+        if p.get("logs_dir"): p["logs_dir"] = _abs(p["logs_dir"])
+        cfg["paths"] = p
     return cfg
 
 
@@ -152,6 +165,19 @@ def _validate(cfg: Dict[str, Any]) -> None:
         else:
             problems.append(f"backup_root does not exist: {br}")
 
+    # also validate/create nested backups.root
+    b = cfg.get("backups")
+    if isinstance(b, dict):
+        br2 = b.get("root")
+        if br2 and not os.path.isdir(br2):
+            if AUTO_CREATE_BACKUP_ROOT:
+                try:
+                    os.makedirs(br2, exist_ok=True)
+                except Exception:
+                    problems.append(f"backups.root does not exist and could not be created: {br2}")
+            else:
+                problems.append(f"backups.root does not exist: {br2}")
+
     for key in ("game_port", "query_port"):
         val = cfg.get(key)
         if val is not None:
@@ -166,13 +192,31 @@ def _validate(cfg: Dict[str, Any]) -> None:
         raise ValueError("Config validation failed:\n- " + "\n- ".join(problems))
 
 def _load_first_existing(paths: list[Path]) -> tuple[Path, dict]:
-    for p in paths:
-        if p and p.exists():
+    """
+    Prefer YAML over JSON when both exist, but still allow either.
+    The GUI can set VEIN_CONFIG to explicitly choose one.
+    """
+    # 1) Explicit path (GUI-selected)
+    env_path = os.environ.get("VEIN_CONFIG")
+    if env_path and Path(env_path).exists():
+        p = Path(env_path)
+        with p.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) if p.suffix.lower() in (".yaml", ".yml") else json.load(f)
+        return p, data or {}
+
+    # 2) Fallback discovery
+    yaml_paths = [p for p in paths if p.suffix.lower() in (".yaml", ".yml")]
+    json_paths = [p for p in paths if p.suffix.lower() == ".json"]
+
+    # Prefer first existing YAML
+    for p in yaml_paths + json_paths:
+        if p.exists():
             with p.open("r", encoding="utf-8") as f:
-                if p.suffix.lower() in (".yaml", ".yml"):
-                    return p, yaml.safe_load(f)
-                return p, json.load(f)
-    raise FileNotFoundError("config file not found in: " + " | ".join(map(str, paths)))
+                data = yaml.safe_load(f) if p.suffix.lower() in (".yaml", ".yml") else json.load(f)
+            return p, data or {}
+
+    raise FileNotFoundError("No configuration file found in: " + " | ".join(str(p) for p in paths))
+
 
 def load_config() -> Dict[str, Any]:
     """Load and cache config.json; raise if missing/invalid."""

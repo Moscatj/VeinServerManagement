@@ -19,18 +19,18 @@ backup_folders:
   Autosave: G:/Servers/VeinServer/VeinServerManagement/Backups/Autosave
   Crash: G:/Servers/VeinServer/VeinServerManagement/Backups/Crash
 save_filenames:
-  - Server.vns
-  - Server.sav
+- Server.vns
+- Server.sav
 map_path: ''
 
 # --- SERVER & NETWORKING ------------------------------------------------------
 server_executables:
-  - VeinServer.exe
-  - VeinServer-Win64-Test.exe
+- VeinServer.exe
+- VeinServer-Win64-Test.exe
 preferred_exe: Vein/Binaries/Win64/VeinServer-Win64-Test.exe  # Relative path to preferred server binary.
 max_players: 8
 extra_launch_args:  # Additional CLI flags for the server.
-  - -SteamSockets
+- -SteamSockets
 headless_mode: true
 show_monitor_window: false
 multi_home_ip: 0.0.0.0
@@ -86,7 +86,7 @@ discord_webhook: ENV:DISCORD_WEBHOOK_URL  # Use ENV:DISCORD_WEBHOOK_URL to avoid
 # --- FEATURES -----------------------------------------------------------------
 features:  # Feature toggles (Discord + monitors).
   enable_discord: true
-  enable_backups: false
+  enable_backups: true
   enable_steam_update: true
   enable_crash_monitor: true
   enable_log_monitor: true
@@ -133,5 +133,5 @@ monitor:  # Log monitor behavior and notifications.
     heartbeat: false
     monitor_status: true
   backups:
-    on_player_logout: false
-    on_autosave: true
+    on_player_logout: true
+    on_autosave: false

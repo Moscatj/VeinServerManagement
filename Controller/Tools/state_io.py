@@ -2,7 +2,8 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
-import json
+from typing import Any, Dict
+import json, os
 
 STATE_SCHEMA_VERSION = "1.0"
 

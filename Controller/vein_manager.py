@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 import collections
 # --- Qt
 from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtWidgets import QGroupBox, QLabel, QPushButton, QGridLayout, QHBoxLayout, QWidget
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
@@ -310,6 +313,12 @@ def _runtime_paths(cfg_path: str) -> dict:
     rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
     server_dir = Path(cfg.get("server_dir") or ROOT.parent)
 
+    # prefer nested 'backups.root' from YAML, then fallback to legacy top-level
+    b = (cfg.get("backups", {}) or {})
+    b_root = b.get("root")
+    legacy = cfg.get("backup_root")
+    backup_root = Path(b_root or legacy or (ROOT / "Backups"))
+
     # Heartbeat seconds used by freshness window (prefer top-level; fallback to nested; else 60)
     hb_top = cfg.get("monitor_heartbeat_interval_seconds", None)
     hb_nested = (cfg.get("monitor", {}) or {}).get("heartbeat_interval_seconds", None)
@@ -328,7 +337,7 @@ def _runtime_paths(cfg_path: str) -> dict:
         "crash_state": rt / "crash_monitor_state.json",
         "logs_dir": Path(cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")),
         "absolute_log_file": Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None,
-        "backup_root": Path(cfg.get("backup_root") or (ROOT / "Backups")),
+        "backup_root": backup_root,
         "features": cfg.get("features", {}),
         "log_monitor_enabled": bool(cfg.get("features", {}).get("enable_log_monitor", True)),
         "crash_monitor_enabled": bool(cfg.get("features", {}).get("enable_crash_monitor", True)),
@@ -507,14 +516,35 @@ class StatusPoller(QtCore.QRunnable):
             cs = self._read_json(rp.get("crash_state", rt["state_crash"]))
         mode = (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
 
-        # Emit compact snapshot consumed by the UI
-        self.signals.ready.emit({
+        # Load config object once; very cheap and we already do it elsewhere
+        cfg_obj, _, _ = _load_any_config(self.cfg_path)
+        b = (cfg_obj.get("backups", {}) or {}) if isinstance(cfg_obj, dict) else {}
+        enabled = bool(b.get("enable", True))
+
+        # --- Backup state (optional if file missing) ---
+        backup_state_path = rp["runtime_dir"] / "backup.state.json"
+        bk = self._read_json(backup_state_path)
+
+        snapshot_backup = {
+            "enabled": enabled,
+            "last_utc": bk.get("last_utc") or bk.get("last_updated"),
+            "last_zip": bk.get("last_zip"),
+            "root": bk.get("root"),
+            "counts": bk.get("counts") or {},
+        }
+
+        # ...then include it in the emitted dict:
+        payload = {
             "server": bool(srv_on),
             "logmon": bool(lm_on),
             "logmon_fresh": bool(lm_fresh),
             "crashmon": bool(cm_on),
-            "crash_mode": mode,  # "running" | "stopped" | "restart_pending" | "unknown"
-        })
+            "crash_mode": mode,
+            "backup": snapshot_backup,
+        }
+
+        # Emit compact snapshot consumed by the UI
+        self.signals.ready.emit(payload)
 
 # --------------------------- Log tail (throttled) -----------------------------
 class FileTail(QtCore.QObject):
@@ -1071,6 +1101,34 @@ class Main(QtWidgets.QMainWindow):
         mon_v.addWidget(crashCard)
         mon_v.addStretch(1)
 
+        # Backups card
+        bkCard = QtWidgets.QGroupBox("Backups"); bkLay = QtWidgets.QGridLayout(bkCard)
+        self.lblBkEnabled = QtWidgets.QLabel("—")
+        self.lblBkLast    = QtWidgets.QLabel("—")
+        self.lblBkFile    = QtWidgets.QLabel("—")
+        self.lblBkTotal   = QtWidgets.QLabel("0")
+        self.lblBkCounts  = QtWidgets.QLabel("—")
+        self.lblBkCounts.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.lblBkCounts.setStyleSheet("font-family: Consolas, 'Courier New', monospace;")
+
+        self.btnBkNow  = QtWidgets.QPushButton("Backup Now")
+        self.btnBkOpen = QtWidgets.QPushButton("Open Folder")
+        self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
+        self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
+
+        r = 0
+        bkLay.addWidget(QtWidgets.QLabel("Enabled:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkEnabled, r, 1); r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Last (UTC):"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkLast, r, 1); r += 1
+        bkLay.addWidget(QtWidgets.QLabel("File:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkFile, r, 1); r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Total:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkTotal, r, 1); r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Per-reason:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkCounts, r, 1); r += 1
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.btnBkNow); row.addWidget(self.btnBkOpen); row.addStretch(1)
+        bkLay.addLayout(row, r, 0, 1, 2)
+
+        mon_v.addWidget(bkCard)
+
         self.tabs.addTab(mon_tab, "Monitors")
 
         # store the original tab titles by index for stable lookups/titles
@@ -1194,6 +1252,41 @@ class Main(QtWidgets.QMainWindow):
             return
         base = self._strip_cnt(self.tabs.tabText(idx))
         self.tabs.setTabText(idx, base if count <= 0 else f"{base} ({count})")
+
+    # --- backup Button helpers -------------------------------------------------
+    def _on_backup_now_clicked(self):
+        try:
+            # make the active config path visible to Tools.backups
+            os.environ["VEIN_CONFIG"] = self.config_path
+
+            from Tools.backups import make_backup, BackupError, BackupSkip
+            path = make_backup("Manual")
+            self._status(f"Backup created: {getattr(path, 'name', str(path))}")
+        except BackupSkip as e:
+            self._status(f"Backup skipped: {e}")
+        except BackupError as e:
+            self._status(f"Backup failed: {e}")
+        except Exception as e:
+            self._status(f"Backup failed: {e}")
+
+
+    def _on_open_backups_clicked(self):
+        root = getattr(self, "_bk_root", None)
+        if not root:
+            # Fallback to current config if state is missing
+            try:
+                cfg, _, _ = _load_any_config(self.config_path)
+                b = (cfg.get("backups", {}) or {}) if isinstance(cfg, dict) else {}
+                root = b.get("root")
+            except Exception:
+                root = None
+        if not root:
+            self._status("Backups folder not found.")
+            return
+        try:
+            QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(root)))
+        except Exception:
+            self._status("Failed to open backups folder.")
 
     # --- Search tab helpers -------------------------------------------------
     def _ensure_search_tab(self) -> str:
@@ -1885,11 +1978,6 @@ class Main(QtWidgets.QMainWindow):
             self._status("Crash Monitor stop requested.")
 
     # ----------------------- Background status wiring -------------------------
-    def _kick_status_poll(self):
-        worker = StatusPoller(self.config_path)
-        worker.signals.ready.connect(self._apply_status_snapshot)
-        self._pool.start(worker)
-
     def _apply_status_snapshot(self, snap: dict):
         # Update gumballs without blocking
         def dot(on, warn=False):
@@ -1935,11 +2023,44 @@ class Main(QtWidgets.QMainWindow):
         self.lblCrashDot.setStyleSheet(dot(cm_on))
         self.lblCrashLast.setText(f"Last heartbeat: {_age_str(cs.get('ts'))}")
 
-        # Compact state line (fallback info)
+        bk = snap.get("backup", {}) or {}
+        bk_last = bk.get("last_utc") or "—"
+        bk_file = bk.get("last_zip") or "—"
+        bk_total = (bk.get("counts") or {}).get("TOTAL", 0)
+
+        # --- Backups card update ---
+        bk_enabled = bool((snap.get("backup") or {}).get("enabled", True))
+        bk_counts  = (snap.get("backup") or {}).get("counts") or {}
+        age = _age_str(bk_last) if bk_last and bk_last != "—" else "—"
+        def _fmt_counts(d: dict) -> str:
+            if not d: return "—"
+            keys = [k for k in d.keys() if k != "TOTAL"]
+            keys.sort()
+            return "  ".join([*(f"{k}={d.get(k,0)}" for k in keys), f"TOTAL={d.get('TOTAL',0)}"])
+
+        self.lblBkEnabled.setText("ON" if bk_enabled else "OFF")
+        self.lblBkLast.setText(bk_last)
+        self.lblBkFile.setText(bk_file)
+        self.lblBkTotal.setText(str(bk_total))
+        self.lblBkCounts.setText(_fmt_counts(bk_counts))
+        self.btnBkNow.setEnabled(bk_enabled)
+        self.lblBkLast.setText(f"{bk_last}  ({age})")
+
+        # Save root for the open handler
+        self._bk_root = (snap.get("backup") or {}).get("root")
+
+        # Extend the compact state line
         self.state_box.setText(
             f"Server flag: {'present' if _file_exists(rp['state_flag']) else 'absent'}   |   "
-            f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}"
+            f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}   |   "
+            f"Backup: Last={bk_last} • File={bk_file} • Total={bk_total}"
         )
+
+        # Nice UX touch: show details on the “Open Backups” button
+        try:
+            self.btn_bak.setToolTip(f"Last backup: {bk_last}\nFile: {bk_file}\nTotal archives: {bk_total}")
+        except Exception:
+            pass
         
         # Auto-(re)start log monitor if:
         #   - server is running,
@@ -1973,6 +2094,10 @@ class Main(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+    def _kick_status_poll(self):
+        worker = StatusPoller(self.config_path)
+        worker.signals.ready.connect(self._apply_status_snapshot)
+        self._pool.start(worker)
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:
