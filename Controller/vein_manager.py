@@ -13,6 +13,12 @@ from PySide6.QtWidgets import QGroupBox, QLabel, QPushButton, QGridLayout, QHBox
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 
+try:
+    from ruamel.yaml import YAML
+    _HAVE_RUAMEL = True
+except Exception:
+    _HAVE_RUAMEL = False
+
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
 ROOT = Path(ENV.get("VEIN_MGMT_ROOT", r"G:\Servers\VeinServer\VeinServerManagement"))
@@ -59,15 +65,6 @@ DEFAULT_CONFIG = Path(ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CO
 
 #----------------- config IO (YAML+JSON) --------------------------------------
 from typing import Tuple as _Tuple
-try:
-    from ruamel.yaml import YAML  # comment-preserving round-trip
-    _HAVE_RUAMEL = True
-except Exception:
-    _HAVE_RUAMEL = False
-
-def _is_yaml_path(p: str) -> bool:
-    s = (p or "").lower()
-    return s.endswith(".yaml") or s.endswith(".yml")
 
 def _setup_process_logging():
     """Redirect VeinManager stdout/stderr to Logs and capture crashes."""
@@ -113,30 +110,33 @@ def _setup_process_logging():
         # Last-ditch: don’t crash if logging setup fails
         print(f"[WARN] Failed to initialize process logging: {e}")
 
-def _load_any_config(path: str):
+# --- Config loading that preserves YAML order+comments -----------------------
+from pathlib import Path
+
+# --- Config loading that preserves YAML order+comments -----------------------
+from pathlib import Path
+
+def _load_any_config(path: str | Path):
     """
-    Returns (obj, kind, ydoc) where:
-      - obj: Python dict/list tree
-      - kind: "yaml" or "json"
-      - ydoc: ruamel.yaml round-trip doc if YAML (else None)
+    Returns a triple: (obj_dict, kind_str, yaml_doc_or_None)
+    - kind_str: 'yaml' or 'json'
+    - yaml_doc_or_None: ruamel.yaml CommentedMap when YAML, else None
     """
-    from pathlib import Path
     p = Path(path)
-    if not p.exists():
-        return {}, "json", None
     txt = p.read_text(encoding="utf-8")
-    if _is_yaml_path(path):
+    suf = p.suffix.lower()
+    if suf in (".yaml", ".yml"):
         if not _HAVE_RUAMEL:
-            raise RuntimeError("YAML selected but ruamel.yaml is not installed.")
+            raise RuntimeError("YAML config selected but ruamel.yaml is not installed")
         y = YAML()
         y.preserve_quotes = True
-        y.width = 4096
-        ydoc = y.load(txt)
-        # ruamel can yield CommentedMap/Seq; treat it as 'obj'
-        return ydoc, "yaml", ydoc
+        doc = y.load(txt)
+        data = dict(doc) if isinstance(doc, dict) else {}
+        return data, "yaml", doc
     else:
-        import json
-        return json.loads(txt), "json", None
+        import json as _json
+        data = _json.loads(txt) if txt.strip() else {}
+        return data, "json", None
 
 def _dump_any_config(obj, kind: str, ydoc=None) -> str:
     from io import StringIO
@@ -154,13 +154,6 @@ def _dump_any_config(obj, kind: str, ydoc=None) -> str:
     else:
         import json
         return json.dumps(obj, indent=2)
-
-def _list_config_files(folder: Path) -> list[str]:
-    files = []
-    files += [p.name for p in folder.glob("*.json")]
-    files += [p.name for p in folder.glob("*.yaml")]
-    files += [p.name for p in folder.glob("*.yml")]
-    return sorted(files)
 
 # ------------------------- Subprocess helpers --------------------------------
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -395,9 +388,70 @@ def _age_str(iso_ts: str | None) -> str:
     except Exception:
         return "—"
 
+def _iter_keys_preserve(node):
+    try:
+        return list(node.keys())
+    except Exception:
+        return list(node) if isinstance(node, (list, tuple)) else []
+
+def _human_title(k: str) -> str:
+    return (k or "").replace("_", " ").strip().title() or "Top-level"
+
+class StatusBus(QtCore.QObject):
+    ready = QtCore.Signal(dict)
+
 # ----------------------------- Background poller ------------------------------
 class StatusSnapshot(QtCore.QObject):
     ready = QtCore.Signal(dict)
+
+def _map_v2_paths(raw: dict) -> dict:
+    """
+    Build a minimal flat view for tools expecting legacy keys.
+    v2 examples:
+      paths:
+        server: G:\Servers\VeinServer\Vein
+        runtime: G:\Servers\VeinServer\VeinServerManagement\Runtime
+        logs: G:\Servers\VeinServer\Vein\Saved\Logs
+        saves: G:\Servers\VeinServer\Vein\Saved\SaveGames
+    """
+    p = raw.get("paths", {}) or {}
+    def pick(*keys, default=""):
+        for k in keys:
+            v = p.get(k) or raw.get(k)
+            if v: return v
+        return default
+    flat = {
+        "server_dir": pick("server", "server_dir"),
+        "runtime_dir": pick("runtime", "runtime_dir"),
+        "logs_dir":   pick("logs", "logs_dir"),
+        "save_dir":   pick("saves", "save_dir"),
+        # executables
+        "server_executables": list(raw.get("server_executables", [])) \
+                              or list((raw.get("server", {}) or {}).get("executables", [])),
+        "preferred_exe": (raw.get("preferred_exe") or
+                          (raw.get("server", {}) or {}).get("preferred_exe") or ""),
+        # monitor knobs used by config_io
+        "monitor": raw.get("monitor", {}) or {},
+        "steam": raw.get("steam", {}) or {},
+        "backups": raw.get("backups", {}) or raw.get("backup", {}) or {},
+    }
+    # if any required path is empty, leave as-is; config_io will warn but not fatal
+    return flat
+
+def reload_config(self):
+    # stop any previous poller
+    if self._poller:
+        self._poller.stop_flag = True
+        self._poller = None
+
+    p = StatusPoller(self.config_path)
+    p.setAutoDelete(False)          # IMPORTANT: don't auto-delete while run() is mid-emit
+    p.signals = self.status_bus     # reuse the stable, parented bus
+    p.stop_flag = False
+    self._poller = p
+    self._pool.start(p)
+
+    self._start_status_poller()   # restart with the new config
 
 class StatusPoller(QtCore.QRunnable):
     """
@@ -406,24 +460,79 @@ class StatusPoller(QtCore.QRunnable):
     """
     def __init__(self, cfg_path: str):
         super().__init__()
-        self.setAutoDelete(True)
         self.cfg_path = cfg_path
         self.signals = StatusSnapshot()
         self._last_tasklist_at = 0.0
-       
-        #cache validated config + hb knobs once
-        vcfg = load_and_validate_config(cfg_path, fatal=False)
-        self.hb_seconds = vcfg.hb_seconds
-        self.fresh_mult = vcfg.fresh_window_multiplier
-        self.paths = {
-            "server_dir": vcfg.server_dir,
-            "runtime_dir": vcfg.runtime_dir,
-            "logs_dir": vcfg.logs_dir,
-            "save_dir": vcfg.save_dir,
-        }
-        self.selected_exe = vcfg.selected_exe  # if GUI needs to display/confirm
+        self.stop_flag = False
+
+        # --- Try legacy/flat loader first (keeps old installs working)
+        vcfg = None
+        try:
+            vcfg = load_and_validate_config(cfg_path, fatal=False)
+        except Exception:
+            vcfg = None
+
+        if vcfg:
+            # Legacy (v1) field names
+            self.hb_seconds = getattr(vcfg, "hb_seconds", 60)
+            self.fresh_mult = getattr(vcfg, "fresh_window_multiplier", 2.0)
+            self.paths = {
+                "server_dir": getattr(vcfg, "server_dir", ""),
+                "runtime_dir": getattr(vcfg, "runtime_dir", ""),
+                "logs_dir": getattr(vcfg, "logs_dir", ""),
+                "save_dir": getattr(vcfg, "save_dir", ""),
+            }
+            self.selected_exe = getattr(vcfg, "selected_exe", "")
+        else:
+            # Fallback to v2: load with the same universal loader used by the GUI
+            obj, kind, _ = _load_any_config(cfg_path)
+            obj = obj if isinstance(obj, dict) else {}
+
+            p = (obj.get("paths", {}) or {})
+            self.paths = {
+                "server_dir": p.get("server") or p.get("server_dir") or "",
+                "runtime_dir": p.get("runtime") or p.get("runtime_dir") or "",
+                "logs_dir": p.get("logs") or p.get("logs_dir") or "",
+                "save_dir": p.get("saves") or p.get("save_dir") or "",
+            }
+
+            # Heartbeat knobs live in log_monitor (v2). Fallback to old "monitor" if present.
+            lm = (obj.get("log_monitor", {}) or {})
+            mon = (obj.get("monitor", {}) or {})
+            self.hb_seconds = int(lm.get("heartbeat_seconds", lm.get("heartbeat_interval_seconds",
+                                   mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", 60)))))
+            self.hb_seconds = max(5, self.hb_seconds)
+            self.fresh_mult = float(lm.get("fresh_window_multiplier", mon.get("fresh_window_multiplier", 2.0)))
+            # clamp fresh multiplier a little to avoid nonsense
+            self.fresh_mult = max(0.25, min(10.0, self.fresh_mult))
+
+            # Preferred exe (if GUI wants to display/confirm)
+            srv = (obj.get("server", {}) or {})
+            self.selected_exe = srv.get("preferred_exe", "")
+
+        # Normalize to Path objects we’ll use later
+        for k, v in list(self.paths.items()):
+            self.paths[k] = str(v or "").strip()
 
     # --- StatusPoller helpers --- 
+        # --- v2-friendly path helpers (avoid depending on legacy helpers) ---
+    def _runtime_paths_v2(self) -> dict:
+        rd = Path(self.paths.get("runtime_dir", "") or "")
+        return {
+            "runtime_dir": rd,
+            "server_state": rd / "server.state.json",
+            "state_flag":   rd / "intent.json",               # your shutdown/intent flag
+        }
+
+    def _rt_paths_v2(self) -> dict:
+        rd = Path(self.paths.get("runtime_dir", "") or "")
+        return {
+            "pid_log":    rd / "log_monitor.pid",
+            "pid_crash":  rd / "crash_monitor.pid",
+            "state_log":  rd / "log_monitor.state.json",
+            "state_crash":rd / "crash_monitor.state.json",
+        }
+
     def _read_text(self, p: Path) -> str | None:
         try: return p.read_text(encoding="utf-8").strip()
         except Exception: return None
@@ -450,19 +559,23 @@ class StatusPoller(QtCore.QRunnable):
             return any(needle in (" " + line + " ") for line in out.splitlines())
         except Exception:
             return False
-
+   
     def _hb_knobs(self) -> tuple[int, float]:
-        """Read heartbeat knobs from the config (YAML or JSON)."""
+        """Read heartbeat knobs from config; v2 'log_monitor' first, fallback to 'monitor'."""
         try:
-            obj, kind, _ = _load_any_config(self.cfg_path)  # reuse the GUI's universal loader
-            mon = (obj.get("monitor", {}) or {}) if isinstance(obj, dict) else {}
-            hb = int(mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", 60)))
-            fresh_mult = float(mon.get("fresh_window_multiplier", 2.0))
+            obj, kind, _ = _load_any_config(self.cfg_path)
+            obj = obj if isinstance(obj, dict) else {}
+            lm = (obj.get("log_monitor", {}) or {})
+            mon = (obj.get("monitor", {}) or {})
+            hb = int(lm.get("heartbeat_seconds", lm.get("heartbeat_interval_seconds",
+                      mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", self.hb_seconds)))))
             hb = max(5, hb)
-            fresh_mult = 0.25 if fresh_mult < 0.25 else (10.0 if fresh_mult > 10.0 else fresh_mult)
+            fresh_mult = float(lm.get("fresh_window_multiplier",
+                               mon.get("fresh_window_multiplier", self.fresh_mult)))
+            fresh_mult = max(0.25, min(10.0, fresh_mult))
             return hb, fresh_mult
         except Exception:
-            return 60, 2.0
+            return self.hb_seconds, self.fresh_mult
 
 
     def _is_fresh(self, state_path: Path, hb_seconds: int, mult: float) -> bool:
@@ -486,65 +599,79 @@ class StatusPoller(QtCore.QRunnable):
             return False
 
     def run(self):
-        rp = _runtime_paths(self.cfg_path)
-        rt = _rt_paths(self.cfg_path)
+        try:
+            if self.stop_flag:
+                return
 
-        # --- Heartbeat knobs used by both monitors and GUI freshness
-        hb_seconds, fresh_mult = self._hb_knobs()
+            rp = self._runtime_paths_v2()
+            rt = self._rt_paths_v2()
+            hb_seconds, fresh_mult = self._hb_knobs()
 
-        # --- Server status: PID is truth source ---
-        ss = self._read_json(rp["server_state"])
-        pid_txt = str(ss.get("pid", "") or "").strip()
-        if not pid_txt:
-            # Fallback to shutdown/intent flag’s PID if present
-            flag = self._read_json(rp["state_flag"])
-            pid_txt = str(flag.get("pid", "") or "").strip()
-        srv_on = self._pid_alive(pid_txt)
+            # --- Heartbeat knobs used by both monitors and GUI freshness
+            hb_seconds, fresh_mult = self._hb_knobs()
 
-        # --- Log monitor ---
-        lm_pid = self._read_text(rt["pid_log"])
-        lm_on = self._pid_alive(lm_pid)
-        lm_fresh = self._is_fresh(rt["state_log"], hb_seconds, fresh_mult)
+            # --- Server status: PID is truth source ---
+            ss = self._read_json(rp["server_state"])
+            pid_txt = str(ss.get("pid", "") or "").strip()
+            if not pid_txt:
+                # Fallback to shutdown/intent flag’s PID if present
+                flag = self._read_json(rp["state_flag"])
+                pid_txt = str(flag.get("pid", "") or "").strip()
+            srv_on = self._pid_alive(pid_txt)
 
-        # --- Crash monitor ---
-        cm_pid = self._read_text(rt["pid_crash"])
-        cm_on = self._pid_alive(cm_pid)
-        # Use the same state file namespace as runtime paths
-        cs = self._read_json(rt["state_crash"])
-        # Backward compatibility: support the older crash_state path if present
-        if not cs:
-            cs = self._read_json(rp.get("crash_state", rt["state_crash"]))
-        mode = (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
+            # --- Log monitor ---
+            lm_pid = self._read_text(rt["pid_log"])
+            lm_on = self._pid_alive(lm_pid)
+            lm_fresh = self._is_fresh(rt["state_log"], hb_seconds, fresh_mult)
 
-        # Load config object once; very cheap and we already do it elsewhere
-        cfg_obj, _, _ = _load_any_config(self.cfg_path)
-        b = (cfg_obj.get("backups", {}) or {}) if isinstance(cfg_obj, dict) else {}
-        enabled = bool(b.get("enable", True))
+            # --- Crash monitor ---
+            cm_pid = self._read_text(rt["pid_crash"])
+            cm_on = self._pid_alive(cm_pid)
+            # Use the same state file namespace as runtime paths
+            cs = self._read_json(rt["state_crash"])
+            # Backward compatibility: support the older crash_state path if present
+            if not cs:
+                cs = self._read_json(rp.get("crash_state", rt["state_crash"]))
+            mode = (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
 
-        # --- Backup state (optional if file missing) ---
-        backup_state_path = rp["runtime_dir"] / "backup.state.json"
-        bk = self._read_json(backup_state_path)
+            # Load config object once; very cheap and we already do it elsewhere
+            cfg_obj, _, _ = _load_any_config(self.cfg_path)
+            b = (cfg_obj.get("backups", {}) or {}) if isinstance(cfg_obj, dict) else {}
+            enabled = bool(b.get("enable", True))
 
-        snapshot_backup = {
-            "enabled": enabled,
-            "last_utc": bk.get("last_utc") or bk.get("last_updated"),
-            "last_zip": bk.get("last_zip"),
-            "root": bk.get("root"),
-            "counts": bk.get("counts") or {},
-        }
+            # --- Backup state (optional if file missing) ---
+            backup_state_path = rp["runtime_dir"] / "backup.state.json"
+            bk = self._read_json(backup_state_path)
 
-        # ...then include it in the emitted dict:
-        payload = {
-            "server": bool(srv_on),
-            "logmon": bool(lm_on),
-            "logmon_fresh": bool(lm_fresh),
-            "crashmon": bool(cm_on),
-            "crash_mode": mode,
-            "backup": snapshot_backup,
-        }
+            snapshot_backup = {
+                "enabled": enabled,
+                "last_utc": bk.get("last_utc") or bk.get("last_updated"),
+                "last_zip": bk.get("last_zip"),
+                "root": bk.get("root"),
+                "counts": bk.get("counts") or {},
+            }
 
-        # Emit compact snapshot consumed by the UI
-        self.signals.ready.emit(payload)
+            # ...then include it in the emitted dict:
+            payload = {
+                "server": bool(srv_on),
+                "logmon": bool(lm_on),
+                "logmon_fresh": bool(lm_fresh),
+                "crashmon": bool(cm_on),
+                "crash_mode": mode,
+                "backup": snapshot_backup,
+            }
+
+            # Emit compact snapshot consumed by the UI
+            self.signals.ready.emit(payload)
+
+            if self.stop_flag:
+                return
+            if self.signals is not None:
+                # queued to the main thread automatically
+                self.signals.ready.emit(payload)
+        except Exception:
+            # never crash the GUI thread if the poller hiccups
+            pass
 
 # --------------------------- Log tail (throttled) -----------------------------
 class FileTail(QtCore.QObject):
@@ -809,6 +936,21 @@ class CollapsibleBox(QtWidgets.QWidget):
         suffix = f"  ({n})" if active else ""
         self.toggle.setText(self._title_base + suffix)
 
+    def setContentLayout(self, layout: QtWidgets.QLayout):
+        # Replace the internal vbox with the provided layout
+        # and reparent its items so collapsing still works.
+        # Keep a reference so callers can add rows into it.
+        # (Minimal, safe implementation)
+        # Remove old vbox’s widgets
+        while self.vbox.count():
+            item = self.vbox.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)
+        # Install new layout into the container
+        self.vbox = layout if isinstance(layout, QtWidgets.QVBoxLayout) else QtWidgets.QVBoxLayout(self.container)
+        self.container.setLayout(self.vbox)
+
 # ------------------------------ KV Row editor ---------------------------------
 class KVRow(QtWidgets.QWidget):
     changed = QtCore.Signal(tuple, object)
@@ -934,7 +1076,10 @@ class Main(QtWidgets.QMainWindow):
         self.tail_start()
 
         # 6) background status polling
+        self.status_bus = StatusBus(self)              # parented to the main window
+        self.status_bus.ready.connect(self._status)
         self._pool = QtCore.QThreadPool.globalInstance()
+        self._poller = None
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(2000)
         self._status_timer.timeout.connect(self._kick_status_poll)
@@ -1399,8 +1544,28 @@ class Main(QtWidgets.QMainWindow):
             self._hl = YamlHL(self.json.document()) if kind == "yaml" else JsonHL(self.json.document())
             self.json.blockSignals(False)
             self._build_tabs(self._data)
+
+            # Show version in status/title (with fallback)
+            try:
+                ver = getattr(self, "_cfg_version", None)
+                if ver is None:
+                    if isinstance(self._yaml_doc, dict) and "version" in self._yaml_doc:
+                        ver = self._yaml_doc.get("version")
+                    elif isinstance(self._data, dict) and "version" in self._data:
+                        ver = self._data.get("version")
+
+                if ver is not None:
+                    self._status(f"Loaded {kind.upper()} (Config v{ver}).")
+                    try:
+                        self.setWindowTitle(f"Vein Manager — Config v{ver}")
+                    except Exception:
+                        pass
+                else:
+                    self._status(f"Loaded {kind.upper()}.")
+            except Exception:
+                self._status(f"Loaded {kind.upper()}.")
+
             self._rebuild_base_titles()
-            self._status(f"Loaded {kind.upper()}.")
         except Exception as e:
             self._data = {}
             self.json.setPlainText("")
@@ -1492,26 +1657,29 @@ class Main(QtWidgets.QMainWindow):
         return re.sub(r'[^a-z0-9]+', '', (s or '').lower())
 
     def _index_row(self, tab_name: str, row: "KVRow"):
-        """
-        Build a token set for a row so the filter can match label, full dotted path,
-        snake path, and humanized variants.
-        """
         if not hasattr(self, "_search_index"):
-            self._search_index = {}  # KVRow -> set[str]
+            self._search_index = {}
 
         label = row.label_text or ""
         path = row.path or ()
-        dotted = ".".join(path)                     # e.g., monitor.recheck_newest_every_seconds
-        snake  = "_".join(path)                     # monitor_recheck_newest_every_seconds
-        spaced = " ".join(path)                     # monitor recheck newest every seconds
+        dotted = ".".join(path)
+        snake  = "_".join(path)
+        spaced = " ".join(path)
 
-        # Also allow "Tab.Section.Key" style lookups to feel natural in Search
+        # Find the section this row belongs to (now a tuple full-path)
         section = None
         for (t, s), rows in self._rows_in_section.items():
             if t == tab_name and row in rows:
                 section = s
                 break
-        tab_path = ".".join([p for p in (tab_name, section) if p])  # "Monitor.track" etc.
+
+        # 🔧 NEW: normalize section to a dotted string
+        if isinstance(section, (tuple, list)):
+            section_str = ".".join(section)
+        else:
+            section_str = section  # None or str
+
+        tab_path = ".".join([p for p in (tab_name, section_str) if p])
 
         raw_candidates = {
             label,
@@ -1519,136 +1687,123 @@ class Main(QtWidgets.QMainWindow):
             f"{tab_path}.{label}" if tab_path else label,
             f"{tab_path}.{dotted}" if tab_path else dotted,
         }
-
-        # Keep both raw and normalized forms so substring matches still work
         toks = set()
         for r in raw_candidates:
             if r:
                 toks.add(r.lower())
                 toks.add(self._norm(r))
         self._search_index[row] = toks
+    
+    def _add_scalar_row(self, tab_name: str, layout: QtWidgets.QVBoxLayout,
+                    path: tuple[str, ...], value, depth: int):
+        """
+        Add a single KVRow into the current layout (no legacy sectionizer).
+        Indents visually based on depth; indexes for search; tracks section membership.
+        """
+        # Label = last segment only (humanized); search still gets full path
+        label = self._humanize_label(path[-1] if path else "")
+        row = KVRow(label, path, value)
+        row.changed.connect(self._row_changed)
+
+        # visual indent relative to tab root (depth 0 = tab root dict)
+        if hasattr(row, "layout"):
+            row.layout().setContentsMargins(12 * max(depth, 0), 0, 0, 0)
+
+        layout.addWidget(row)
+
+        # book-keeping for search/filter
+        self.rows[path] = row
+        self._rows_by_tab[tab_name].append(row)
+
+        # also attach it to the closest section box (if any)
+        # we store sections by full-path tuples
+        parent_section = tuple(path[:-1])  # the dict that owns this scalar
+        if hasattr(self, "_section_boxes") and (tab_name, parent_section) in self._section_boxes:
+            self._rows_in_section.setdefault((tab_name, parent_section), []).append(row)
+
+        # build search tokens
+        self._index_row(tab_name, row)
+
 
     def _build_tabs(self, data: dict):
-        """Auto-build tabs from the config hierarchy.
-
-        Rules:
-        - Every top-level key that's a dict → its own tab (Title Cased).
-        - Top-level scalars → 'Top-level' tab.
-        - Nested dicts are flattened to dotted keys within their parent tab.
-        - Lists are rendered as comma-joined strings (still editable).
-        """
+        """Build tabs with unlimited nested collapsible sections, preserving YAML order."""
+        # reset structures
         self._sections_by_tab.clear()
         self._rows_in_section.clear()
+        self._rows_by_tab.clear()
+        self.rows.clear()
+        self._search_index = {}
+        self._section_boxes = {}  # (tab, full_path_tuple) -> CollapsibleBox
 
-        # Remove all dynamic tabs (keep Monitors and Search if present)
+        # remove all tabs except fixed ones
         fixed = {"Monitors", getattr(self, "_search_tab_name", "Search")}
         for i in reversed(range(self.tabs.count())):
             base = self._strip_cnt(self.tabs.tabText(i))
             if base not in fixed:
                 self.tabs.removeTab(i)
 
-        # clear existing row widgets BEFORE wiping the registries
-        for vbox in self.tab_layouts.values():
+        # clear layouts of kept tabs (Monitors/Search rebuilt on demand)
+        for name in list(self.tab_layouts.keys()):
+            vbox = self.tab_layouts[name]
             while vbox.count():
                 w = vbox.takeAt(0).widget()
-                if w: w.deleteLater()
-
-        # reset dynamic tab registries
+                if w:
+                    w.deleteLater()
         self.tab_widgets.clear()
         self.tab_layouts.clear()
-        self._rows_by_tab.clear()
-        self.rows.clear()
 
-        self._search_index = {}
-
-        # Ensure a Top-level tab exists for scalars
+        # ensure Top-level tab for stray scalars
         self._add_tab("Top-level")
 
-        def tab_name_for_top_key(k: str) -> str:
-            # Pretty name (e.g., 'nightly_backup' -> 'Nightly Backup')
-            if not k: return "Top-level"
-            name = k.replace("_", " ").strip().title()
-            return name
+        # capture version, hide from editor
+        setattr(self, "_cfg_version", None)
+        if isinstance(data, dict) and "version" in data:
+            self._cfg_version = data.get("version")
 
-        def looks_path_key(k: str) -> bool:
-            k = (k or "").lower()
-            return any(t in k for t in ("path", "file", "dir", "folder", "root"))
-
-        def flatten_into_tab(tab: str, prefix: tuple[str, ...], node: Any):
-            if isinstance(node, dict):
-                for ck in sorted(node.keys(), key=lambda s: str(s)):
-                    flatten_into_tab(tab, prefix + (ck,), node[ck])
-                return
-            label = ".".join(prefix)
-            val = node if not isinstance(node, list) else ", ".join(str(x) for x in node)
-            self._add_row_to_tab_or_section(tab, label, prefix, val)
-
-        # 1) Top-level pass: scalars → Top-level, dicts → own tab
+        # top-level: dicts become tabs (original order), scalars → Top-level
         dict_tabs: list[tuple[str, dict]] = []
-        for k in sorted(data.keys(), key=lambda s: str(s)):
+        for k in _iter_keys_preserve(data):
+            if k == "version":
+                continue
             v = data[k]
             if isinstance(v, dict):
                 dict_tabs.append((k, v))
             else:
-                self._add_row_to_tab_or_section("Top-level", k, (k,), v)
+                self._add_scalar_row("Top-level", self.tab_layouts["Top-level"], (str(k),), v, depth=0)
 
-        # 2) For each top-level dict, flatten into its own tab
-        for k, node in dict_tabs:
-            tname = tab_name_for_top_key(k)
-            # Decide which second-level keys become collapsible sections:
-            # Only dict-valued children one level below the tab root.
-            section_keys = {str(ck) for ck, cv in (node.items() if isinstance(node, dict) else [])
-                            if isinstance(cv, dict)}
-            self._section_keys_by_tab[tname] = section_keys
+        # recursive renderer
+        def render_into(tab_name: str, layout: QtWidgets.QVBoxLayout,
+                prefix: tuple[str, ...], node, depth: int):
+            if isinstance(node, dict):
+                inner_layout = layout
+                if depth > 0:  # every dict below the tab root gets a box
+                    title = _human_title(prefix[-1])
+                    #title = _human_title(" / ".join(prefix[1:]))
+                    box = CollapsibleBox(title)
+                    layout.addWidget(box)
+                    inner_layout = box.layout_for_rows()
+                    self._sections_by_tab.setdefault(tab_name, {})[prefix] = box
+                    self._section_boxes[(tab_name, prefix)] = box
 
-            if k == "features" and isinstance(node, dict):
-                # show just "enable_log_monitor", etc.
-                for fk in sorted(node.keys(), key=lambda s: str(s)):
-                    label = f"{k}.{fk}"                   # becomes just "enable_log_monitor" by _pretty_label
-                    self._add_row_to_tab_or_section(tname, label, (k, fk), node[fk])
+                for ck in _iter_keys_preserve(node):
+                    render_into(tab_name, inner_layout, prefix + (str(ck),), node[ck], depth + 1)
             else:
-                flatten_into_tab(tname, (k,), node)
-        # 3) Paths convenience: if many 'path/dir' top-level keys exist, also mirror them into a 'Paths' tab
-        path_keys = [(k, data[k]) for k in data.keys() if not isinstance(data[k], dict) and looks_path_key(k)]
-        if path_keys:
-            self._add_tab("Paths")
-            for k, v in sorted(path_keys, key=lambda kv: kv[0]):
-                self._add_row_to_tab_or_section("Paths", k, (k,), v)
+                val = node if not isinstance(node, list) else ", ".join(str(x) for x in node)
+                self._add_scalar_row(tab_name, layout, prefix, val, depth=max(depth - 1, 0))
 
-        # 4) Stretchers and filter pass
-        for vbox in self.tab_layouts.values():
-            vbox.addStretch(1)
+
+        # build each tab
+        for k, node in dict_tabs:
+            tab_name = _human_title(str(k))
+            self._add_tab(tab_name)
+            render_into(tab_name, self.tab_layouts[tab_name], (str(k),), node, depth=0)
+            self.tab_layouts[tab_name].addStretch(1)
+
+        # finish Top-level with a stretch
+        self.tab_layouts["Top-level"].addStretch(1)
+
+        # apply current filter so counts/visibility are correct
         self._apply_filter(self.filter.text())
-
-    def _collect_matches(self, text: str, include_values: bool = True):
-        """Return list[(tab_name, KVRow)] that match the filter."""
-        t = (text or "").strip()
-        if not t:
-            return []
-
-        t_raw = t.lower()
-        t_norm = self._norm(t)
-
-        hits = []
-        for tab_name, rows in self._rows_by_tab.items():
-            for r in rows:
-                toks = (self._search_index.get(r) or set())
-
-                # 1) token-based match (raw or normalized substring)
-                ok = any((t_raw in tok) or (t_norm and t_norm in tok) for tok in toks)
-
-                # 2) optional value-based match (preserve old behavior)
-                if not ok and include_values:
-                    try:
-                        val_s = str(r.value())
-                        ok = (t_raw in val_s.lower()) or (t_norm in self._norm(val_s))
-                    except Exception:
-                        ok = False
-
-                if ok:
-                    hits.append((tab_name, r))
-        return hits
-
     
     def _make_proxy_row(self, src_row: "KVRow") -> "KVRow":
         """
@@ -1716,10 +1871,82 @@ class Main(QtWidgets.QMainWindow):
         except Exception as e:
             self._status(f"Parse error: {e}")
 
+    def _read_cfg_root_for_backups(self):
+        try:
+            cfg, _, _ = _load_any_config(self.config_path)
+            b = (cfg.get("backups", {}) or {})
+            root = (b.get("root") or b.get("paths", {}).get("root") or None)
+            return Path(root) if root else None
+        except Exception:
+            return None
+
+    def _read_cfg_root_for_backups(self):
+        try:
+            cfg, _, _ = _load_any_config(self.config_path)
+            b = (cfg.get("backups", {}) or {})
+            root = (b.get("root") or b.get("paths", {}).get("root") or None)
+            return Path(root) if root else None
+        except Exception:
+            return None
+
+    def _bump_version_in_yaml_doc(self):
+        try:
+            if self._cfg_kind != "yaml" or self._yaml_doc is None:
+                return
+            y = self._yaml_doc
+            if "version" in y:
+                s = str(y["version"]).strip()
+                parts = s.split(".")
+                if len(parts) == 1:
+                    y["version"] = f"{parts[0]}.1"
+                else:
+                    major = parts[0]
+                    try:
+                        minor = int(parts[1]) + 1
+                    except Exception:
+                        minor = 1
+                    y["version"] = f"{major}.{minor}"
+        except Exception:
+            pass
+
     def save_atomic(self):
-        """Save exactly what’s in the text editor. (KV edits keep text in sync.)"""
+        """Save safely, make a timestamped backup, and (optionally) bump version."""
         try:
             path = Path(self.config_path)
+
+            # 0) Backup current file first
+            if path.exists():
+                bk_root = self._read_cfg_root_for_backups() or Path(__file__).resolve().parents[1] / "Backups"
+                (bk_root / "Configs").mkdir(parents=True, exist_ok=True)
+                ts = QtCore.QDateTime.currentDateTimeUtc().toString("yyyy-MM-ddThh-mm-ss-zzz'Z'")
+                backup_path = bk_root / "Configs" / f"{path.stem}-{ts}{path.suffix}"
+                try:
+                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                except Exception:
+                    pass
+
+            # 1) Optional version bump (toggle lives in your config; adjust path if needed)
+            try:
+                cfg, kind, ydoc = _load_any_config(self.config_path)
+                auto_bump = False
+                try:
+                    auto_bump = bool((cfg.get("lifecycle", {}) or {}).get("auto_bump_version", False))
+                except Exception:
+                    auto_bump = False
+
+                if auto_bump and self._cfg_kind == "yaml" and self._yaml_doc is not None:
+                    if not hasattr(self, "_yaml_doc") or self._yaml_doc is None:
+                        self._status("Config saved (no version bump: legacy format).")
+                        return
+                    self._bump_version_in_yaml_doc()
+                    # mirror updated YAML into editor
+                    self.json.blockSignals(True)
+                    self.json.setPlainText(_dump_any_config(self._data, "yaml", ydoc=self._yaml_doc))
+                    self.json.blockSignals(False)
+            except Exception:
+                pass
+
+            # 2) Atomic write
             tmp = path.with_suffix(path.suffix + ".tmp")
             self._saving = True
             with tmp.open("w", encoding="utf-8") as f:
@@ -2169,7 +2396,10 @@ class Main(QtWidgets.QMainWindow):
                     matches.append(r)
 
         # 2) Sections: show/hide by match, and set section counts by match flag
-        for (tab, section), rows in self._rows_in_section.items():
+        for key, rows in self._rows_in_section.items():
+            if not isinstance(key, tuple) or len(key) != 2:
+                continue
+            tab, section = key
             mcount = sum(1 for r in rows if self._row_matched(r))
             box = self._sections_by_tab.get(tab, {}).get(section)
             if box:

@@ -236,6 +236,85 @@ def _write_manifest(zf: zipfile.ZipFile, *, reason: str, save_name: str, src_pat
     }
     zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
+# --- Log snapshot config (separate from save backups) ------------------------
+def _log_root() -> Path:
+    cfg = _cfg()
+    # allow overrides
+    r = (cfg.get("log_backup_root")
+         or (cfg.get("paths", {}) or {}).get("log_backup_root"))
+    if r:
+        return Path(str(r))
+    # default: Backups\Logs under the standard backup root
+    return _root() / "Logs"
+
+def _log_retention() -> dict:
+    cfg = _cfg()
+    keep = (cfg.get("log_backup_max_files", 100))
+    days = (cfg.get("log_backup_max_age_days", 30))
+    return {"max_files": int(keep), "max_age_days": int(days)}
+
+def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
+    """
+    Copy+zip a log snapshot to Backups\Logs with a timestamped name.
+    Does NOT touch or truncate the live log file.
+    """
+    try:
+        if not src or not src.exists():
+            return None
+        dst_root = _log_root()
+        dst_root.mkdir(parents=True, exist_ok=True)
+
+        stamp = now_iso().replace(":", "-").replace(".", "-")
+        base  = f"Vein-log-{label + '_' if label else ''}{stamp}.log"
+        raw   = dst_root / base
+        zip_p = dst_root / (base + ".zip")
+
+        shutil.copy2(src, raw)
+        with zipfile.ZipFile(zip_p, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(raw, arcname=raw.name)
+        raw.unlink(missing_ok=True)
+
+        # optional: Discord breadcrumb (channel “monitor” keeps it consistent)
+        try:
+            if is_discord_channel_enabled("monitor"):
+                send_discord_message(f"🧾 Log snapshot archived: `{zip_p.name}`", channel="monitor")
+        except Exception:
+            pass
+
+        _prune_log_snapshots()
+        return zip_p
+    except Exception as e:
+        print(f"[Logs] export_log_snapshot() failed: {e}")
+        return None
+
+def _prune_log_snapshots() -> dict:
+    """Count/age prune for Backups\\Logs."""
+    policy = _log_retention()
+    root   = _log_root()
+    root.mkdir(parents=True, exist_ok=True)
+
+    deleted = 0
+    zips = sorted([p for p in root.glob("*.log.zip") if p.is_file()],
+                  key=lambda p: p.stat().st_mtime)
+    # by count
+    while len(zips) > policy["max_files"]:
+        old = zips.pop(0)
+        try:
+            old.unlink(missing_ok=True)
+            deleted += 1
+        except Exception:
+            pass
+    # by age
+    cutoff = time.time() - policy["max_age_days"] * 86400
+    for p in list(zips):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+                deleted += 1
+        except Exception:
+            pass
+    return {"deleted": deleted}
+
 # -----------------------------
 # Public API
 # -----------------------------

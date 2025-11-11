@@ -1,164 +1,248 @@
-# =============================================================================
-# Vein Server Management — Configuration (YAML, concise)
-# -----------------------------------------------------------------------------
-# Keep keys unchanged for compatibility. Section headers group related settings.
-# Only ambiguous values include short inline notes. Add more as needed.
-# =============================================================================
+# version: used by GUI for display; auto-bumped when auto_bump_version=true under lifecycle
+version: "2.0"
 
-# --- PATHS & DIRECTORIES ------------------------------------------------------
-server_dir: G:/Servers/VeinServer
-runtime_dir: G:/Servers/VeinServer/VeinServerManagement/Runtime
-save_dir: G:/Servers/VeinServer/Vein/Saved/SaveGames
-logs_dir: G:/Servers/VeinServer/Vein/Saved/Logs
-absolute_log_file: G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log
-mgmt_log_dir: G:/Servers/VeinServer/VeinServerManagement/Logs
-backup_root: G:/Servers/VeinServer/VeinServerManagement/Backups
-backup_folders:
-  Manual: G:/Servers/VeinServer/VeinServerManagement/Backups/Manual
-  Startup: G:/Servers/VeinServer/VeinServerManagement/Backups/Startup
-  Autosave: G:/Servers/VeinServer/VeinServerManagement/Backups/Autosave
-  Crash: G:/Servers/VeinServer/VeinServerManagement/Backups/Crash
-save_filenames:
-- Server.vns
-- Server.sav
-map_path: ''
+# =============================== PATHS (TAB) ================================
+paths:                      # File system locations used by tools
+  server_root: "G:/Servers/VeinServer"
+  runtime_dir: "G:/Servers/VeinServer/VeinServerManagement/Runtime"   # temp/state files
+  saves_dir:   "G:/Servers/VeinServer/Vein/Saved/SaveGames"           # .sav/.vns
+  logs_dir:    "G:/Servers/VeinServer/Vein/Saved/Logs"                # live Vein.log
+  absolute_log_file: "G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log" # override if needed
+  mgmt_log_dir: "G:/Servers/VeinServer/VeinServerManagement/Logs"     # stdout of our tools
 
-# --- SERVER & NETWORKING ------------------------------------------------------
-server_executables:
-- VeinServer.exe
-- VeinServer-Win64-Test.exe
-preferred_exe: Vein/Binaries/Win64/VeinServer-Win64-Test.exe  # Relative path to preferred server binary.
-max_players: 8
-extra_launch_args:  # Additional CLI flags for the server.
-- -SteamSockets
-headless_mode: true
-show_monitor_window: false
-multi_home_ip: 0.0.0.0
-game_port: 7777
-query_port: 27015
-enable_query_port: true  # Disable if your network blocks the query port.
-kill_ue_helpers_on_shutdown: true
+# =============================== SERVER (TAB) ===============================
+server:                     # How we launch the dedicated server
+  executables:              # Candidates (relative to server_root)
+    - "Vein/Binaries/Win64/VeinServer.exe"
+    - "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
+  preferred_exe: "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"      # chosen binary
+  extra_launch_args:        # Additional CLI flags
+    - "-SteamSockets"
+  headless_mode: true
+  show_monitor_window: false
+  multi_home_ip: "0.0.0.0"
+  game_port: 7777
+  query_port: 27015
+  enable_query_port: true
+  kill_ue_helpers_on_shutdown: true
+  map_path: ""              # optional map override
+  max_players: 8
 
-# --- STEAM / UPDATES ----------------------------------------------------------
-steamcmd_path: C:/SteamCMD/steamcmd.exe
-app_id: 2131400
-auto_update_on_start: true  # Check for updates at launch (slower start).
-steam_update_validate: true  # Verify files (slower; fixes corruption).
-steam_update_beta: ''
-steam_update_beta_password: ''
-steam_update_retries: 2
-steam_update_timeout_seconds: 900
+# ============================ LIFECYCLE (TAB) ===============================
+lifecycle:
 
-# --- BACKUPS (GLOBAL) ---------------------------------------------------------
-max_backups: 10
-backup_max_age_days: 7  # Delete backups older than this many days.
-nightly_backup:
-  enable: true
-  max_backups: 14
-  max_backup_age_days: 30
-  discord_notify: true
+  auto_bump_version: true
 
-backups:
-  enable: true
+  startup:
+    kill_stray_processes: true
+    wait_for_log_monitor: true
+    wait_for_log_monitor_timeout_seconds: 10   # time to wait for log monitor PID/state
+    wait_for_server_start_seconds: 120         # time to wait for joinable before giving up/notifying
+    startup_quiet_seconds: 120
+    verify_executable: true
+    ensure_dirs:
+      - "${paths.runtime_dir}"
+      - "${paths.mgmt_log_dir}"
+    steam_update: "inherit"
+    scripts:
+      before: []
+      after:  []
+
+  shutdown:
+    warn_seconds: 30
+    final_warning_at: 10
+    grace_seconds: 900
+    export_log_snapshot: true              # snapshot via backups.logs policy
+    kill_helpers: true
+    scripts:
+      before: []
+      after:  []
+
+# ============================== STEAM (TAB) =================================
+steam:                      # SteamCMD update policy
+  steamcmd_path: "C:/SteamCMD/steamcmd.exe"
+  app_id: 2131400
+  auto_update_on_start: true
+  steam_update_validate: true
+  steam_update_beta: ""
+  steam_update_beta_password: ""
+  steam_update_retries: 2
+  steam_update_timeout_seconds: 900
+
+# ============================= BACKUPS (TAB) ================================
+backups:                    # Save-file backups, log snapshots, schedules, triggers
+  enabled: true
   root: "G:/Servers/VeinServer/VeinServerManagement/Backups"
-  folders:
-    Manual: "Manual"
-    AutoSave: "AutoSave"
-    LastPlayer: "LastPlayer"
-    Crash: "Crash"
-    Shutdown: "Shutdown"
-  retention:
-    default: {max_backups: 12, max_age_days: 14}
-    Crash: {max_backups: 8, max_age_days: 30}
-  events:
+
+  # --- Global retention for save ZIPs ---
+  max_backups: 10                          # keep last N save archives
+  backup_max_age_days: 7                   # or prune older than N days
+  rotation_days: 30                        # optional age-based prune
+
+  # --- What to include in each save ZIP ---
+  include_log_tail_in_zip: false           # also embed last N KB of Vein.log
+  log_tail_kb: 256
+  folders: []                              # extra folders to include (if used in v1)
+  save_filenames: []                       # explicit .sav/.vns names to include
+
+  # --- Log snapshots (separate from save ZIPs; lives outside game tree) ---
+  logs:
+    enabled: true
+    root: "G:/Servers/VeinServer/VeinServerManagement/Backups/Logs"
+    max_files: 120
+    max_age_days: 30
+    rotation_retries: 3                    # retry logic for snapshot copy/zip
+    rotation_retry_sleep_seconds: 1.0
+
+  # --- Automatic/scheduled backups ---
+  schedules:
+    nightly_backup:                        # previously backups.nightly_backup
+      enable: true
+      max_backups: 14                      # retention for the nightly set
+
+  # --- Event-driven backup triggers (used by monitors/tools) ---
+  triggers:
+    on_autosave: false                      # create a backup when autosave detected
+    on_player_logout: true                 # create a backup on each player logout event
+    last_player:                           # when server population drops to zero
+      enabled: true
+      cooldown_seconds: 600                # debounce between “LastPlayer” backups
+    on_crash_detect: true                  # crash monitor creates a “Crash” backup
+    shutdown:
+      save_backup: true                    # shutdown_server.py makes a backup
+      reason: "Shutdown"                   # label for that save ZIP
+
+# =========================== LOG MONITOR (TAB) ==============================
+log_monitor:
+  enabled: true
+  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor_state.json"
+  heartbeat_seconds: 60
+  fresh_window_multiplier: 2.0
+  crash_signatures:
+    - "Fatal error"
+    - "Unhandled Exception"
+    - "ensureMsgf("
+
+  # Debounce/cooldowns (monitor behavior only)
+  crash_snippet_lines: 200
+  logout_backup_debounce_seconds: 90       # monitor-side debounce for logout events
+  autosave_backup_cooldown_seconds: 300    # monitor-side cooldown for autosave events
+
+  # Monitor-only utility (not a backup policy)
+  idle_notify_minutes: 15                  # post if no joins for N minutes (0=off)
+
+# =========================== CRASH MONITOR (TAB) ============================
+crash_monitor:
+  enabled: true
+  mode: "proc_missing"
+  heartbeat_seconds: 60
+  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/crash_monitor_state.json"
+  restart_on_crash: true
+  preboot_shutdown: true
+  shutdown_timeout_sec: 60
+  stale_flag_delay_sec: 1
+  restart_throttle_seconds: 120
+
+  # Crash loop / backoff
+  crash_backoff_base: 2
+  crash_backoff_max_seconds: 900
+  crash_loop_max_attempts: 5
+  crash_loop_window_minutes: 10
+  crash_loop_cooldown_seconds: 600
+
+  # Actions before restarting (log snapshot is not itself “a backup”)
+  pre_restart_actions:
+    export_log_snapshot: true              # full snapshot handled by backups.logs policy
+
+# ============================ DISCORD (TAB) =================================
+discord:
+  enabled: true
+
+  # Where messages go. If a specific channel isn't set for a message,
+  # we fall back to "default", then to any non-empty of status/monitor.
+  webhooks:
+    default: "ENV:DISCORD_WEBHOOK_URL"
+    status:  ""     # lifecycle + general status
+    monitor: ""     # joins/leaves + crash alerts
+    backups: ""     # optional dedicated channel for backup-created messages
+
+  # Global message defaults (applies to all types unless overridden below)
+  defaults:
+    channel: status               # which webhook key to use by default
+    include_timestamp: true
+    include_server_name: true
+    server_name: "RHG Vein"
+    emoji: true
+
+  # default templates for each message type
+    # (Used when no per-message/per-reason override exists)
+    templates:
+      startup:    "{emoji} Server starting… {server} {ts}"
+      joinable:   "✅ Server is up and joinable. {server} {ts}"
+      crash:      "❌ Crash detected. Restarting… {server} {ts}"
+      restart:    "🔄 Controlled restart initiated. {server} {ts}"
+      autosave:   "💾 Autosave detected. {server} {ts}"
+      monitor_status: "🧭 Monitor OK. Last update {ts}"
+      auth:          "🔐 Auth OK for {steam_id}. {server} {ts}"
+      join:          "➡️ {player} joined. {server} {ts}"
+      character:     "🎭 {player} selected a character. {ts}"
+      disconnect:    "⬅️ {player} disconnected. {ts}"
+      heartbeat:     "💓 Heartbeat — monitors alive. {ts}"
+
+      # Default “backup created” message
+      backups:    "💾 Backup created — **{reason}** {zip_name} {size_human} {ts}"
+
+  # Per-message configuration: toggle + (optional) overrides
+  messages:
+    startup:
+      enabled: true
+      channel: status
+    joinable:
+      enabled: true
+    auth:
+      enabled: true
+    join:
+      enabled: true
+    character:
+      enabled: true
+    disconnect:
+      enabled: true
     autosave:
-      enabled: true
-      cooldown_seconds: 300
-    last_player:
-      enabled: true
-      cooldown_seconds: 600
+      enabled: false
     crash:
       enabled: true
-      debounce_seconds: 120
-    shutdown:
+      channel: monitor
+    heartbeat:
+      enabled: false
+    monitor_status:
       enabled: true
-      # how fresh shutdown_in_progress.flag must be to count as an intentional shutdown
-      grace_seconds: 900
+    restart:
+      enabled: true
 
-# --- CRASH / RESTART BEHAVIOR -------------------------------------------------
-crash_monitor_interval_seconds: 60
-crash_monitor_idle_notify_minutes: 15  # Notify if no joins for this long.
-crash_notify_debounce_seconds: 300  # Minimum spacing between crash alerts.
-crash_backoff_base: 2  # Exponential restart backoff base.
-crash_backoff_max_seconds: 900  # Cap for exponential backoff delay.
-crash_loop_max_attempts: 5  # Crashes within the window to call it a loop.
-crash_loop_window_minutes: 10  # Time window for detecting crash loop.
-crash_loop_cooldown_seconds: 600  # Cooldown before retrying after a loop.
-log_rotation_retries: 3
-log_rotation_retry_sleep_seconds: 1.0
-preboot_shutdown: true  # Stop older instance before starting a new one.
-backup_on_detect: true  # Create a crash backup automatically.
-shutdown_timeout_sec: 60  # Grace period for clean shutdown.
-pre_shutdown_warning_seconds: 30  # Warn players before planned shutdown.
-stale_flag_delay_sec: 1
-restart_throttle_seconds: 120  # Minimum time between restarts.
-startup_quiet_seconds: 120  # Ignore early warnings during warm-up.
-crash_snippet_lines: 200  # Log lines included in crash report.
-logout_backup_debounce_seconds: 90  # Debounce backups from logouts.
-autosave_backup_cooldown_seconds: 300  # Debounce backups from autosaves.
+    # ── Backup-created messages live here (all Discord-specific knobs) ──
+    backups:
+      enabled: true                  # master toggle for "backup created" notices
+      channel: backups               # route to 'backups' webhook if set; else defaults.channel
+      format:
+        include_reason: true         # e.g., "Backup created — Crash"
+        include_zip_name: true       # show archive filename
+        include_size: false          # attach size (stat() hit)
+        human_readable_size: true    # "12.3 MB" vs raw bytes
+        include_path: false          # full path (often noisy)
+      # Per-reason overrides (enable/disable and/or channel override)
+      reasons:
+        AutoSave:
+          enabled: true
+        LastPlayer:
+          enabled: true
+        Crash:
+          enabled: true
+          channel: monitor
+        Shutdown:
+          enabled: true
+        Nightly:
+          enabled: true
+          template: "🌙 Nightly backup complete: {zip_name} ({size_human}) {ts}"
+        Manual:
+          enabled: true
 
-# --- DISCORD ------------------------------------------------------------------
-discord_webhook: ENV:DISCORD_WEBHOOK_URL  # Use ENV:DISCORD_WEBHOOK_URL to avoid storing secrets.
-
-# --- FEATURES -----------------------------------------------------------------
-features:  # Feature toggles (Discord + monitors).
-  enable_discord: true
-  enable_backups: true
-  enable_steam_update: true
-  enable_crash_monitor: true
-  enable_log_monitor: true
-  log_monitor_auto_restart: true
-  discord_monitor: true
-  discord_shutdown: true
-  discord_startup: true
-  discord_backups: true
-  discord_crash_monitor: true
-  enable_autosave_backups: true
-  enable_log_rotation: false
-
-# --- MONITOR (LOG MONITOR SETTINGS) -------------------------------------------
-monitor:  # Log monitor behavior and notifications.
-  enable: true
-  heartbeat_seconds: 60
-  heartbeat_interval_seconds: 300
-  fresh_window_multiplier: 2.0
-  state_refresh_seconds: 15
-  recheck_newest_every_seconds: 5
-  tail_poll_interval_ms: 500
-  wait_for_server_start_seconds: 600
-  wait_for_log_appearance_seconds: 300
-  linger_when_server_down: true
-  state_file: G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor_state.json
-  track:
-    startup: true
-    auth: true
-    join: true
-    character: true
-    disconnect: true
-    autosave: true
-    crash: true
-    heartbeat: true
-  notify:
-    startup: true
-    joinable: true
-    auth: true
-    join: true
-    character: true
-    disconnect: true
-    autosave: false
-    crash: true
-    heartbeat: false
-    monitor_status: true
-  backups:
-    on_player_logout: true
-    on_autosave: true

@@ -43,6 +43,53 @@ def _deep_set(d: Dict[str, Any], path: str, value) -> None:
         cur = nxt
     cur[parts[-1]] = value
 
+# ------- Structured getters (single source of truth) -------
+def cfg_version() -> int:
+    return int(config.get("version", 1))
+
+def paths_cfg() -> dict:
+    p = (config.get("paths") or {}).copy()
+    # normalize
+    for k in list(p.keys()):
+        v = p[k]
+        if isinstance(v, str):
+            p[k] = _norm_path(v)
+    return p
+
+def logs_dir() -> str:
+    return paths_cfg().get("logs", "")
+
+def saves_dir() -> str:
+    return paths_cfg().get("saves", "")
+
+# Backups (save files)
+def backups_cfg_v2() -> dict:
+    b = (config.get("backup") or {}).copy()
+    # normalize root
+    root = b.get("root") or (paths_cfg().get("backup_root"))
+    b["root"] = _norm_path(root) if root else ""
+    # normalize nested logs policy too (just passthrough here)
+    return b
+
+def backup_root() -> str:
+    return backups_cfg_v2().get("root", "")
+
+# Log snapshots (new)
+def log_snap_cfg() -> dict:
+    b = backups_cfg_v2()
+    logs = (b.get("logs") or {}).copy()
+    # defaults
+    logs.setdefault("enabled", True)
+    logs.setdefault("root", _norm_path((b.get("root") or "") + "\\Logs") if b.get("root") else "")
+    logs.setdefault("max_files", 100)
+    logs.setdefault("max_age_days", 30)
+    logs.setdefault("include_tail_in_saves", False)
+    logs.setdefault("tail_kb", 256)
+    # normalize root
+    if isinstance(logs.get("root"), str):
+        logs["root"] = _norm_path(logs["root"])
+    return logs
+
 # ---------------------------------------------------------------------------
 # Migration (in-memory; does not rewrite YAML)
 # - Prefer backups.enable over features.enable_backups
@@ -176,9 +223,6 @@ def backups_enabled(default: bool = True) -> bool:
     """
     b = backups_cfg()
     return bool(b.get("enable", default))
-
-def backup_root() -> str:
-    return backups_cfg().get("root", "")
 
 def backup_folders() -> Dict[str, str]:
     return backups_cfg().get("folders", {}) or {}
