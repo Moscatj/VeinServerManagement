@@ -29,6 +29,8 @@ import fnmatch
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from Tools.discord import send_discord_message, is_discord_channel_enabled
+from Tools.state_io import write_state as _write_server_state, default_state as _default_server_state
 from config_helper import (
     config,
     is_feature_enabled,
@@ -41,13 +43,6 @@ from config_helper import (
 
 import psutil  # pip install psutil
 #from Controller.utils import process, config_io, log_events, discord, backups
-
-
-# Optional: requests for Discord webhooks; no-op if unavailable.
-try:
-    import requests  # type: ignore
-except Exception:  # pragma: no cover
-    requests = None  # type: ignore
 
 from config_helper import (
     config,
@@ -286,8 +281,52 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         pass
 
 def set_server_state(process_running: bool, pid: int = 0, **extra) -> None:
-    data = {"process_running": bool(process_running), "pid": int(pid), **extra}
-    _atomic_write_json(SERVER_STATE, data)
+    """
+    Unified writer for Runtime/server_state.json.
+
+    Uses Tools.state_io so server_state.json has:
+      - schema/version
+      - status ("running"/"stopped")
+      - pid
+      - last_updated (UTC ISO)
+      - optional extra fields (last_start_utc, exe, cwd, last_exit_code, etc.)
+
+    If anything goes wrong, we fall back to the legacy minimal format so we
+    never completely lose state. Extras are sanitized to avoid json issues.
+    """
+    status = "running" if process_running else "stopped"
+
+    # 1) Sanitize extras so json can always handle them
+    safe_extra: dict[str, Any] = {}
+    for k, v in extra.items():
+        if isinstance(v, (str, int, float, bool)) or v is None:
+            safe_extra[k] = v
+        else:
+            # Paths, datetimes, custom objects, etc → stringify
+            safe_extra[k] = str(v)
+
+    try:
+        # 2) Base state from state_io
+        state = _default_server_state(
+            status=status,
+            pid=int(pid),
+            headless=current_headless_flag(),  # uses config['headless_mode']
+            version="utils.set_server_state",
+        )
+
+        # 3) Merge sanitized extras
+        if safe_extra:
+            state.update(safe_extra)
+
+        _write_server_state(SERVER_STATE, state)
+    except Exception:
+        # Fallback: legacy minimal schema (keeps older tools from exploding)
+        try:
+            data = {"process_running": bool(process_running), "pid": int(pid), **safe_extra}
+            _atomic_write_json(SERVER_STATE, data)
+        except Exception:
+            # Last resort: swallow so we don't crash callers
+            pass
 
 def clear_pid_file() -> None:
     try: PID_SERVER.unlink(missing_ok=True)
@@ -706,43 +745,6 @@ def current_headless_flag() -> bool:
         return bool(config.get("headless_mode", False))
     except Exception:
         return False
-
-# ----------------------------
-# Discord messaging
-# ----------------------------
-def _discord_webhook_url() -> Optional[str]:
-    """
-    Resolve webhook URL from config with ENV: support.
-    - Accepts direct URL string.
-    - If the value starts with 'ENV:', read that environment variable.
-    - Returns None if unset or empty.
-    """
-    raw = config.get("discord_webhook") or config.get("discord_webhook_url")
-    if not raw:
-        return None
-    s = str(raw).strip()
-    if s.upper().startswith("ENV:"):
-        env_key = s.split(":", 1)[1].strip()
-        val = os.environ.get(env_key, "").strip()
-        return val or None
-    return s
-
-def send_discord_message(message: str, channel: str = "startup") -> None:
-    """
-    Post message to Discord via webhook.
-    Respects global & per-channel flags; truncates near Discord limit.
-    """
-    if not is_discord_channel_enabled(channel):
-        return
-    url = _discord_webhook_url()
-    if not url or requests is None:
-        return
-    max_len = 1800
-    content = (message[:max_len] + "…") if len(message) > max_len else message
-    try:
-        requests.post(url, json={"content": content}, timeout=10)
-    except Exception as e:
-        print(f"[Discord] Failed to post message: {e}")
 
 # ----------------------------
 # Backups / restore / prune (delegates to Controller/Tools/backups.py)

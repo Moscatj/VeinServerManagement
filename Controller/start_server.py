@@ -17,7 +17,9 @@ from utils import (
     current_headless_flag,
     RESTARTING_LOCK,
     clear_runtime_markers, stop_all_vein_processes_aggressive, PID_SERVER,
+    set_server_state,
 )
+
 from Tools.config_io import load_and_validate_config
 
 # --- Config path resolution (shared by this module & spawned children) ---
@@ -186,14 +188,13 @@ def main() -> int:
     # 1) Let monitors know to chill during boot
     create_startup_lock()
     try:
-        _atomic_write_json(state_path, {
-            "process_running": False,
-            "pid": 0,
-            "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "exe": None,
-            "cwd": str(SERVER_DIR_PATH),
-            "headless": current_headless_flag(),
-        })
+        set_server_state(
+            False,
+            pid=0,
+            last_start_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            exe=None,
+            cwd=str(SERVER_DIR_PATH),
+        )
 
         # 2) Startup narration
         send_discord_message("🚀 Vein server preflight starting…", channel="startup")
@@ -264,25 +265,18 @@ def main() -> int:
 
         if proc is None:
             send_discord_message("❌ Start failed: no executable or launch error.", channel="startup")
-            _atomic_write_json(state_path, {
-                "process_running": False,
-                "pid": 0,
-                "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "last_exit_code": -1,
-                "cwd": str(SERVER_DIR_PATH),
-                "headless": current_headless_flag(),
-            })
+            set_server_state(
+                False,
+                pid=0,
+                last_start_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                last_exit_code=-1,
+                cwd=str(SERVER_DIR_PATH),
+            )
             _clear_restart_lock()
             return 1
 
+
         # 7) Mark running; monitors (log) will later report “joinable”
-        _atomic_write_json(state_path, {
-            "process_running": True,
-            "pid": proc.pid,
-            "last_start_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "last_exit_code": None,
-            "cwd": str(SERVER_DIR_PATH),
-        })
         try:
             pid_server_path.write_text(str(proc.pid), encoding="utf-8")
         except Exception:

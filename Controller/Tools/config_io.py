@@ -1,182 +1,166 @@
 # Controller/Tools/config_io.py
+"""
+Thin wrapper around config.load_config() that exposes a typed view
+(ValidConfig) for tools that prefer attribute access over digging in the
+raw dict.
+
+This intentionally *does not* re-parse YAML/JSON itself. All discovery,
+schema migration, defaults, and validation live in Controller/config.py.
+If you need a new piece of config, add it there first, then surface it
+through this wrapper as needed.
+"""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
-import json, sys, shutil
+from typing import Dict, Any, List, Optional
+import os
 
-try:
-    from ruamel.yaml import YAML
-    _HAVE_RUAMEL = True
-except Exception:
-    _HAVE_RUAMEL = False
+from config import load_config, _mgmt_root  # type: ignore[attr-defined]
+
 
 @dataclass(frozen=True)
 class ValidConfig:
-    # raw
-    raw: dict
+    # Raw config dict as returned by config.load_config()
+    raw: Dict[str, Any]
+
+    # Where the config file lives on disk (best-effort guess)
     path: Path
 
-    # normalized paths
+    # Normalized core paths
     server_dir: Path
     runtime_dir: Path
     logs_dir: Path
     save_dir: Path
-
-    # log file resolution
     absolute_log_file: Optional[Path]
 
-    # executables
+    # Executable selection
     server_executables: List[str]
     preferred_exe: Optional[str]
-    selected_exe: Path  # resolved full path (must exist)
+    selected_exe: Path
 
-    # monitors
+    # Monitor / heartbeat knobs
     hb_seconds: int
     fresh_window_multiplier: float
 
-    # optional groups
-    steam: dict
-    backups: dict
-    discord: dict
-
-def _is_yaml(p: Path) -> bool:
-    s = p.suffix.lower()
-    return s in (".yaml", ".yml")
-
-def _read_cfg_any(p: Path) -> dict:
-    txt = p.read_text(encoding="utf-8")
-    if _is_yaml(p):
-        if not _HAVE_RUAMEL:
-            raise RuntimeError("config is YAML but ruamel.yaml is not installed")
-        y = YAML()
-        y.preserve_quotes = True
-        doc = y.load(txt)
-        return dict(doc) if isinstance(doc, dict) else {}
-    else:
-        import json as _json
-        return _json.loads(txt)
-
-def _fatal(msg: str, fatal: bool = True) -> "NoReturn":  # type: ignore
-    if fatal:
-        print(f"[FATAL] {msg}")
-        sys.exit(1)
-    raise RuntimeError(msg)
-
-def _warn(msg: str) -> None:
-    print(f"[WARN]  {msg}")
-
-def _info(msg: str) -> None:
-    print(f"[info]  {msg}")
-
-def _as_path(v) -> Path:
-    return Path(str(v)).expanduser()
-
-def _choose_exe(server_dir: Path, exes: List[str], preferred: Optional[str], *, fatal: bool) -> Path:
-    if not exes:
-        _fatal("server_executables is empty in config file", fatal=fatal)
-    # prefer explicit preferred_exe if set
-    if preferred:
-        return server_dir / preferred
-    for name in exes:
-        if "-Test" in name:
-            return server_dir / name
-    return server_dir / exes[0]
+    # Structured sub-configs (pass-through)
+    steam: Dict[str, Any]
+    backups: Dict[str, Any]
+    discord: Dict[str, Any]
 
 
-def _bound(v, lo, hi, cast):
+def _discover_cfg_path(explicit: str | os.PathLike | None) -> Path:
+    """
+    Best-effort mirror of config._candidate_configs() logic, but kept simple.
+    This is only used for the ValidConfig.path metadata and logging.
+    """
+    if explicit:
+        p = Path(explicit).expanduser()
+        if p.exists():
+            return p
+
+    env = os.environ.get("VEIN_CONFIG", "").strip()
+    if env:
+        p = Path(env).expanduser()
+        if p.exists():
+            return p
+
+    mgmt = _mgmt_root()
+    for rel in ("Config/config.yaml", "Config/config.yml", "Config/config.json"):
+        p = mgmt / rel
+        if p.exists():
+            return p
+
+    # Fallback: still return something reasonable even if it doesn't exist yet.
+    return _mgmt_root() / "Config" / "config.yaml"
+
+
+def _as_int(d: Dict[str, Any], key: str, default: int) -> int:
     try:
-        x = cast(v)
+        return int(d.get(key, default))
     except Exception:
-        return lo
-    if x < lo: return lo
-    if x > hi: return hi
-    return x
+        return default
 
-def load_and_validate_config(cfg_path: str | Path, fatal: bool = True) -> ValidConfig:
-    p = Path(cfg_path)
-    if not p.exists():
-        _fatal(f"Config file not found: {p}", fatal=fatal)
+
+def _as_float(d: Dict[str, Any], key: str, default: float) -> float:
     try:
-        raw = _read_cfg_any(p)
-    except Exception as e:
-        _fatal(f"Could not parse config file: {e}", fatal=fatal)
+        return float(d.get(key, default))
+    except Exception:
+        return default
 
-    # --- Required path-ish keys
-    for req in ("server_dir", "runtime_dir", "logs_dir", "save_dir"):
-        if req not in raw:
-            _fatal(f"Missing '{req}' in config file", fatal=fatal)
 
-    server_dir = _as_path(raw["server_dir"])
-    runtime_dir = _as_path(raw["runtime_dir"])
-    logs_dir   = _as_path(raw["logs_dir"])
-    save_dir   = _as_path(raw["save_dir"])
+def load_and_validate_config(cfg_path: str | os.PathLike | None = None,
+                             *, fatal: bool = True) -> ValidConfig:
+    """
+    Return a ValidConfig with normalized paths and knobs.
 
-    # --- Resolve absolute_log_file if provided
-    abs_log = (raw.get("absolute_log_file") or "").strip()
-    absolute_log_file = _as_path(abs_log) if abs_log else None
+    Any error raised by config.load_config() is propagated by default. If
+    fatal=False, those errors are wrapped in a RuntimeError instead so
+    callers can decide what to do.
+    """
+    path = _discover_cfg_path(cfg_path)
 
-    # --- Executable selection
-    exes = list(raw.get("server_executables", []))
-    preferred = (raw.get("preferred_exe") or "").strip() or None
-    selected = _choose_exe(server_dir, exes, preferred, fatal=fatal)
-
-    # --- Heartbeat knobs
-    mon = raw.get("monitor", {}) or {}
-    hb_seconds = _bound(mon.get("heartbeat_seconds", 60), 5, 3600, int)
-    fresh_mult = _bound(mon.get("fresh_window_multiplier", 2.0), 0.25, 10.0, float)
-
-    # --- Optional groups pass-through
-    steam   = raw.get("steam", {}) or {}
-    backups = raw.get("backups", {}) or {}
-    discord = (mon.get("discord", {}) if isinstance(mon.get("discord", {}), dict) else {}) or {}
-
-    # --- Exist checks (warn vs fatal)
-    if not server_dir.exists():
-        _warn(f"server_dir does not exist: {server_dir}")
-    if not logs_dir.exists():
-        _warn(f"logs_dir does not exist: {logs_dir}")
-    if not save_dir.exists():
-        _warn(f"save_dir does not exist: {save_dir}")
-
-    # runtime dir is our responsibility
     try:
-        runtime_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        _fatal(f"Could not create runtime_dir '{runtime_dir}': {e}")
+        raw = load_config()
+    except Exception as e:  # defensive; config.load_config does real validation
+        if fatal:
+            raise
+        raise RuntimeError(f"Could not load config: {e}") from e
 
-    # Resolve and verify selected exe
-    if not selected.exists():
-        # Allow SteamCMD workflow to install later, but warn loudly
-        _warn(f"Selected server executable not found yet: {selected}")
-        # If an alternative exists, hint
-        found = []
-        for name in exes:
-            cand = server_dir / name
-            if cand.exists():
-                found.append(str(cand))
-        if found:
-            _info("Other executables present:\n  - " + "\n  - ".join(found))
+    # Core paths (all should be absolute thanks to config.load_config())
+    server_dir = Path(raw.get("server_dir", "")).expanduser()
+    runtime_dir = Path(raw.get("runtime_dir", "")).expanduser()
+    logs_dir = Path(raw.get("logs_dir", "")).expanduser()
+    save_dir = Path(raw.get("save_dir", "")).expanduser()
 
-    # Optional: verify SteamCMD if path provided
-    steamcmd = steam.get("steamcmd_path")
-    if steamcmd:
-        sc = _as_path(steamcmd)
-        if not sc.exists():
-            _warn(f"steam.steamcmd_path does not exist: {sc}")
+    abs_log = raw.get("absolute_log_file") or (raw.get("paths") or {}).get("absolute_log_file")
+    absolute_log_file = Path(abs_log).expanduser() if abs_log else None
 
-    # Optional: ensure Logs/Backups folders exist if configured as absolute
-    if absolute_log_file:
-        try:
-            absolute_log_file.parent.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            _warn(f"Could not ensure absolute_log_file dir: {absolute_log_file.parent} ({e})")
+    # Executables
+    server_executables = list(raw.get("server_executables") or [])
+    preferred_exe = raw.get("preferred_exe") or None
+    selected_name: Optional[str] = None
+
+    if preferred_exe and preferred_exe in server_executables:
+        selected_name = preferred_exe
+    elif server_executables:
+        selected_name = server_executables[0]
+
+    if selected_name:
+        selected_exe = server_dir / selected_name
+    else:
+        # Reasonable fallback; config.load_config() already warned if
+        # server_executables was empty.
+        selected_exe = server_dir / "VeinServer.exe"
+
+    # Monitor / heartbeat knobs
+    monitor = raw.get("monitor") or {}
+    hb_seconds = _as_int(
+        monitor,
+        "heartbeat_seconds",
+        raw.get("monitor_heartbeat_interval_seconds", 300),
+    )
+    fresh_window_multiplier = _as_float(monitor, "fresh_window_multiplier", 2.0)
+
+    # Sub-configs
+    steam = raw.get("steam") or {}
+    backups = raw.get("backups") or {}
+    discord = monitor.get("discord") or raw.get("discord") or {}
 
     return ValidConfig(
-        raw=raw, path=p,
-        server_dir=server_dir, runtime_dir=runtime_dir, logs_dir=logs_dir, save_dir=save_dir,
+        raw=raw,
+        path=path,
+        server_dir=server_dir,
+        runtime_dir=runtime_dir,
+        logs_dir=logs_dir,
+        save_dir=save_dir,
         absolute_log_file=absolute_log_file,
-        server_executables=exes, preferred_exe=preferred, selected_exe=selected,
-        hb_seconds=hb_seconds, fresh_window_multiplier=fresh_mult,
-        steam=steam, backups=backups, discord=discord
+        server_executables=server_executables,
+        preferred_exe=preferred_exe,
+        selected_exe=selected_exe,
+        hb_seconds=hb_seconds,
+        fresh_window_multiplier=fresh_window_multiplier,
+        steam=steam,
+        backups=backups,
+        discord=discord,
     )

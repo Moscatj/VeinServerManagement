@@ -20,24 +20,17 @@ print(f"[ShutdownScript] argv={sys.argv} parent_pid={os.getppid()}")
 if str(CONTROLLER_DIR) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_DIR))
 
-# Resolve config.json
-candidates = [
-    os.environ.get("VEIN_CONFIG"),
-    str(CONFIG_DIR / "config.json"),
-    str(CONTROLLER_DIR / "config.json"),
-]
-resolved_cfg = next((c for c in candidates if c and Path(c).exists()), None)
-if not resolved_cfg:
-    msg = "[Shutdown] config.json not found. Looked for:\n  - " + "\n  - ".join([p for p in candidates if p])
-    print(msg)
-    raise FileNotFoundError(msg)
-
-# Export for helpers that read VEIN_CONFIG
+# Make sure the config loader knows where the management root is.
+# config.load_config() will then look for:
+#   - VEIN_CONFIG (if set externally)
+#   - Config/config.yaml
+#   - Config/config.yml
+#   - Config/config.json
+#   - Controller/config.json
 os.environ["VEIN_MGMT_ROOT"] = str(MGMT_ROOT)
-os.environ["VEIN_CONFIG"]    = resolved_cfg
-print(f"[Shutdown] Using VEIN_CONFIG={resolved_cfg}")
+print(f"[Shutdown] Using VEIN_MGMT_ROOT={MGMT_ROOT}")
 
-# Safe to import helpers after VEIN_CONFIG is set
+# Safe to import helpers after VEIN_MGMT_ROOT is set
 from utils import (
     stop_log_monitor, stop_crash_monitor, send_discord_message, backup_save_file,
     SAVE_FILE, clear_flag, stop_all_vein_processes_aggressive,
@@ -45,13 +38,21 @@ from utils import (
     clear_runtime_markers, set_server_state, PID_SERVER, is_feature_enabled,
 )
 
-# Config knobs
+from config_helper import config
+
 try:
-    from config_helper import config
     PRE_SHUTDOWN_WARN = int(config.get("pre_shutdown_warning_seconds", 0))
 except Exception:
     PRE_SHUTDOWN_WARN = 0
 
+try:
+    # Use shutdown_final_warning_at if present (mapped from lifecycle.shutdown.final_warning_at)
+    COUNTDOWN_FINAL_WARNING_AT = int(
+        config.get("shutdown_final_warning_at", COUNTDOWN_FINAL_WARNING_AT)
+    )
+except Exception:
+    # Keep the existing default (10) on any error
+    pass
 
 def _taskkill_by_name(name: str) -> None:
     try:

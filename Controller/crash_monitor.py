@@ -7,9 +7,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from config_helper import config, is_feature_enabled
+from Tools.process import find_running_server as proc_find, is_server_running
+from Tools.discord import send_discord_message as send_discord
+from Tools.state_io import write_state
 from utils import (
     STATE_FLAG,
-    find_running_server,
     is_shutdown_in_progress,
     startup_grace_active,
     autorestart_quiet_active,
@@ -69,21 +71,20 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
     except Exception:
         pass
 
-def _write_state_mode(mode: str, *, active: bool | None = None, watching: bool | None = None) -> None:
-    """
-    Write unified crash monitor state AND legacy state file.
-    """
+def _write_state_mode(mode: str, *, active=None, watching=None) -> None:
     r = _rt()
-    payload_unified = {
+    payload = {
         "active": bool(active if active is not None else (mode in ("startup","watching"))),
-        "tailing_file": None,                   # crash monitor doesn't tail a file
-        "watching_server": bool(watching if watching is not None else (mode == "watching")),
-        "last_updated": _now().isoformat(),     # tz-aware ISO
-        "mode": mode,                           # keep mode for UI
+        "tailing_file": None,
+        "watching_server": bool(watching if watching is not None else (mode=="watching")),
+        "last_updated": _now().isoformat(),
+        "mode": mode,
     }
-    _atomic_write_json(r["state"], payload_unified)
 
-    # legacy compatibility payload (keep fields people might parse)
+    # New unified schema
+    write_state(r["state"], payload)
+
+    # Legacy compatibility
     legacy = {
         "ts": _now().isoformat(),
         "mode": mode,
@@ -116,7 +117,7 @@ def _debounced_crash_notify(msg: str) -> None:
         except Exception: pass
 
 def _send(msg: str) -> None:
-    send_discord_message(msg, channel="crash_monitor")
+    send_discord(msg, channel="crash_monitor")
 
 # --- helper: did someone request we stop? (support both flag names) ---
 def _stop_requested() -> bool:
@@ -230,7 +231,7 @@ def main() -> None:
 
         # determine server state
         flag_present = STATE_FLAG.exists()
-        process_running = find_running_server() is not None
+        process_running = is_server_running()
 
         if not flag_present:
             _write_state_mode("idle", active=True, watching=False)

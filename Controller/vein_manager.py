@@ -515,13 +515,14 @@ class StatusPoller(QtCore.QRunnable):
             self.paths[k] = str(v or "").strip()
 
     # --- StatusPoller helpers --- 
-        # --- v2-friendly path helpers (avoid depending on legacy helpers) ---
     def _runtime_paths_v2(self) -> dict:
         rd = Path(self.paths.get("runtime_dir", "") or "")
         return {
             "runtime_dir": rd,
-            "server_state": rd / "server.state.json",
-            "state_flag":   rd / "intent.json",               # your shutdown/intent flag
+            # New unified name used by utils/Tools.state_io
+            "server_state": rd / "server_state.json",
+            # Fallback JSON flag (not critical now, but kept for compatibility)
+            "state_flag":   rd / "intent.json",
         }
 
     def _rt_paths_v2(self) -> dict:
