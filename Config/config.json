@@ -108,8 +108,8 @@
       "heartbeat": true
     },
     "backups": {
-      "on_player_logout": false,
-      "on_autosave": true
+      "on_player_logout": true,
+      "on_autosave": false
     },
     "notify": {
       "startup": true,
