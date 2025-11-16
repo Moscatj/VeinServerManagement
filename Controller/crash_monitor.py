@@ -73,20 +73,21 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 
 def _write_state_mode(mode: str, *, active=None, watching=None) -> None:
     r = _rt()
-    payload = {
-        "active": bool(active if active is not None else (mode in ("startup","watching"))),
-        "tailing_file": None,
-        "watching_server": bool(watching if watching is not None else (mode=="watching")),
-        "last_updated": _now().isoformat(),
-        "mode": mode,
-    }
+    now = _now().isoformat()
 
-    # New unified schema
+    # Unified crash_monitor.state.json
+    payload = {
+        "pid": os.getpid(),
+        "last_updated": now,
+        "mode": mode,
+        "active": bool(active if active is not None else mode in ("startup", "watching")),
+        "watching_server": bool(watching if watching is not None else mode == "watching"),
+    }
     write_state(r["state"], payload)
 
-    # Legacy compatibility
+    # Legacy crash_monitor_state.json
     legacy = {
-        "ts": _now().isoformat(),
+        "ts": now,
         "mode": mode,
         "pid": os.getpid(),
         "headless": current_headless_flag(),

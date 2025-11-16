@@ -44,7 +44,12 @@ STATE_REFRESH_S = int(_MON.get("state_refresh_seconds", 15))
 LINGER_WHEN_SERVER_DOWN = bool(_MON.get("linger_when_server_down", True))
 RECHECK_NEWEST_EVERY_S  = int(_MON.get("recheck_newest_every_seconds", 5))
 
-HEARTBEAT_INTERVAL_S      = int(_MON.get("heartbeat_interval_seconds", config.get("monitor_heartbeat_interval_seconds", 300)))
+HEARTBEAT_INTERVAL_S      = int(
+    _MON.get(
+        "heartbeat_interval_seconds",
+        config.get("monitor_heartbeat_interval_seconds", 300),
+    )
+)
 WAIT_FOR_LOG_S            = int(_MON.get("wait_for_log_appearance_seconds", 120))
 TAIL_POLL_MS              = int(_MON.get("tail_poll_interval_ms", 500))
 
@@ -81,8 +86,17 @@ RX_DISC     = re.compile(r"closed by peer|Logout|Connection closed", re.I)
 
 RX_AUTOSAVE = re.compile(r"LogVeinSaveGame: Saved save game to disk", re.I)
 
-RX_CRASH    = re.compile(r"Fatal error|Access violation|EXCEPTION_ACCESS_VIOLATION|Assertion failed|ensure\(!\)", re.I)
+RX_CRASH    = re.compile(
+    r"Fatal error|Access violation|EXCEPTION_ACCESS_VIOLATION|Assertion failed|ensure\(!\)",
+    re.I,
+)
 
+_BEH = dict((_MON.get("heartbeat", {}) or {}))
+
+_MONITOR_HB_CHANNEL = str(_BEH.get("channel", "monitor"))
+_MONITOR_HB_PREFIX  = str(_BEH.get("prefix", "🩺"))
+
+# Backups events section
 _BEV = dict((config.get("backups", {}) or {}).get("events", {}) or {})
 
 _EVT_AUTOSAVE = dict(_BEV.get("autosave", {}) or {})
@@ -91,7 +105,12 @@ _EVT_CRASH   = dict(_BEV.get("crash", {}) or {})
 _EVT_SHUT    = dict(_BEV.get("shutdown", {}) or {})
 
 AUTOSAVE_ENABLED   = bool(_EVT_AUTOSAVE.get("enabled", True))
-AUTOSAVE_COOLDOWN  = int(_EVT_AUTOSAVE.get("cooldown_seconds", int(config.get("autosave_backup_cooldown_seconds", 300))))
+AUTOSAVE_COOLDOWN  = int(
+    _EVT_AUTOSAVE.get(
+        "cooldown_seconds",
+        int(config.get("autosave_backup_cooldown_seconds", 300)),
+    )
+)
 
 LAST_ENABLED       = bool(_EVT_LAST.get("enabled", True))
 LAST_COOLDOWN      = int(_EVT_LAST.get("cooldown_seconds", 600))
@@ -105,6 +124,7 @@ SHUT_GRACE         = int(_EVT_SHUT.get("grace_seconds", 900))
 # shutdown flag (we re-create the same path utils uses)
 SHUTDOWN_FLAG = RUNTIME_DIR / "shutdown_in_progress.flag"
 
+
 def _backup(reason: str) -> None:
     """Fire a backup with the canonical Tools/backups engine."""
     try:
@@ -113,17 +133,13 @@ def _backup(reason: str) -> None:
         # silent on monitor; Tools/backups already prints and Discords meaningful errors
         pass
 
-def _atomic_write_json(path: Path, data: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
 
 def _same_file(a: Path, b: Path) -> bool:
     try:
         return a.resolve().samefile(b.resolve())
     except Exception:
         return str(a) == str(b)
+
 
 def _resolve_active_log() -> Path | None:
     """
@@ -155,7 +171,7 @@ def _resolve_active_log() -> Path | None:
     server_dir = Path(config.get("server_dir") or "").expanduser()
     candidates: list[str] = []
 
-    # Vein/Saved/Logs (EA/Demo layouts)
+    # e.g. G:/Servers/VeinServer/Vein/Saved/Logs/*.log
     if server_dir:
         candidates += glob(str(server_dir / "Vein" / "Saved" / "Logs" / "*.log"))
         candidates += glob(str(server_dir / "Saved" / "Logs" / "*.log"))
@@ -174,24 +190,20 @@ def _resolve_active_log() -> Path | None:
                 newest = (mt, p)
         except FileNotFoundError:
             continue
-        except Exception:
-            continue
 
-    return newest[1] if newest else None
+    if newest is None:
+        return None
+    return newest[1]
+
 
 def _runtime_paths() -> dict:
     """
     Returns the paths this monitor uses inside Runtime/.
     Keys match what the GUI StatusPoller expects: 'state_log' and 'pid_log'.
     """
-    # Prefer config["runtime_dir"]; fall back to repo/Runtime
-    base = Path(
-        (config.get("runtime_dir") or "")  # type: ignore[name-defined]
-    ).expanduser()
-    if not str(base):
-        base = Path(__file__).parents[1] / "Runtime"
-
-    # Ensure the directory exists
+    # Use the same runtime dir as utils
+    base = RUNTIME_DIR
+    # Ensure the directory exists (already done in utils, but cheap)
     try:
         base.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -204,20 +216,18 @@ def _runtime_paths() -> dict:
         "stop_log":   base / "log_monitor.stop",        # touch this to stop monitor
     }
 
+
 def _discord(msg: str, channel: str = "monitor"):
     if is_discord_channel_enabled(channel):
         send_discord_message(msg, channel=channel)
 
-# ---------------------------------------------------------------------------
-# Helpers near the top of file (keep or add if missing):
-# from datetime import datetime, timezone
-# def _discord(msg: str, channel: str = "monitor"): ...
-# def _runtime_paths(): ...  # returns dict with 'state_log', 'stop_log', 'pid_log', etc.
-# def _resolve_active_log() -> Path: ...  # returns the current Vein.log path
-# RX_* patterns exist above (RX_LISTEN, RX_JOINED, etc.)
-# ---------------------------------------------------------------------------
 
-def _write_logmon_state(*, active: bool, tailing_file: str | None, watching_server: bool) -> None:
+def _write_logmon_state(
+    *,
+    active: bool,
+    tailing_file: str | None,
+    watching_server: bool,
+) -> None:
     rp = _runtime_paths()
     rp["state_log"].parent.mkdir(parents=True, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat()
@@ -229,22 +239,22 @@ def _write_logmon_state(*, active: bool, tailing_file: str | None, watching_serv
     }
     try:
         with rp["state_log"].open("w", encoding="utf-8") as f:
-            json.dump(data, f)
+            json.dump(data, f, indent=2, sort_keys=True)
     except Exception:
         pass
+
 
 def _write_pid() -> None:
-    rp = _runtime_paths()
     try:
-        rp["pid_log"].write_text(str(os.getpid()), encoding="utf-8")
+        PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
     except Exception:
         pass
 
+
 def _clear_pid() -> None:
-    rp = _runtime_paths()
     try:
-        if rp["pid_log"].exists():
-            rp["pid_log"].unlink()
+        if PID_FILE.exists():
+            PID_FILE.unlink()
     except Exception:
         pass
 
@@ -258,29 +268,13 @@ def monitor() -> None:
     _write_logmon_state(active=False, tailing_file=None, watching_server=False)
 
     # cooldowns to avoid spammy loops
+    last_hb = 0.0
+    last_status_announce = 0.0
     last_down_announce   = 0.0
     last_attach_announce = 0.0
 
     current_path: Path | None = None
     pos = 0
-
-    # Match toggles
-    TRACK_STARTUP    = bool(config.get("monitor", {}).get("track", {}).get("startup", True))
-    TRACK_JOIN       = bool(config.get("monitor", {}).get("track", {}).get("join", True))
-    TRACK_AUTH       = bool(config.get("monitor", {}).get("track", {}).get("auth", True))
-    TRACK_CHARACTER  = bool(config.get("monitor", {}).get("track", {}).get("character", True))
-    TRACK_DISCONNECT = bool(config.get("monitor", {}).get("track", {}).get("disconnect", True))
-    TRACK_AUTOSAVE   = bool(config.get("monitor", {}).get("track", {}).get("autosave", True))
-    TRACK_CRASH      = bool(config.get("monitor", {}).get("track", {}).get("crash", True))
-
-    NOTIFY_STARTUP   = bool(config.get("monitor", {}).get("notify", {}).get("startup", True))
-    NOTIFY_JOIN      = bool(config.get("monitor", {}).get("notify", {}).get("join", True))
-    NOTIFY_AUTH      = bool(config.get("monitor", {}).get("notify", {}).get("auth", False))
-    NOTIFY_CHARACTER = bool(config.get("monitor", {}).get("notify", {}).get("character", False))
-    NOTIFY_DISC      = bool(config.get("monitor", {}).get("notify", {}).get("disconnect", True))
-    NOTIFY_AUTOSAVE  = bool(config.get("monitor", {}).get("notify", {}).get("autosave", True))
-    NOTIFY_CRASH     = bool(config.get("monitor", {}).get("notify", {}).get("crash", True))
-    NOTIFY_JOINABLE  = True  # piggyback ready message if desired
 
     ready_announced = False
     current_players: set[str] = set()
@@ -296,56 +290,59 @@ def monitor() -> None:
         st = p.stat()
         return (st.st_size, st.st_mtime)
 
-    last_sig: tuple[int, float] | None = None
-
     try:
-        while not stop_flag.exists():
-            p = _resolve_active_log()
+        while True:
+            # External stop request
+            if stop_flag.exists():
+                if NOTIFY_STATUS:
+                    _discord("🛑 Log monitor stop flag detected; exiting.", channel="monitor")
+                break
 
-            # If no log yet, go into a quiet linger loop (announce at most every 20s)
+            # Re-resolve log if none
+            p = current_path
             if not p or not p.exists():
-                now = time.time()
-                if now - last_down_announce > 20:
-                    _discord("⏳ Server down — lingering. Will reattach when new log appears.", channel="monitor")
-                    last_down_announce = now
-                _write_logmon_state(active=False, tailing_file=None, watching_server=False)
-                time.sleep(1.0)
-                continue
+                p = _resolve_active_log()
+                if p and p.exists():
+                    current_path = p
+                    pos = 0
+                    last_sig = None
+                    if NOTIFY_STATUS:
+                        _discord(f"📜 Log monitor attached to `{p.name}`", channel="monitor")
+                    last_attach_announce = time.time()
+                else:
+                    # No log yet; optionally linger and announce occasionally
+                    now = time.time()
+                    proc_up = is_server_running()
+                    if not proc_up and not LINGER_WHEN_SERVER_DOWN:
+                        if NOTIFY_STATUS and (now - last_down_announce > 30):
+                            _discord("⏹ Server not running; log monitor idling.", channel="monitor")
+                            last_down_announce = now
+                        _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+                        time.sleep(1.0)
+                        continue
 
-            # Reattach announcement only when path actually changes
-            if str(p) != str(current_path):
-                current_path = p
-                pos = 0
-                last_sig = None
-                now = time.time()
-                if now - last_attach_announce > 10:
-                    _discord(f"🔁 Reattached to {p.name}.", channel="monitor")
-                    last_attach_announce = now
+                    if now - last_down_announce > 20:
+                        _discord("⏳ Waiting for Vein log file to appear…", channel="monitor")
+                        last_down_announce = now
 
-            # Detect rotation/truncate by signature change to smaller size/mtime backwards
-            try:
-                sig = _sig(p)
-                if last_sig is not None:
-                    size, mt = sig
-                    old_size, old_mt = last_sig
-                    if size < old_size or (mt != old_mt and size < old_size):
-                        # rotation/truncate – reopen from start
-                        pos = 0
-                last_sig = sig
-            except FileNotFoundError:
-                # file vanished between exists() and stat(); loop will re-check
-                time.sleep(0.5)
-                continue
+                    _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+                    time.sleep(1.0)
+                    continue
 
-            # Tail a chunk
+            # Have a path; follow rotations/rewrites
             try:
                 with p.open("rb") as f:
+                    # Seek to last known position
                     f.seek(pos)
-                    b = f.read(262144)
+                    b = f.read(64 * 1024)
                     if not b:
-                        # idle cycle
-                        _write_logmon_state(active=True, tailing_file=str(p), watching_server=True)
-                        time.sleep(0.3)
+                        # nothing new, small sleep
+                        _write_logmon_state(
+                            active=True,
+                            tailing_file=str(p),
+                            watching_server=True,
+                        )
+                        time.sleep(TAIL_POLL_MS / 1000.0)
                         continue
                     pos = f.tell()
             except FileNotFoundError:
@@ -362,87 +359,109 @@ def monitor() -> None:
                 if not line:
                     continue
 
-                # --- READY/JOINABLE SIGNS ---
+                # Heartbeat (coarse)
+                if TRACK_HEARTBEAT and NOTIFY_HB and (now - last_hb > HEARTBEAT_INTERVAL_S):
+                    last_hb = now
+                    _discord(
+                        f"{_MONITOR_HB_PREFIX} Log monitor heartbeat — still tailing `{p.name}`",
+                        channel="monitor",
+                    )
+
+                # Ready / joinable (world up + listening)
                 if TRACK_STARTUP:
-                    if RX_LISTEN.search(line) or RX_WORLD_UP.search(line) or RX_STEAM_OK.search(line):
+                    if RX_LISTEN.search(line) or RX_WORLD_UP.search(line):
                         if not ready_announced:
                             ready_announced = True
                             seen_server_up_once = True
                             last_seen_server_up = now
                             if NOTIFY_STARTUP or NOTIFY_JOINABLE:
-                                _discord("✅ Server is up and joinable.", channel="monitor")
+                                _discord(
+                                    "✅ Server reported ready / joinable in Vein.log.",
+                                    channel="monitor",
+                                )
 
-                # --- AUTH OK ---
+                # Authenticated player ID (for future use)
                 if TRACK_AUTH:
                     m = RX_AUTH_OK.search(line)
                     if m and NOTIFY_AUTH:
-                        _discord(f"🔐 Auth OK for `{m.group(1)}`.", channel="monitor")
+                        player_id = m.group(1)
+                        _discord(
+                            f"🔐 Authenticated player ID: {player_id}",
+                            channel="monitor",
+                        )
 
-                # --- PLAYER JOIN ---
+                # Join / character select
                 if TRACK_JOIN:
                     m = RX_JOINED.search(line)
                     if m:
                         name = m.group(1).strip()
                         current_players.add(name)
                         if NOTIFY_JOIN:
-                            _discord(f"➡️ `{name}` joined.", channel="monitor")
+                            _discord(
+                                f"🚪 Player joined: **{name}**",
+                                channel="monitor",
+                            )
 
-                # --- CHARACTER SELECT ---
                 if TRACK_CHARACTER:
                     m = RX_CHARSEL.search(line)
                     if m and NOTIFY_CHARACTER:
-                        _discord(f"🎭 `{m.group(1).strip()}` selected a character.", channel="monitor")
+                        aka = m.group(1).strip()
+                        _discord(
+                            f"🎭 Character selected: **{aka}**",
+                            channel="monitor",
+                        )
 
-                # --- DISCONNECT ---
+                # Disconnect
                 if TRACK_DISCONNECT and RX_DISC.search(line):
-                    # We don't know the name on every disconnect line; leave set-based logic as-is
                     if NOTIFY_DISC:
-                        _discord("⬅️ A player disconnected.", channel="monitor")
-                    # if the set is non-empty, conservatively drop one
-                    if current_players:
+                        _discord("👋 Player disconnected.", channel="monitor")
+
+                # Autosave backups
+                if AUTOSAVE_ENABLED and TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
+                    if now - last_autosave_ts >= AUTOSAVE_COOLDOWN:
+                        last_autosave_ts = now
+                        if NOTIFY_AUTOSAVE:
+                            _discord("💾 Autosave detected; creating backup…", channel="monitor")
                         try:
-                            current_players.pop()
-                        except KeyError:
+                            backup_save_file(reason="Autosave")
+                        except Exception:
                             pass
-                    # Last-player-out backup
-                    if LAST_ENABLED and not current_players and (now - last_lastplayer_ts) > LAST_COOLDOWN:
-                        last_lastplayer_ts = now
-                        _backup("LastPlayer")
 
-                    # --- AUTOSAVE/BACKUP ---
-                    if TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
-                        if AUTOSAVE_ENABLED and (now - last_autosave_ts) > AUTOSAVE_COOLDOWN:
-                            last_autosave_ts = now
-                            _backup("AutoSave")
-                            if NOTIFY_AUTOSAVE:
-                                _discord("💾 Autosave detected — backup created.", channel="monitor")
+                # Crash detection + backup
+                if CRASH_ENABLED and TRACK_CRASH and RX_CRASH.search(line):
+                    if now - last_crash_ts >= CRASH_DEBOUNCE:
+                        last_crash_ts = now
+                        if NOTIFY_CRASH:
+                            _discord("💥 Crash detected in Vein.log — creating backup…", channel="monitor")
+                        _backup("Crash")
 
-                    # --- CRASH SIGNATURE ---
-                    if TRACK_CRASH and RX_CRASH.search(line):
-                        if CRASH_ENABLED and (now - last_crash_ts) > CRASH_DEBOUNCE:
-                            last_crash_ts = now
-                            _backup("Crash")
-                            if NOTIFY_CRASH:
-                                _discord("💥 Crash signature in log! Backup created.", channel="monitor")
+            # Linger + shutdown backup check
+            proc_up = is_server_running()
+            if proc_up:
+                seen_server_up_once = True
+                last_seen_server_up = now
 
-                # After processing a chunk, detect clean shutdown -> backup once
-                # (no new lines typically appear; so we do this in the idle/loop too)
-                if SHUT_ENABLED:
-                    # server down detection: not tailing OR process gone
-                    proc_down = not is_server_running()
+            if SHUT_ENABLED and SHUTDOWN_FLAG.exists():
+                try:
+                    flag_mtime = SHUTDOWN_FLAG.stat().st_mtime
+                    flag_fresh = (now - flag_mtime) <= SHUT_GRACE
+                except Exception:
                     flag_fresh = False
-                    try:
-                        if SHUTDOWN_FLAG.exists():
-                            flag_fresh = (now - SHUTDOWN_FLAG.stat().st_mtime) <= SHUT_GRACE
-                    except Exception:
-                        pass
-                    if proc_down and flag_fresh and seen_server_up_once and not shutdown_backup_done:
-                        _backup("Shutdown")
-                        shutdown_backup_done = True
+
+                proc_down = not proc_up
+                if (
+                    proc_down
+                    and flag_fresh
+                    and seen_server_up_once
+                    and not shutdown_backup_done
+                ):
+                    _backup("Shutdown")
+                    shutdown_backup_done = True
+
     finally:
         _write_logmon_state(active=False, tailing_file=None, watching_server=False)
         _clear_pid()
 
+
 if __name__ == "__main__":
     monitor()
-
