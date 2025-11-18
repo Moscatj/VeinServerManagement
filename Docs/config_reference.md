@@ -150,7 +150,6 @@ This document explains every key in `Config/config.json`, the source of truth fo
   • Repeat interval for idle notices when server is offline.  
   • Current: 15
 
-- log_rotation_retries / log_rotation_retry_sleep_seconds  
   • Attempts/sleep when rotating logs that might be locked.  
   • Current: 3 / 1.0
 
@@ -223,7 +222,6 @@ This document explains every key in `Config/config.json`, the source of truth fo
 - discord_crash_monitor → true
 
 - enable_autosave_backups → false  
-- enable_log_rotation → false
 
 These drive which subsystems run, and which categories are allowed to post to Discord.
 
@@ -273,7 +271,7 @@ These drive which subsystems run, and which categories are allowed to post to Di
 - monitor_log.py → logs_dir / absolute_log_file, monitor.* (track/notify/heartbeat), autosave backup policy  
 - crash_monitor.py → crash_monitor_interval_seconds, restart_throttle_seconds, startup_quiet_seconds  
 - shutdown_server.py → pre_shutdown_warning_seconds, backup paths, quiet/throttle during stop  
-- utils.py → all feature gates, backups, Discord channel gates, log rotation settings  
+- Controller/Tools/* → feature gates, backups, Discord channel gates
 - vein_manager.py (GUI) → reads/writes most keys; shows/edits monitor + features
 
 ---
@@ -283,6 +281,5 @@ These drive which subsystems run, and which categories are allowed to post to Di
 - ENV indirection: set the REAL Discord URL in your environment as DISCORD_WEBHOOK_URL.  
 - If you change `server_dir` or executable names, verify in the GUI preflight.  
 - Keep `absolute_log_file` set to the main log for most stable tailing.  
-- Use `enable_log_rotation` only if logs balloon; rotation happens with retries to handle locks.  
+- To avoid touching any Vein game files directly, the toolkit leaves Vein.log alone; use external tooling if you need log archival.
 - If crash monitor flaps, increase `startup_quiet_seconds` and/or `restart_throttle_seconds`.
-

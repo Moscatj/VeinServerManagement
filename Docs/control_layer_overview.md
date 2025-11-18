@@ -19,7 +19,7 @@ This document ties together the main control scripts and their shared dependenci
 ### Shared Modules
 | Module | Purpose |
 |---------|----------|
-| **utils.py** | Central helper library for process management, backups, Steam updates, logging, and Discord integration. |
+| **Controller/Tools/** | Shared helper modules (process, runtime, restart, backups, Discord, Steam updates). |
 | **config.py** | Loads and validates `config.json`, applies defaults, and handles environment overrides. |
 | **config_helper.py** | Simplified API for retrieving typed config values and feature flags. |
 
@@ -131,7 +131,7 @@ Copy code
 - Controllers communicate **only through runtime files** and **Discord posts** (no sockets).  
 - All scripts are safe to run independently for testing.  
 - **GUI** (`vein_manager.py`) never directly controls the game process — it triggers scripts and reads runtime state.  
-- **Discord integration** is centralized in `utils.py` and gated by `features.*` in `config.json`.  
+- **Discord integration** lives in `Controller/Tools/discord.py` and is gated by `features.*` in `config.json`.  
 - **Crash prevention** uses restart throttling + startup quiet periods to avoid infinite restart loops.  
 - All backups and logs are organized by timestamp under `Backups/` and `Runtime/`.  
 

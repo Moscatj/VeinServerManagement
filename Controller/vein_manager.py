@@ -7,14 +7,23 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List
 from datetime import datetime, timezone
 import collections
+
 # --- Qt
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtWidgets import QGroupBox, QLabel, QPushButton, QGridLayout, QHBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QGridLayout,
+    QHBoxLayout,
+    QWidget,
+)
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 
 try:
     from ruamel.yaml import YAML
+
     _HAVE_RUAMEL = True
 except Exception:
     _HAVE_RUAMEL = False
@@ -23,9 +32,9 @@ except Exception:
 ENV = os.environ
 ROOT = Path(ENV.get("VEIN_MGMT_ROOT", r"G:\Servers\VeinServer\VeinServerManagement"))
 CONFIG_DIR = ROOT / "Config"
-CTRL_DIR   = ROOT / "Controller"
+CTRL_DIR = ROOT / "Controller"
 RUNTIME_FALLBACK = ROOT / "Runtime"
-PYEXE_ENV  = ENV.get("PYEXE", "")
+PYEXE_ENV = ENV.get("PYEXE", "")
 APP_ORG = "RHG"
 APP_NAME = "VeinManager"
 LOGS_DIR = ROOT / "Logs"
@@ -42,13 +51,16 @@ except Exception as e:
     print(f"[FATAL] Could not import Tools.config_io from {CTRL_DIR}: {e}")
     sys.exit(1)
 
+
 def _pyexe() -> str:
     return PYEXE_ENV.strip() or ("py -3" if os.name == "nt" else sys.executable)
+
 
 # --- move these helpers ABOVE DEFAULT_CONFIG ---
 def _is_yaml_path(p: str) -> bool:
     s = (p or "").lower()
     return s.endswith(".yaml") or s.endswith(".yml")
+
 
 def _list_config_files(folder: Path) -> list[str]:
     files = [p.name for p in folder.glob("*.json")]
@@ -56,15 +68,20 @@ def _list_config_files(folder: Path) -> list[str]:
     files += [p.name for p in folder.glob("*.yml")]
     return sorted(files)
 
+
 def first_cfg_in(folder: Path):
     cands = _list_config_files(folder)
     return (folder / cands[0]) if cands else None
 
-# compute DEFAULT_CONFIG only after helpers exist
-DEFAULT_CONFIG = Path(ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CONFIG_DIR / "config.yaml")))
 
-#----------------- config IO (YAML+JSON) --------------------------------------
+# compute DEFAULT_CONFIG only after helpers exist
+DEFAULT_CONFIG = Path(
+    ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CONFIG_DIR / "config.yaml"))
+)
+
+# ----------------- config IO (YAML+JSON) --------------------------------------
 from typing import Tuple as _Tuple
+
 
 def _setup_process_logging():
     """Redirect VeinManager stdout/stderr to Logs and capture crashes."""
@@ -79,8 +96,10 @@ def _setup_process_logging():
         # Python unhandled exceptions → stderr file
         def _excepthook(tp, val, tb):
             import traceback
+
             traceback.print_exception(tp, val, tb, file=sys.stderr)
             sys.stderr.flush()
+
         sys.excepthook = _excepthook
 
         # Qt messages → stderr file
@@ -90,6 +109,7 @@ def _setup_process_logging():
                 sys.stderr.flush()
             except Exception:
                 pass
+
         try:
             QtCore.qInstallMessageHandler(_qt_msg_handler)  # PySide6
         except Exception:
@@ -98,6 +118,7 @@ def _setup_process_logging():
         # Enable faulthandler if available
         try:
             import faulthandler
+
             faulthandler.enable(sys.stderr)
         except Exception:
             pass
@@ -110,11 +131,13 @@ def _setup_process_logging():
         # Last-ditch: don’t crash if logging setup fails
         print(f"[WARN] Failed to initialize process logging: {e}")
 
+
 # --- Config loading that preserves YAML order+comments -----------------------
 from pathlib import Path
 
 # --- Config loading that preserves YAML order+comments -----------------------
 from pathlib import Path
+
 
 def _load_any_config(path: str | Path):
     """
@@ -135,11 +158,14 @@ def _load_any_config(path: str | Path):
         return data, "yaml", doc
     else:
         import json as _json
+
         data = _json.loads(txt) if txt.strip() else {}
         return data, "json", None
 
+
 def _dump_any_config(obj, kind: str, ydoc=None) -> str:
     from io import StringIO
+
     if kind == "yaml":
         if not _HAVE_RUAMEL:
             raise RuntimeError("Cannot write YAML without ruamel.yaml.")
@@ -153,28 +179,41 @@ def _dump_any_config(obj, kind: str, ydoc=None) -> str:
         return sio.getvalue()
     else:
         import json
+
         return json.dumps(obj, indent=2)
+
 
 # ------------------------- Subprocess helpers --------------------------------
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
+
 def _hidden_kwargs():
-    if os.name != "nt": return {}
+    if os.name != "nt":
+        return {}
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 0
     return {"startupinfo": si, "creationflags": CREATE_NO_WINDOW}
 
-def spawn(cmd: str, cwd: Path | None = None, env: dict | None = None) -> subprocess.Popen:
+
+def spawn(
+    cmd: str, cwd: Path | None = None, env: dict | None = None
+) -> subprocess.Popen:
     kw = {"shell": True, "cwd": str(cwd) if cwd else None}
     kw.update(_hidden_kwargs())
     if env is not None:
         kw["env"] = env
     return subprocess.Popen(cmd, **{k: v for k, v in kw.items() if v is not None})
 
+
 def run_once(cmd: str, cwd: Path | None = None, timeout=60, env: dict | None = None):
-    kw = {"shell": True, "cwd": str(cwd) if cwd else None,
-          "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "text": True}
+    kw = {
+        "shell": True,
+        "cwd": str(cwd) if cwd else None,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
     kw.update(_hidden_kwargs())
     if env is not None:
         kw["env"] = env
@@ -186,7 +225,10 @@ def run_once(cmd: str, cwd: Path | None = None, timeout=60, env: dict | None = N
         out, err = p.communicate()
     return p.returncode, out, err
 
-def spawn_logged(cmd: str, log_file: Path, cwd: Path | None = None, env: dict | None = None) -> subprocess.Popen:
+
+def spawn_logged(
+    cmd: str, log_file: Path, cwd: Path | None = None, env: dict | None = None
+) -> subprocess.Popen:
     """
     Popen with stdout/stderr appended to a single log file.
     """
@@ -204,8 +246,10 @@ def spawn_logged(cmd: str, log_file: Path, cwd: Path | None = None, env: dict | 
         kw["env"] = env
     return subprocess.Popen(cmd, **{k: v for k, v in kw.items() if v is not None})
 
+
 def tasklist_running(image_name: str) -> bool:
-    if os.name != "nt" or not image_name.strip(): return False
+    if os.name != "nt" or not image_name.strip():
+        return False
     name = image_name.strip().lower()
     try:
         kw = {"text": True}
@@ -217,6 +261,7 @@ def tasklist_running(image_name: str) -> bool:
     except Exception:
         pass
     return False
+
 
 def proc_exists_by_cmdline(substr: str) -> bool:
     """True if any process has 'substr' in CommandLine (Windows PowerShell)."""
@@ -232,12 +277,13 @@ def proc_exists_by_cmdline(substr: str) -> bool:
     )
     cmd = ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps_cmd]
     try:
-        kw = {'text': True}
+        kw = {"text": True}
         kw.update(_hidden_kwargs())
         out = subprocess.check_output(cmd, **kw).strip()
         return bool(out)
     except Exception:
         return False
+
 
 # --------------------------- Runtime helpers ---------------------------------
 def _rt_paths(cfg_path: str) -> dict:
@@ -250,8 +296,12 @@ def _rt_paths(cfg_path: str) -> dict:
         "stop_crash": rt / "stop_crash_monitor.flag",
         "stop_log": rt / "stop_log_monitor.flag",
         "state_crash": rt / "crash_monitor_state.json",
-        "state_log": Path((cfg.get("monitor", {}) or {}).get("state_file") or (rt / "log_monitor_state.json")),
+        "state_log": Path(
+            (cfg.get("monitor", {}) or {}).get("state_file")
+            or (rt / "log_monitor_state.json")
+        ),
     }
+
 
 def _file_text(p: Path) -> str | None:
     try:
@@ -259,19 +309,26 @@ def _file_text(p: Path) -> str | None:
     except Exception:
         return None
 
+
 def _mkflag(p: Path):
     p.parent.mkdir(parents=True, exist_ok=True)
-    try: p.write_text("", encoding="utf-8")
-    except Exception: pass
-
-def _rm(p: Path):
     try:
-        if p.exists(): p.unlink()
+        p.write_text("", encoding="utf-8")
     except Exception:
         pass
 
+
+def _rm(p: Path):
+    try:
+        if p.exists():
+            p.unlink()
+    except Exception:
+        pass
+
+
 def _pid_alive(pid_str: str | None) -> bool:
-    if not pid_str: return False
+    if not pid_str:
+        return False
     try:
         pid = int(pid_str)
     except Exception:
@@ -281,6 +338,7 @@ def _pid_alive(pid_str: str | None) -> bool:
         return any(f" {pid} " in (" " + line + " ") for line in out.splitlines())
     except Exception:
         return False
+
 
 def _wait_for_monitor_exit(pid_file: Path, timeout_sec: int = 30) -> bool:
     """Return True if monitor exited within timeout."""
@@ -293,6 +351,7 @@ def _wait_for_monitor_exit(pid_file: Path, timeout_sec: int = 30) -> bool:
         time.sleep(0.5)
     return False
 
+
 # ----------------------- Config helpers (paths, logs) -------------------------
 def _load_cfg_for_runtime(cfg_path: str) -> dict:
     try:
@@ -301,13 +360,14 @@ def _load_cfg_for_runtime(cfg_path: str) -> dict:
     except Exception:
         return {}
 
+
 def _runtime_paths(cfg_path: str) -> dict:
     cfg = _load_cfg_for_runtime(cfg_path)
     rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
     server_dir = Path(cfg.get("server_dir") or ROOT.parent)
 
     # prefer nested 'backups.root' from YAML, then fallback to legacy top-level
-    b = (cfg.get("backups", {}) or {})
+    b = cfg.get("backups", {}) or {}
     b_root = b.get("root")
     legacy = cfg.get("backup_root")
     backup_root = Path(b_root or legacy or (ROOT / "Backups"))
@@ -316,7 +376,11 @@ def _runtime_paths(cfg_path: str) -> dict:
     hb_top = cfg.get("monitor_heartbeat_interval_seconds", None)
     hb_nested = (cfg.get("monitor", {}) or {}).get("heartbeat_interval_seconds", None)
     try:
-        hb = int(hb_top if hb_top is not None else (hb_nested if hb_nested is not None else 60))
+        hb = int(
+            hb_top
+            if hb_top is not None
+            else (hb_nested if hb_nested is not None else 60)
+        )
     except Exception:
         hb = 60
 
@@ -328,12 +392,20 @@ def _runtime_paths(cfg_path: str) -> dict:
         "shutdown_flag": rt / "shutdown_in_progress.flag",
         "server_state": rt / "server_state.json",
         "crash_state": rt / "crash_monitor_state.json",
-        "logs_dir": Path(cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")),
-        "absolute_log_file": Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None,
+        "logs_dir": Path(
+            cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")
+        ),
+        "absolute_log_file": (
+            Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None
+        ),
         "backup_root": backup_root,
         "features": cfg.get("features", {}),
-        "log_monitor_enabled": bool(cfg.get("features", {}).get("enable_log_monitor", True)),
-        "crash_monitor_enabled": bool(cfg.get("features", {}).get("enable_crash_monitor", True)),
+        "log_monitor_enabled": bool(
+            cfg.get("features", {}).get("enable_log_monitor", True)
+        ),
+        "crash_monitor_enabled": bool(
+            cfg.get("features", {}).get("enable_crash_monitor", True)
+        ),
         "hb_seconds": hb,
         "state_log": Path(monitor.get("state_file") or (rt / "log_monitor_state.json")),
     }
@@ -347,6 +419,7 @@ def _resolve_logfile(cfg_path: str, overrides: Dict[str, str]) -> Path:
         return rp["absolute_log_file"]
     return rp["logs_dir"] / "Vein.log"
 
+
 def _derived_scripts(cfg_path: str) -> Dict[str, Path]:
     base = CTRL_DIR
     return {
@@ -356,6 +429,7 @@ def _derived_scripts(cfg_path: str) -> Dict[str, Path]:
         "crash_monitor": base / "crash_monitor.py",
     }
 
+
 def _resolved_paths(cfg_path: str, overrides: Dict[str, str]) -> Dict[str, Path]:
     d = _derived_scripts(cfg_path)
     res = {}
@@ -364,29 +438,38 @@ def _resolved_paths(cfg_path: str, overrides: Dict[str, str]) -> Dict[str, Path]
     res["log_file"] = _resolve_logfile(cfg_path, overrides)
     return res
 
-def _file_exists(p: Path) -> bool:
-    try: return p.exists()
-    except Exception: return False
 
-def _dot(on: bool, warn: bool=False) -> str:
+def _file_exists(p: Path) -> bool:
+    try:
+        return p.exists()
+    except Exception:
+        return False
+
+
+def _dot(on: bool, warn: bool = False) -> str:
     if warn:
         return "background:#EFB700; border-radius:6px; min-width:12px; min-height:12px;"
     return f"background:{'#2ECC71' if on else '#E74C3C'};border-radius:6px;min-width:12px;min-height:12px;"
+
 
 def _age_str(iso_ts: str | None) -> str:
     if not iso_ts:
         return "—"
     try:
         from datetime import datetime, timezone
+
         dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         sec = max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
-        if sec < 60: return f"{sec}s"
-        if sec < 3600: return f"{sec//60}m {sec%60}s"
+        if sec < 60:
+            return f"{sec}s"
+        if sec < 3600:
+            return f"{sec//60}m {sec%60}s"
         return f"{sec//3600}h {(sec%3600)//60}m"
     except Exception:
         return "—"
+
 
 def _iter_keys_preserve(node):
     try:
@@ -394,15 +477,19 @@ def _iter_keys_preserve(node):
     except Exception:
         return list(node) if isinstance(node, (list, tuple)) else []
 
+
 def _human_title(k: str) -> str:
     return (k or "").replace("_", " ").strip().title() or "Top-level"
+
 
 class StatusBus(QtCore.QObject):
     ready = QtCore.Signal(dict)
 
+
 # ----------------------------- Background poller ------------------------------
 class StatusSnapshot(QtCore.QObject):
     ready = QtCore.Signal(dict)
+
 
 def _map_v2_paths(raw: dict) -> dict:
     """
@@ -415,21 +502,27 @@ def _map_v2_paths(raw: dict) -> dict:
         saves: G:\Servers\VeinServer\Vein\Saved\SaveGames
     """
     p = raw.get("paths", {}) or {}
+
     def pick(*keys, default=""):
         for k in keys:
             v = p.get(k) or raw.get(k)
-            if v: return v
+            if v:
+                return v
         return default
+
     flat = {
         "server_dir": pick("server", "server_dir"),
         "runtime_dir": pick("runtime", "runtime_dir"),
-        "logs_dir":   pick("logs", "logs_dir"),
-        "save_dir":   pick("saves", "save_dir"),
+        "logs_dir": pick("logs", "logs_dir"),
+        "save_dir": pick("saves", "save_dir"),
         # executables
-        "server_executables": list(raw.get("server_executables", [])) \
-                              or list((raw.get("server", {}) or {}).get("executables", [])),
-        "preferred_exe": (raw.get("preferred_exe") or
-                          (raw.get("server", {}) or {}).get("preferred_exe") or ""),
+        "server_executables": list(raw.get("server_executables", []))
+        or list((raw.get("server", {}) or {}).get("executables", [])),
+        "preferred_exe": (
+            raw.get("preferred_exe")
+            or (raw.get("server", {}) or {}).get("preferred_exe")
+            or ""
+        ),
         # monitor knobs used by config_io
         "monitor": raw.get("monitor", {}) or {},
         "steam": raw.get("steam", {}) or {},
@@ -438,6 +531,7 @@ def _map_v2_paths(raw: dict) -> dict:
     # if any required path is empty, leave as-is; config_io will warn but not fatal
     return flat
 
+
 def reload_config(self):
     # stop any previous poller
     if self._poller:
@@ -445,19 +539,21 @@ def reload_config(self):
         self._poller = None
 
     p = StatusPoller(self.config_path)
-    p.setAutoDelete(False)          # IMPORTANT: don't auto-delete while run() is mid-emit
-    p.signals = self.status_bus     # reuse the stable, parented bus
+    p.setAutoDelete(False)  # IMPORTANT: don't auto-delete while run() is mid-emit
+    p.signals = self.status_bus  # reuse the stable, parented bus
     p.stop_flag = False
     self._poller = p
     self._pool.start(p)
 
-    self._start_status_poller()   # restart with the new config
+    self._start_status_poller()  # restart with the new config
+
 
 class StatusPoller(QtCore.QRunnable):
     """
     Reads Runtime pid/flags and small JSONs off the UI thread and returns a compact snapshot:
       {'server':bool,'logmon':bool,'logmon_fresh':bool,'crashmon':bool,'crash_mode':str}
     """
+
     def __init__(self, cfg_path: str):
         super().__init__()
         self.cfg_path = cfg_path
@@ -488,7 +584,7 @@ class StatusPoller(QtCore.QRunnable):
             obj, kind, _ = _load_any_config(cfg_path)
             obj = obj if isinstance(obj, dict) else {}
 
-            p = (obj.get("paths", {}) or {})
+            p = obj.get("paths", {}) or {}
             self.paths = {
                 "server_dir": p.get("server") or p.get("server_dir") or "",
                 "runtime_dir": p.get("runtime") or p.get("runtime_dir") or "",
@@ -497,24 +593,38 @@ class StatusPoller(QtCore.QRunnable):
             }
 
             # Heartbeat knobs live in log_monitor (v2). Fallback to old "monitor" if present.
-            lm = (obj.get("log_monitor", {}) or {})
-            mon = (obj.get("monitor", {}) or {})
-            self.hb_seconds = int(lm.get("heartbeat_seconds", lm.get("heartbeat_interval_seconds",
-                                   mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", 60)))))
+            lm = obj.get("log_monitor", {}) or {}
+            mon = obj.get("monitor", {}) or {}
+            self.hb_seconds = int(
+                lm.get(
+                    "heartbeat_seconds",
+                    lm.get(
+                        "heartbeat_interval_seconds",
+                        mon.get(
+                            "heartbeat_seconds",
+                            mon.get("heartbeat_interval_seconds", 60),
+                        ),
+                    ),
+                )
+            )
             self.hb_seconds = max(5, self.hb_seconds)
-            self.fresh_mult = float(lm.get("fresh_window_multiplier", mon.get("fresh_window_multiplier", 2.0)))
+            self.fresh_mult = float(
+                lm.get(
+                    "fresh_window_multiplier", mon.get("fresh_window_multiplier", 2.0)
+                )
+            )
             # clamp fresh multiplier a little to avoid nonsense
             self.fresh_mult = max(0.25, min(10.0, self.fresh_mult))
 
             # Preferred exe (if GUI wants to display/confirm)
-            srv = (obj.get("server", {}) or {})
+            srv = obj.get("server", {}) or {}
             self.selected_exe = srv.get("preferred_exe", "")
 
         # Normalize to Path objects we’ll use later
         for k, v in list(self.paths.items()):
             self.paths[k] = str(v or "").strip()
 
-    # --- StatusPoller helpers --- 
+    # --- StatusPoller helpers ---
     def _runtime_paths_v2(self) -> dict:
         rd = Path(self.paths.get("runtime_dir", "") or "")
         return {
@@ -522,21 +632,23 @@ class StatusPoller(QtCore.QRunnable):
             # New unified name used by utils/Tools.state_io
             "server_state": rd / "server_state.json",
             # Fallback JSON flag (not critical now, but kept for compatibility)
-            "state_flag":   rd / "intent.json",
+            "state_flag": rd / "intent.json",
         }
 
     def _rt_paths_v2(self) -> dict:
         rd = Path(self.paths.get("runtime_dir", "") or "")
         return {
-            "pid_log":    rd / "log_monitor.pid",
-            "pid_crash":  rd / "crash_monitor.pid",
-            "state_log":  rd / "log_monitor.state.json",
-            "state_crash":rd / "crash_monitor.state.json",
+            "pid_log": rd / "log_monitor.pid",
+            "pid_crash": rd / "crash_monitor.pid",
+            "state_log": rd / "log_monitor.state.json",
+            "state_crash": rd / "crash_monitor.state.json",
         }
 
     def _read_text(self, p: Path) -> str | None:
-        try: return p.read_text(encoding="utf-8").strip()
-        except Exception: return None
+        try:
+            return p.read_text(encoding="utf-8").strip()
+        except Exception:
+            return None
 
     def _read_json(self, p: Path) -> dict:
         try:
@@ -554,30 +666,45 @@ class StatusPoller(QtCore.QRunnable):
             return False
         try:
             # NOTE: CREATE_NO_WINDOW constant should already exist in your module
-            out = subprocess.check_output(["tasklist"], text=True, creationflags=CREATE_NO_WINDOW)
+            out = subprocess.check_output(
+                ["tasklist"], text=True, creationflags=CREATE_NO_WINDOW
+            )
             # naive but robust: look for the pid as a standalone token
             needle = f" {pid} "
             return any(needle in (" " + line + " ") for line in out.splitlines())
         except Exception:
             return False
-   
+
     def _hb_knobs(self) -> tuple[int, float]:
         """Read heartbeat knobs from config; v2 'log_monitor' first, fallback to 'monitor'."""
         try:
             obj, kind, _ = _load_any_config(self.cfg_path)
             obj = obj if isinstance(obj, dict) else {}
-            lm = (obj.get("log_monitor", {}) or {})
-            mon = (obj.get("monitor", {}) or {})
-            hb = int(lm.get("heartbeat_seconds", lm.get("heartbeat_interval_seconds",
-                      mon.get("heartbeat_seconds", mon.get("heartbeat_interval_seconds", self.hb_seconds)))))
+            lm = obj.get("log_monitor", {}) or {}
+            mon = obj.get("monitor", {}) or {}
+            hb = int(
+                lm.get(
+                    "heartbeat_seconds",
+                    lm.get(
+                        "heartbeat_interval_seconds",
+                        mon.get(
+                            "heartbeat_seconds",
+                            mon.get("heartbeat_interval_seconds", self.hb_seconds),
+                        ),
+                    ),
+                )
+            )
             hb = max(5, hb)
-            fresh_mult = float(lm.get("fresh_window_multiplier",
-                               mon.get("fresh_window_multiplier", self.fresh_mult)))
+            fresh_mult = float(
+                lm.get(
+                    "fresh_window_multiplier",
+                    mon.get("fresh_window_multiplier", self.fresh_mult),
+                )
+            )
             fresh_mult = max(0.25, min(10.0, fresh_mult))
             return hb, fresh_mult
         except Exception:
             return self.hb_seconds, self.fresh_mult
-
 
     def _is_fresh(self, state_path: Path, hb_seconds: int, mult: float) -> bool:
         """True if last_updated is within window; tolerant of bad/missing files."""
@@ -588,6 +715,7 @@ class StatusPoller(QtCore.QRunnable):
                 return False
             # Make timezone-aware; ISO with 'Z' → '+00:00'
             from datetime import datetime, timezone
+
             lu_norm = lu.replace("Z", "+00:00")
             dt = datetime.fromisoformat(lu_norm)
             if dt.tzinfo is None:
@@ -633,7 +761,9 @@ class StatusPoller(QtCore.QRunnable):
             # Backward compatibility: support the older crash_state path if present
             if not cs:
                 cs = self._read_json(rp.get("crash_state", rt["state_crash"]))
-            mode = (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
+            mode = (
+                (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
+            )
 
             # Load config object once; very cheap and we already do it elsewhere
             cfg_obj, _, _ = _load_any_config(self.cfg_path)
@@ -673,6 +803,7 @@ class StatusPoller(QtCore.QRunnable):
         except Exception:
             # never crash the GUI thread if the poller hiccups
             pass
+
 
 # --------------------------- Log tail (throttled) -----------------------------
 class FileTail(QtCore.QObject):
@@ -725,7 +856,11 @@ class FileTail(QtCore.QObject):
             size, mt = st.st_size, st.st_mtime
             old_size, old_mt = self._last_sig
             # rotation/truncate: size dropped or mtime went backwards/changed with smaller size
-            return (size < old_size) or (size == 0 and old_size > 0) or (mt != old_mt and size < old_size)
+            return (
+                (size < old_size)
+                or (size == 0 and old_size > 0)
+                or (mt != old_mt and size < old_size)
+            )
         except Exception:
             return True
 
@@ -762,9 +897,15 @@ class JsonHL(QtGui.QSyntaxHighlighter):
     def __init__(self, doc):
         super().__init__(doc)
         self.c = {}
+
     def highlightBlock(self, text):
         import re
-        def f(hex): q = QtGui.QTextCharFormat(); q.setForeground(QtGui.QColor(hex)); return q
+
+        def f(hex):
+            q = QtGui.QTextCharFormat()
+            q.setForeground(QtGui.QColor(hex))
+            return q
+
         self.c.setdefault("k", f("#7FB3D5"))
         self.c.setdefault("s", f("#ABEBC6"))
         self.c.setdefault("n", f("#F7DC6F"))
@@ -772,48 +913,58 @@ class JsonHL(QtGui.QSyntaxHighlighter):
         self.c.setdefault("0", f("#D2B4DE"))
         for m in re.finditer(r'\"([^"]+)\"\s*(?=:\s)', text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["k"])
-        for m in re.finditer(r'\"([^\"\\]|\\.)*\"', text):
+        for m in re.finditer(r"\"([^\"\\]|\\.)*\"", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["s"])
-        for m in re.finditer(r'(?<![\w\.])(-?\d+(\.\d+)?)', text):
+        for m in re.finditer(r"(?<![\w\.])(-?\d+(\.\d+)?)", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["n"])
-        for m in re.finditer(r'\b(true|false)\b', text):
+        for m in re.finditer(r"\b(true|false)\b", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["b"])
-        for m in re.finditer(r'\bnull\b', text):
+        for m in re.finditer(r"\bnull\b", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["0"])
+
 
 # ----------------------- YAML syntax highlight -------------------------------
 class YamlHL(QtGui.QSyntaxHighlighter):
     def __init__(self, doc):
         super().__init__(doc)
         self.c = {}
+
     def highlightBlock(self, text):
         import re
-        def f(hex): q = QtGui.QTextCharFormat(); q.setForeground(QtGui.QColor(hex)); return q
-        self.c.setdefault("k", f("#7FB3D5"))   # keys
-        self.c.setdefault("s", f("#ABEBC6"))   # strings
-        self.c.setdefault("n", f("#F7DC6F"))   # numbers
-        self.c.setdefault("b", f("#F5B7B1"))   # booleans
-        self.c.setdefault("c", f("#7F8C8D"))   # comments
+
+        def f(hex):
+            q = QtGui.QTextCharFormat()
+            q.setForeground(QtGui.QColor(hex))
+            return q
+
+        self.c.setdefault("k", f("#7FB3D5"))  # keys
+        self.c.setdefault("s", f("#ABEBC6"))  # strings
+        self.c.setdefault("n", f("#F7DC6F"))  # numbers
+        self.c.setdefault("b", f("#F5B7B1"))  # booleans
+        self.c.setdefault("c", f("#7F8C8D"))  # comments
         # comments
-        for m in re.finditer(r'\s#.*$', text):
+        for m in re.finditer(r"\s#.*$", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["c"])
         # keys (key:)
-        for m in re.finditer(r'^\s*([A-Za-z0-9_\-\.]+)\s*:(?!:)', text):
+        for m in re.finditer(r"^\s*([A-Za-z0-9_\-\.]+)\s*:(?!:)", text):
             self.setFormat(m.start(1), m.end(1) - m.start(1), self.c["k"])
         # quoted strings
-        for m in re.finditer(r'\"([^\"\\]|\\.)*\"|\'([^\']|\\\')*\'', text):
+        for m in re.finditer(r"\"([^\"\\]|\\.)*\"|\'([^\']|\\\')*\'", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["s"])
         # numbers
-        for m in re.finditer(r'(?<![\w\.])(-?\d+(\.\d+)?)', text):
+        for m in re.finditer(r"(?<![\w\.])(-?\d+(\.\d+)?)", text):
             self.setFormat(m.start(), m.end() - m.start(), self.c["n"])
         # booleans/null
-        for m in re.finditer(r'\b(true|false|on|off|yes|no|null)\b', text, re.IGNORECASE):
+        for m in re.finditer(
+            r"\b(true|false|on|off|yes|no|null)\b", text, re.IGNORECASE
+        ):
             self.setFormat(m.start(), m.end() - m.start(), self.c["b"])
 
 
 # ------------------------------ Advanced Dialog -------------------------------
 class AdvancedDialog(QtWidgets.QDialog):
     """Optional overrides. Defaults come from config, these persist in QSettings."""
+
     def __init__(self, cfg_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Advanced Overrides")
@@ -822,10 +973,13 @@ class AdvancedDialog(QtWidgets.QDialog):
         self.cfg_path = cfg_path
 
         v = QtWidgets.QVBoxLayout(self)
-        self.chk_use_defaults = QtWidgets.QCheckBox("Use defaults from config (ignore overrides)")
+        self.chk_use_defaults = QtWidgets.QCheckBox(
+            "Use defaults from config (ignore overrides)"
+        )
         v.addWidget(self.chk_use_defaults)
 
-        grid = QtWidgets.QGridLayout(); v.addLayout(grid)
+        grid = QtWidgets.QGridLayout()
+        v.addLayout(grid)
         labels = [
             ("Start Server (start_server.py)", "start_server"),
             ("Stop Server (shutdown_server.py)", "shutdown_server"),
@@ -838,13 +992,17 @@ class AdvancedDialog(QtWidgets.QDialog):
         for text, key in labels:
             grid.addWidget(QtWidgets.QLabel(text), row, 0)
             le = QtWidgets.QLineEdit()
-            btn = QtWidgets.QToolButton(); btn.setText("…")
+            btn = QtWidgets.QToolButton()
+            btn.setText("…")
             btn.clicked.connect(lambda _=None, k=key, e=le: self._pick(k, e))
-            grid.addWidget(le, row, 1); grid.addWidget(btn, row, 2)
+            grid.addWidget(le, row, 1)
+            grid.addWidget(btn, row, 2)
             self.edits[key] = le
             row += 1
 
-        bb = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save|QtWidgets.QDialogButtonBox.Cancel)
+        bb = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel
+        )
         reset = QtWidgets.QPushButton("Reset to Defaults")
         bb.addButton(reset, QtWidgets.QDialogButtonBox.ActionRole)
         v.addWidget(bb)
@@ -860,11 +1018,17 @@ class AdvancedDialog(QtWidgets.QDialog):
     def _pick(self, key: str, le: QtWidgets.QLineEdit):
         cur = le.text().strip() or str(Path.home())
         if key == "log_file":
-            p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select log file", cur, "Log files (*.log *.txt);;All files (*.*)")
-            if p: le.setText(p)
+            p, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Select log file", cur, "Log files (*.log *.txt);;All files (*.*)"
+            )
+            if p:
+                le.setText(p)
         else:
-            p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select python script", cur, "Python (*.py);;All files (*.*)")
-            if p: le.setText(p)
+            p, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Select python script", cur, "Python (*.py);;All files (*.*)"
+            )
+            if p:
+                le.setText(p)
 
     def _reset_defaults(self):
         q = QtCore.QSettings(APP_ORG, APP_NAME)
@@ -880,7 +1044,7 @@ class AdvancedDialog(QtWidgets.QDialog):
         ov = q.value("overrides", {}) or {}
         resolved = _resolved_paths(self.cfg_path, ov if not use_defs else {})
         for k, le in self.edits.items():
-            le.setText(str(ov.get(k, "" if k=="log_file" else resolved.get(k,""))))
+            le.setText(str(ov.get(k, "" if k == "log_file" else resolved.get(k, ""))))
 
     def _sync_enabled(self):
         enabled = not self.chk_use_defaults.isChecked()
@@ -896,9 +1060,11 @@ class AdvancedDialog(QtWidgets.QDialog):
                 if val:
                     ov[k] = val
         return {"use_defaults": use_defs, "overrides": ov}
-    
+
+
 class CollapsibleBox(QtWidgets.QWidget):
     """Simple collapsible section with a header and a container layout."""
+
     def __init__(self, title: str):
         super().__init__()
         self._title_base = title
@@ -949,56 +1115,97 @@ class CollapsibleBox(QtWidgets.QWidget):
             if w:
                 w.setParent(None)
         # Install new layout into the container
-        self.vbox = layout if isinstance(layout, QtWidgets.QVBoxLayout) else QtWidgets.QVBoxLayout(self.container)
+        self.vbox = (
+            layout
+            if isinstance(layout, QtWidgets.QVBoxLayout)
+            else QtWidgets.QVBoxLayout(self.container)
+        )
         self.container.setLayout(self.vbox)
+
 
 # ------------------------------ KV Row editor ---------------------------------
 class KVRow(QtWidgets.QWidget):
     changed = QtCore.Signal(tuple, object)
+
     def __init__(self, label: str, path: Tuple[str, ...], value: Any, parent=None):
         super().__init__(parent)
         self.path = path
         self.label_text = label
         h = QtWidgets.QHBoxLayout(self)
-        h.setContentsMargins(4, 2, 4, 2); h.setSpacing(6)
-        lab = QtWidgets.QLabel(label); lab.setMinimumWidth(180); h.addWidget(lab)
+        h.setContentsMargins(4, 2, 4, 2)
+        h.setSpacing(6)
+        lab = QtWidgets.QLabel(label)
+        lab.setMinimumWidth(180)
+        h.addWidget(lab)
         self.label = lab
         if isinstance(value, bool):
-            w = QtWidgets.QCheckBox(); w.setChecked(value)
-            w.stateChanged.connect(lambda *_: self.changed.emit(self.path, bool(w.isChecked())))
+            w = QtWidgets.QCheckBox()
+            w.setChecked(value)
+            w.stateChanged.connect(
+                lambda *_: self.changed.emit(self.path, bool(w.isChecked()))
+            )
             editor = w
         elif isinstance(value, int) and not isinstance(value, bool):
             w = QtWidgets.QLineEdit(str(value))
             w.setValidator(QtGui.QIntValidator(-2_147_483_648, 2_147_483_647))
-            w.editingFinished.connect(lambda: self.changed.emit(self.path, int(w.text() or 0)))
+            w.editingFinished.connect(
+                lambda: self.changed.emit(self.path, int(w.text() or 0))
+            )
             editor = w
         elif isinstance(value, float):
             w = QtWidgets.QLineEdit(str(value))
-            w.setValidator(QtGui.QDoubleValidator(bottom=-1e308, top=1e308, decimals=12))
-            w.editingFinished.connect(lambda: self.changed.emit(self.path, float(w.text() or 0.0)))
+            w.setValidator(
+                QtGui.QDoubleValidator(bottom=-1e308, top=1e308, decimals=12)
+            )
+            w.editingFinished.connect(
+                lambda: self.changed.emit(self.path, float(w.text() or 0.0))
+            )
             editor = w
         else:
-            box = QtWidgets.QWidget(); hb = QtWidgets.QHBoxLayout(box); hb.setContentsMargins(0,0,0,0)
-            w = QtWidgets.QLineEdit("" if value is None else str(value)); hb.addWidget(w, 1)
+            box = QtWidgets.QWidget()
+            hb = QtWidgets.QHBoxLayout(box)
+            hb.setContentsMargins(0, 0, 0, 0)
+            w = QtWidgets.QLineEdit("" if value is None else str(value))
+            hb.addWidget(w, 1)
             key = self.path[-1] if self.path else ""
+
             def looks_path_key(k: str) -> bool:
-                k = k.lower(); return any(t in k for t in ("path", "file", "dir", "folder"))
+                k = k.lower()
+                return any(t in k for t in ("path", "file", "dir", "folder"))
+
             def is_dir_key(k: str) -> bool:
-                k = k.lower(); return "dir" in k or "folder" in k
+                k = k.lower()
+                return "dir" in k or "folder" in k
+
             if looks_path_key(key):
-                btn = QtWidgets.QToolButton(); btn.setText("…"); btn.setToolTip("Browse")
+                btn = QtWidgets.QToolButton()
+                btn.setText("…")
+                btn.setToolTip("Browse")
+
                 def pick():
                     cur = w.text().strip() or str(Path.home())
                     if is_dir_key(key):
-                        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Select folder", cur)
-                        if d: w.setText(d); self.changed.emit(self.path, d)
+                        d = QtWidgets.QFileDialog.getExistingDirectory(
+                            self, "Select folder", cur
+                        )
+                        if d:
+                            w.setText(d)
+                            self.changed.emit(self.path, d)
                     else:
-                        p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select file", cur, "All files (*.*)")
-                        if p: w.setText(p); self.changed.emit(self.path, p)
-                btn.clicked.connect(pick); hb.addWidget(btn, 0)
+                        p, _ = QtWidgets.QFileDialog.getOpenFileName(
+                            self, "Select file", cur, "All files (*.*)"
+                        )
+                        if p:
+                            w.setText(p)
+                            self.changed.emit(self.path, p)
+
+                btn.clicked.connect(pick)
+                hb.addWidget(btn, 0)
             w.editingFinished.connect(lambda: self.changed.emit(self.path, w.text()))
             editor = box
-        editor.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        editor.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
         h.addWidget(editor)
         self.editor = editor
 
@@ -1007,8 +1214,9 @@ class KVRow(QtWidgets.QWidget):
         if isinstance(self.editor, QtWidgets.QCheckBox):
             return bool(self.editor.isChecked())
         # line edits (inside the wrapper widget or direct)
-        edits = self.editor.findChildren(QtWidgets.QLineEdit) or \
-                ([self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else [])
+        edits = self.editor.findChildren(QtWidgets.QLineEdit) or (
+            [self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else []
+        )
         if edits:
             return edits[0].text()
         return None
@@ -1019,12 +1227,19 @@ class KVRow(QtWidgets.QWidget):
 
     def set_value(self, value: Any):
         if isinstance(self.editor, QtWidgets.QCheckBox):
-            self.editor.blockSignals(True); self.editor.setChecked(bool(value)); self.editor.blockSignals(False)
+            self.editor.blockSignals(True)
+            self.editor.setChecked(bool(value))
+            self.editor.blockSignals(False)
         else:
-            edits = self.editor.findChildren(QtWidgets.QLineEdit) or \
-                    ([self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else [])
+            edits = self.editor.findChildren(QtWidgets.QLineEdit) or (
+                [self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else []
+            )
             if edits:
-                e = edits[0]; e.blockSignals(True); e.setText("" if value is None else str(value)); e.blockSignals(False)
+                e = edits[0]
+                e.blockSignals(True)
+                e.setText("" if value is None else str(value))
+                e.blockSignals(False)
+
 
 # ------------------------------ Main window ----------------------------------
 class Main(QtWidgets.QMainWindow):
@@ -1032,7 +1247,7 @@ class Main(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Vein Server Manager")
         self.resize(1380, 900)
-        self.setMinimumSize(1200, 720)     # keep the frame from collapsing/expanding
+        self.setMinimumSize(1200, 720)  # keep the frame from collapsing/expanding
 
         # basic state
         self.config_dir = str(CONFIG_DIR)
@@ -1040,8 +1255,12 @@ class Main(QtWidgets.QMainWindow):
         self.rows = {}
         self._saving = False
 
-        self._sections_by_tab = collections.defaultdict(dict)   # type: dict[str, dict[str, CollapsibleBox]]
-        self._rows_in_section = collections.defaultdict(list)   # type: dict[tuple[str, str], list[KVRow]]
+        self._sections_by_tab = collections.defaultdict(
+            dict
+        )  # type: dict[str, dict[str, CollapsibleBox]]
+        self._rows_in_section = collections.defaultdict(
+            list
+        )  # type: dict[tuple[str, str], list[KVRow]]
         self._section_keys_by_tab: dict[str, set[str]] = {}
 
         # settings
@@ -1058,8 +1277,8 @@ class Main(QtWidgets.QMainWindow):
         # 3) init NEW 3-tab tail buffers/handles BEFORE tail_start()
         self._buf_game, self._buf_lm, self._buf_cm = [], [], []
         self.tail_game = None
-        self.tail_lm   = None
-        self.tail_cm   = None
+        self.tail_lm = None
+        self.tail_cm = None
 
         # one flush timer for all tails
         self.flush_timer = QtCore.QTimer(self)
@@ -1077,7 +1296,7 @@ class Main(QtWidgets.QMainWindow):
         self.tail_start()
 
         # 6) background status polling
-        self.status_bus = StatusBus(self)              # parented to the main window
+        self.status_bus = StatusBus(self)  # parented to the main window
         self.status_bus.ready.connect(self._status)
         self._pool = QtCore.QThreadPool.globalInstance()
         self._poller = None
@@ -1089,89 +1308,146 @@ class Main(QtWidgets.QMainWindow):
         self._restore_state()
 
         # Maps
-        self._tab_base_titles = {i: self.tabs.tabText(i) for i in range(self.tabs.count())}
-        self._tab_index_to_name = {i: self._tab_base_titles[i] for i in range(self.tabs.count())}
+        self._tab_base_titles = {
+            i: self.tabs.tabText(i) for i in range(self.tabs.count())
+        }
+        self._tab_index_to_name = {
+            i: self._tab_base_titles[i] for i in range(self.tabs.count())
+        }
 
         # Row index by tab for search/result grouping
-        self._rows_by_tab = collections.defaultdict(list)   # tab_name -> [KVRow]
+        self._rows_by_tab = collections.defaultdict(list)  # tab_name -> [KVRow]
         self._search_tab_name = "Search"
         self._search_tab_idx = None
         self._hl = None  # for syntax highlighter swap
 
     # ------------------------------- UI --------------------------------------
     def _ui(self):
-        c = QtWidgets.QWidget(); self.setCentralWidget(c)
-        v = QtWidgets.QVBoxLayout(c); v.setContentsMargins(8,8,8,8); v.setSpacing(10)
+        c = QtWidgets.QWidget()
+        self.setCentralWidget(c)
+        v = QtWidgets.QVBoxLayout(c)
+        v.setContentsMargins(8, 8, 8, 8)
+        v.setSpacing(10)
 
         # ---- Header panel ----
-        header = QtWidgets.QWidget(); header.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum)
-        hv = QtWidgets.QVBoxLayout(header); hv.setContentsMargins(0,0,0,0); hv.setSpacing(8)
+        header = QtWidgets.QWidget()
+        header.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
+        )
+        hv = QtWidgets.QVBoxLayout(header)
+        hv.setContentsMargins(0, 0, 0, 0)
+        hv.setSpacing(8)
 
-        g = QtWidgets.QGridLayout(); g.setContentsMargins(0,0,0,0); g.setHorizontalSpacing(8); g.setVerticalSpacing(6)
-        g.setColumnStretch(0,0); g.setColumnStretch(1,1); g.setColumnStretch(2,0); hv.addLayout(g)
+        g = QtWidgets.QGridLayout()
+        g.setContentsMargins(0, 0, 0, 0)
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(6)
+        g.setColumnStretch(0, 0)
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(2, 0)
+        hv.addLayout(g)
 
         r = 0
         self.ed_cfgdir = QtWidgets.QLineEdit(self.config_dir)
-        self.b_cfgdir = QtWidgets.QPushButton("Browse Folder…"); self.b_cfgdir.setFixedWidth(130)
-        self.b_reload_cfgs = QtWidgets.QPushButton("Refresh"); self.b_reload_cfgs.setFixedWidth(90)
+        self.b_cfgdir = QtWidgets.QPushButton("Browse Folder…")
+        self.b_cfgdir.setFixedWidth(130)
+        self.b_reload_cfgs = QtWidgets.QPushButton("Refresh")
+        self.b_reload_cfgs.setFixedWidth(90)
         g.addWidget(QtWidgets.QLabel("Config Folder:"), r, 0)
         g.addWidget(self.ed_cfgdir, r, 1)
-        g.addWidget(self.b_cfgdir, r, 2); r += 1
+        g.addWidget(self.b_cfgdir, r, 2)
+        r += 1
 
-        self.cb_cfg = QtWidgets.QComboBox(); self.cb_cfg.setMinimumWidth(360)
-        self.cb_cfg.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.cb_cfg = QtWidgets.QComboBox()
+        self.cb_cfg.setMinimumWidth(360)
+        self.cb_cfg.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
         self.cb_cfg.setMinimumContentsLength(24)
         g.addWidget(QtWidgets.QLabel("Config File:"), r, 0)
         g.addWidget(self.cb_cfg, r, 1)
-        g.addWidget(self.b_reload_cfgs, r, 2); r += 1
+        g.addWidget(self.b_reload_cfgs, r, 2)
+        r += 1
 
         # Shortcuts row (no path editors)
-        short = QtWidgets.QHBoxLayout(); hv.addLayout(short)
+        short = QtWidgets.QHBoxLayout()
+        hv.addLayout(short)
         self.btn_logs = QtWidgets.QPushButton("Open Logs")
-        self.btn_rt   = QtWidgets.QPushButton("Open Runtime")
-        self.btn_bak  = QtWidgets.QPushButton("Open Backups")
-        self.btn_ctl  = QtWidgets.QPushButton("Open Controller")
-        self.btn_adv  = QtWidgets.QPushButton("Advanced…")
-        short.addWidget(self.btn_logs); short.addWidget(self.btn_rt); short.addWidget(self.btn_bak)
-        short.addWidget(self.btn_ctl);  short.addStretch(1); short.addWidget(self.btn_adv)
+        self.btn_rt = QtWidgets.QPushButton("Open Runtime")
+        self.btn_bak = QtWidgets.QPushButton("Open Backups")
+        self.btn_ctl = QtWidgets.QPushButton("Open Controller")
+        self.btn_adv = QtWidgets.QPushButton("Advanced…")
+        short.addWidget(self.btn_logs)
+        short.addWidget(self.btn_rt)
+        short.addWidget(self.btn_bak)
+        short.addWidget(self.btn_ctl)
+        short.addStretch(1)
+        short.addWidget(self.btn_adv)
 
         # Actions + status lights
-        act = QtWidgets.QHBoxLayout(); act.setContentsMargins(0,0,0,0); act.setSpacing(8); hv.addLayout(act)
-        self.dot_srv = QtWidgets.QLabel(); self.dot_srv.setStyleSheet(_dot(False)); self.dot_srv.setFixedSize(14, 14)
-        self.dot_lm  = QtWidgets.QLabel(); self.dot_lm.setStyleSheet(_dot(False));  self.dot_lm.setFixedSize(14, 14)
-        self.dot_cm  = QtWidgets.QLabel(); self.dot_cm.setStyleSheet(_dot(False));  self.dot_cm.setFixedSize(14, 14)
-        self.b_start   = QtWidgets.QPushButton("Start Server")
-        self.b_stop    = QtWidgets.QPushButton("Stop Server")
+        act = QtWidgets.QHBoxLayout()
+        act.setContentsMargins(0, 0, 0, 0)
+        act.setSpacing(8)
+        hv.addLayout(act)
+        self.dot_srv = QtWidgets.QLabel()
+        self.dot_srv.setStyleSheet(_dot(False))
+        self.dot_srv.setFixedSize(14, 14)
+        self.dot_lm = QtWidgets.QLabel()
+        self.dot_lm.setStyleSheet(_dot(False))
+        self.dot_lm.setFixedSize(14, 14)
+        self.dot_cm = QtWidgets.QLabel()
+        self.dot_cm.setStyleSheet(_dot(False))
+        self.dot_cm.setFixedSize(14, 14)
+        self.b_start = QtWidgets.QPushButton("Start Server")
+        self.b_stop = QtWidgets.QPushButton("Stop Server")
         self.b_restart = QtWidgets.QPushButton("Restart")
-        self.b_lm_on   = QtWidgets.QPushButton("Start Log Monitor")
-        self.b_lm_off  = QtWidgets.QPushButton("Stop Log Monitor")
-        self.b_cm_on   = QtWidgets.QPushButton("Start Crash Monitor")
-        self.b_cm_off  = QtWidgets.QPushButton("Stop Crash Monitor")
-        self.status    = QtWidgets.QLabel("Status: Idle")
+        self.b_lm_on = QtWidgets.QPushButton("Start Log Monitor")
+        self.b_lm_off = QtWidgets.QPushButton("Stop Log Monitor")
+        self.b_cm_on = QtWidgets.QPushButton("Start Crash Monitor")
+        self.b_cm_off = QtWidgets.QPushButton("Stop Crash Monitor")
+        self.status = QtWidgets.QLabel("Status: Idle")
 
-        def add(label, dotw): act.addWidget(QtWidgets.QLabel(label)); act.addWidget(dotw); act.addSpacing(6)
+        def add(label, dotw):
+            act.addWidget(QtWidgets.QLabel(label))
+            act.addWidget(dotw)
+            act.addSpacing(6)
+
         add("Server", self.dot_srv)
-        act.addWidget(self.b_start); act.addWidget(self.b_stop); act.addWidget(self.b_restart); act.addSpacing(16)
-        add("LogMon", self.dot_lm);  act.addWidget(self.b_lm_on); act.addWidget(self.b_lm_off); act.addSpacing(16)
-        add("CrashMon", self.dot_cm);act.addWidget(self.b_cm_on); act.addWidget(self.b_cm_off); act.addStretch(1)
+        act.addWidget(self.b_start)
+        act.addWidget(self.b_stop)
+        act.addWidget(self.b_restart)
+        act.addSpacing(16)
+        add("LogMon", self.dot_lm)
+        act.addWidget(self.b_lm_on)
+        act.addWidget(self.b_lm_off)
+        act.addSpacing(16)
+        add("CrashMon", self.dot_cm)
+        act.addWidget(self.b_cm_on)
+        act.addWidget(self.b_cm_off)
+        act.addStretch(1)
         act.addWidget(self.status)
         v.addWidget(header)
 
         # ---- Main splitter (tabs | json | log) ----
-        main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal); v.addWidget(main, 1)
+        main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        v.addWidget(main, 1)
 
         # LEFT: TABS
         # LEFT: TABS
-        left = QtWidgets.QWidget(); main.addWidget(left)
-        lv = QtWidgets.QVBoxLayout(left); lv.setContentsMargins(0,0,0,0)
+        left = QtWidgets.QWidget()
+        main.addWidget(left)
+        lv = QtWidgets.QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
 
         # top bar (buttons + filter)
-        topbar = QtWidgets.QHBoxLayout(); lv.addLayout(topbar)
+        topbar = QtWidgets.QHBoxLayout()
+        lv.addLayout(topbar)
 
         self.b_reload = QtWidgets.QPushButton("Reload Config")
         self.b_validate = QtWidgets.QPushButton("Validate")
         self.b_save = QtWidgets.QPushButton("Save Config (atomic)")
-        self.filter = QtWidgets.QLineEdit(); self.filter.setPlaceholderText("Filter keys…")
+        self.filter = QtWidgets.QLineEdit()
+        self.filter.setPlaceholderText("Filter keys…")
         self.b_clearfilter = QtWidgets.QPushButton("Clear")
 
         # ... create self.b_reload, self.b_validate, self.b_save, self.filter, self.b_clearfilter
@@ -1190,18 +1466,23 @@ class Main(QtWidgets.QMainWindow):
         self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
         self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
         self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
-        self._tab_pages: Dict[str, QtWidgets.QWidget] = {}   # <— add this
+        self._tab_pages: Dict[str, QtWidgets.QWidget] = {}  # <— add this
 
         def _make_tab_ui():
             w = QtWidgets.QWidget()
-            frame = QtWidgets.QVBoxLayout(w); frame.setContentsMargins(6,6,6,6); frame.setSpacing(6)
-            scroll = QtWidgets.QScrollArea(); scroll.setWidgetResizable(True)
+            frame = QtWidgets.QVBoxLayout(w)
+            frame.setContentsMargins(6, 6, 6, 6)
+            frame.setSpacing(6)
+            scroll = QtWidgets.QScrollArea()
+            scroll.setWidgetResizable(True)
             container = QtWidgets.QWidget()
-            vbox = QtWidgets.QVBoxLayout(container); vbox.setContentsMargins(0,0,0,0); vbox.setSpacing(6)
+            vbox = QtWidgets.QVBoxLayout(container)
+            vbox.setContentsMargins(0, 0, 0, 0)
+            vbox.setSpacing(6)
             scroll.setWidget(container)
             frame.addWidget(scroll, 1)
             return w, container, vbox
-        
+
         def _add_tab(name: str):
             if name in self.tab_widgets:
                 return
@@ -1213,64 +1494,96 @@ class Main(QtWidgets.QMainWindow):
 
         self._add_tab = _add_tab  # expose helper for later
 
-        for name in ["Paths","Server","Steam/Updates","Backups","Monitor (simple)","Monitor (advanced)","Features","Top-level"]:
+        for name in [
+            "Paths",
+            "Server",
+            "Steam/Updates",
+            "Backups",
+            "Monitor (simple)",
+            "Monitor (advanced)",
+            "Features",
+            "Top-level",
+        ]:
             _add_tab(name)
 
         # --- Monitors tab ---
         mon_tab = QtWidgets.QWidget()
-        mon_v = QtWidgets.QVBoxLayout(mon_tab); mon_v.setContentsMargins(8,8,8,8); mon_v.setSpacing(8)
+        mon_v = QtWidgets.QVBoxLayout(mon_tab)
+        mon_v.setContentsMargins(8, 8, 8, 8)
+        mon_v.setSpacing(8)
 
         # Log Monitor card
-        logCard = QtWidgets.QGroupBox("Log Monitor"); logLay = QtWidgets.QGridLayout(logCard)
-        self.lblLogDot = QtWidgets.QLabel(); self.lblLogDot.setFixedSize(14,14); self.lblLogDot.setStyleSheet(_dot(False))
+        logCard = QtWidgets.QGroupBox("Log Monitor")
+        logLay = QtWidgets.QGridLayout(logCard)
+        self.lblLogDot = QtWidgets.QLabel()
+        self.lblLogDot.setFixedSize(14, 14)
+        self.lblLogDot.setStyleSheet(_dot(False))
         self.lblLogStatus = QtWidgets.QLabel("stopped")
-        self.lblLogLast   = QtWidgets.QLabel("Last update: —")
-        self.lblLogJoin   = QtWidgets.QLabel("Joinable: —")
-        self.lblLogPlayers= QtWidgets.QLabel("Players: —")
+        self.lblLogLast = QtWidgets.QLabel("Last update: —")
+        self.lblLogJoin = QtWidgets.QLabel("Joinable: —")
+        self.lblLogPlayers = QtWidgets.QLabel("Players: —")
         self.lblLogUptime = QtWidgets.QLabel("Uptime: —")
-        logLay.addWidget(self.lblLogDot, 0,0)
-        logLay.addWidget(self.lblLogStatus,0,1)
-        logLay.addWidget(self.lblLogLast, 1,0,1,2)
-        logLay.addWidget(self.lblLogJoin,  2,0,1,2)
-        logLay.addWidget(self.lblLogPlayers,3,0,1,2)
-        logLay.addWidget(self.lblLogUptime, 4,0,1,2)
+        logLay.addWidget(self.lblLogDot, 0, 0)
+        logLay.addWidget(self.lblLogStatus, 0, 1)
+        logLay.addWidget(self.lblLogLast, 1, 0, 1, 2)
+        logLay.addWidget(self.lblLogJoin, 2, 0, 1, 2)
+        logLay.addWidget(self.lblLogPlayers, 3, 0, 1, 2)
+        logLay.addWidget(self.lblLogUptime, 4, 0, 1, 2)
         mon_v.addWidget(logCard)
 
         # Crash Monitor card
-        crashCard = QtWidgets.QGroupBox("Crash Monitor"); cLay = QtWidgets.QGridLayout(crashCard)
-        self.lblCrashDot  = QtWidgets.QLabel(); self.lblCrashDot.setFixedSize(14,14); self.lblCrashDot.setStyleSheet(_dot(False))
+        crashCard = QtWidgets.QGroupBox("Crash Monitor")
+        cLay = QtWidgets.QGridLayout(crashCard)
+        self.lblCrashDot = QtWidgets.QLabel()
+        self.lblCrashDot.setFixedSize(14, 14)
+        self.lblCrashDot.setStyleSheet(_dot(False))
         self.lblCrashMode = QtWidgets.QLabel("stopped")
         self.lblCrashLast = QtWidgets.QLabel("Last heartbeat: —")
-        cLay.addWidget(self.lblCrashDot, 0,0)
-        cLay.addWidget(self.lblCrashMode,0,1)
-        cLay.addWidget(self.lblCrashLast,1,0,1,2)
+        cLay.addWidget(self.lblCrashDot, 0, 0)
+        cLay.addWidget(self.lblCrashMode, 0, 1)
+        cLay.addWidget(self.lblCrashLast, 1, 0, 1, 2)
         mon_v.addWidget(crashCard)
         mon_v.addStretch(1)
 
         # Backups card
-        bkCard = QtWidgets.QGroupBox("Backups"); bkLay = QtWidgets.QGridLayout(bkCard)
+        bkCard = QtWidgets.QGroupBox("Backups")
+        bkLay = QtWidgets.QGridLayout(bkCard)
         self.lblBkEnabled = QtWidgets.QLabel("—")
-        self.lblBkLast    = QtWidgets.QLabel("—")
-        self.lblBkFile    = QtWidgets.QLabel("—")
-        self.lblBkTotal   = QtWidgets.QLabel("0")
-        self.lblBkCounts  = QtWidgets.QLabel("—")
+        self.lblBkLast = QtWidgets.QLabel("—")
+        self.lblBkFile = QtWidgets.QLabel("—")
+        self.lblBkTotal = QtWidgets.QLabel("0")
+        self.lblBkCounts = QtWidgets.QLabel("—")
         self.lblBkCounts.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        self.lblBkCounts.setStyleSheet("font-family: Consolas, 'Courier New', monospace;")
+        self.lblBkCounts.setStyleSheet(
+            "font-family: Consolas, 'Courier New', monospace;"
+        )
 
-        self.btnBkNow  = QtWidgets.QPushButton("Backup Now")
+        self.btnBkNow = QtWidgets.QPushButton("Backup Now")
         self.btnBkOpen = QtWidgets.QPushButton("Open Folder")
         self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
         self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
 
         r = 0
-        bkLay.addWidget(QtWidgets.QLabel("Enabled:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkEnabled, r, 1); r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Last (UTC):"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkLast, r, 1); r += 1
-        bkLay.addWidget(QtWidgets.QLabel("File:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkFile, r, 1); r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Total:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkTotal, r, 1); r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Per-reason:"), r, 0, QtCore.Qt.AlignRight); bkLay.addWidget(self.lblBkCounts, r, 1); r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Enabled:"), r, 0, QtCore.Qt.AlignRight)
+        bkLay.addWidget(self.lblBkEnabled, r, 1)
+        r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Last (UTC):"), r, 0, QtCore.Qt.AlignRight)
+        bkLay.addWidget(self.lblBkLast, r, 1)
+        r += 1
+        bkLay.addWidget(QtWidgets.QLabel("File:"), r, 0, QtCore.Qt.AlignRight)
+        bkLay.addWidget(self.lblBkFile, r, 1)
+        r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Total:"), r, 0, QtCore.Qt.AlignRight)
+        bkLay.addWidget(self.lblBkTotal, r, 1)
+        r += 1
+        bkLay.addWidget(QtWidgets.QLabel("Per-reason:"), r, 0, QtCore.Qt.AlignRight)
+        bkLay.addWidget(self.lblBkCounts, r, 1)
+        r += 1
 
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.btnBkNow); row.addWidget(self.btnBkOpen); row.addStretch(1)
+        row.addWidget(self.btnBkNow)
+        row.addWidget(self.btnBkOpen)
+        row.addStretch(1)
         bkLay.addLayout(row, r, 0, 1, 2)
 
         mon_v.addWidget(bkCard)
@@ -1278,37 +1591,57 @@ class Main(QtWidgets.QMainWindow):
         self.tabs.addTab(mon_tab, "Monitors")
 
         # store the original tab titles by index for stable lookups/titles
-        self._tab_base_titles = {i: self.tabs.tabText(i) for i in range(self.tabs.count())}
+        self._tab_base_titles = {
+            i: self.tabs.tabText(i) for i in range(self.tabs.count())
+        }
         # map index <-> base name so we can fetch the correct layout even if titles are decorated with counts
-        self._tab_index_to_name = {i: self._tab_base_titles[i] for i in range(self.tabs.count())}
+        self._tab_index_to_name = {
+            i: self._tab_base_titles[i] for i in range(self.tabs.count())
+        }
 
         # JSON editor
-        self.json = QtWidgets.QPlainTextEdit(); self.json.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.json.setFont(QtGui.QFont("Consolas", 10)); JsonHL(self.json.document())
+        self.json = QtWidgets.QPlainTextEdit()
+        self.json.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.json.setFont(QtGui.QFont("Consolas", 10))
+        JsonHL(self.json.document())
         main.addWidget(self.json)
 
         # RIGHT: Logs with tabs
-        right = QtWidgets.QWidget(); main.addWidget(right)
-        rv = QtWidgets.QVBoxLayout(right); rv.setContentsMargins(0,0,0,0)
+        right = QtWidgets.QWidget()
+        main.addWidget(right)
+        rv = QtWidgets.QVBoxLayout(right)
+        rv.setContentsMargins(0, 0, 0, 0)
 
-        cbar = QtWidgets.QHBoxLayout(); rv.addLayout(cbar)
-        self.chk_live = QtWidgets.QCheckBox("Live (follow)"); self.chk_live.setChecked(True)
+        cbar = QtWidgets.QHBoxLayout()
+        rv.addLayout(cbar)
+        self.chk_live = QtWidgets.QCheckBox("Live (follow)")
+        self.chk_live.setChecked(True)
         self.b_clearlog = QtWidgets.QPushButton("Clear")
-        cbar.addWidget(self.chk_live); cbar.addStretch(1); cbar.addWidget(self.b_clearlog)
+        cbar.addWidget(self.chk_live)
+        cbar.addStretch(1)
+        cbar.addWidget(self.b_clearlog)
 
         self.logTabs = QtWidgets.QTabWidget()
-        self.log_game = QtWidgets.QPlainTextEdit(); self.log_game.setReadOnly(True); self.log_game.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.log_lm   = QtWidgets.QPlainTextEdit(); self.log_lm.setReadOnly(True);   self.log_lm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.log_cm   = QtWidgets.QPlainTextEdit(); self.log_cm.setReadOnly(True);   self.log_cm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.log_game = QtWidgets.QPlainTextEdit()
+        self.log_game.setReadOnly(True)
+        self.log_game.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.log_lm = QtWidgets.QPlainTextEdit()
+        self.log_lm.setReadOnly(True)
+        self.log_lm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.log_cm = QtWidgets.QPlainTextEdit()
+        self.log_cm.setReadOnly(True)
+        self.log_cm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
         self.logTabs.addTab(self.log_game, "Game Log")
-        self.logTabs.addTab(self.log_lm,   "Log Monitor")
-        self.logTabs.addTab(self.log_cm,   "Crash Monitor")
+        self.logTabs.addTab(self.log_lm, "Log Monitor")
+        self.logTabs.addTab(self.log_cm, "Crash Monitor")
         rv.addWidget(self.logTabs, 1)
 
         # compact state line under everything
-        self.state_box = QtWidgets.QTextBrowser(); self.state_box.setMaximumHeight(120)
+        self.state_box = QtWidgets.QTextBrowser()
+        self.state_box.setMaximumHeight(120)
         v.addWidget(self.state_box)
-        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…"); v.addWidget(self.lbl_watch)
+        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…")
+        v.addWidget(self.lbl_watch)
 
     # ----------------------------- Signals ------------------------------------
     def _signals(self):
@@ -1319,20 +1652,26 @@ class Main(QtWidgets.QMainWindow):
         self.b_reload.clicked.connect(self.load_config_text)
         self.b_save.clicked.connect(self.save_atomic)
         self.b_validate.clicked.connect(self.validate_config)
- 
-        timer = QtCore.QTimer(self); timer.setSingleShot(True); timer.setInterval(120)
+
+        timer = QtCore.QTimer(self)
+        timer.setSingleShot(True)
+        timer.setInterval(120)
         self.filter.textChanged.connect(lambda _: (timer.stop(), timer.start()))
         timer.timeout.connect(lambda: self._apply_filter(self.filter.text()))
-
 
         self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
         self.b_clearlog.clicked.connect(self._clear_current_log)
         self.chk_live.toggled.connect(self._retail)
 
-
-        self.btn_logs.clicked.connect(lambda: self._open_folder(self._resolved_paths()["log_file"].parent))
-        self.btn_rt.clicked.connect(lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"]))
-        self.btn_bak.clicked.connect(lambda: self._open_folder(_runtime_paths(self.config_path)["backup_root"]))
+        self.btn_logs.clicked.connect(
+            lambda: self._open_folder(self._resolved_paths()["log_file"].parent)
+        )
+        self.btn_rt.clicked.connect(
+            lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"])
+        )
+        self.btn_bak.clicked.connect(
+            lambda: self._open_folder(_runtime_paths(self.config_path)["backup_root"])
+        )
         self.btn_ctl.clicked.connect(lambda: self._open_folder(CTRL_DIR))
         self.btn_adv.clicked.connect(self._open_advanced)
 
@@ -1346,7 +1685,11 @@ class Main(QtWidgets.QMainWindow):
 
     # -------------------------- Config folder ---------------------------------
     def pick_cfg_dir(self):
-        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Config Folder", self.ed_cfgdir.text().strip() or str(CONFIG_DIR))
+        d = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Select Config Folder",
+            self.ed_cfgdir.text().strip() or str(CONFIG_DIR),
+        )
         if d:
             self.ed_cfgdir.setText(d)
             self.config_dir = d
@@ -1355,7 +1698,8 @@ class Main(QtWidgets.QMainWindow):
     def refresh_cfgs(self):
         folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
         files = []
-        self.cb_cfg.blockSignals(True); self.cb_cfg.clear()
+        self.cb_cfg.blockSignals(True)
+        self.cb_cfg.clear()
         if folder.exists():
             files = _list_config_files(folder)
             self.cb_cfg.addItems(files)
@@ -1369,7 +1713,8 @@ class Main(QtWidgets.QMainWindow):
             self._cfg_selected(name)
 
     def _cfg_selected(self, name: str):
-        if not name: return
+        if not name:
+            return
         self.config_path = str(Path(self.ed_cfgdir.text().strip()).joinpath(name))
         self.load_config_text()
         self.watch_config()
@@ -1384,9 +1729,9 @@ class Main(QtWidgets.QMainWindow):
             i: self._strip_cnt(self.tabs.tabText(i)) for i in range(self.tabs.count())
         }
         self._tab_index_to_name = dict(self._tab_base_titles)
-    
+
     def _tab_index(self, name: str) -> int:
-        base = (name or "")
+        base = name or ""
         for i in range(self.tabs.count()):
             if self._strip_cnt(self.tabs.tabText(i)) == base:
                 return i
@@ -1406,6 +1751,7 @@ class Main(QtWidgets.QMainWindow):
             os.environ["VEIN_CONFIG"] = self.config_path
 
             from Tools.backups import make_backup, BackupError, BackupSkip
+
             path = make_backup("Manual")
             self._status(f"Backup created: {getattr(path, 'name', str(path))}")
         except BackupSkip as e:
@@ -1414,7 +1760,6 @@ class Main(QtWidgets.QMainWindow):
             self._status(f"Backup failed: {e}")
         except Exception as e:
             self._status(f"Backup failed: {e}")
-
 
     def _on_open_backups_clicked(self):
         root = getattr(self, "_bk_root", None)
@@ -1442,7 +1787,7 @@ class Main(QtWidgets.QMainWindow):
             self._add_tab(name)
         self._search_tab_idx = self._tab_index(name)
         return name
-    
+
     def _clear_layout(self, layout: QtWidgets.QLayout):
         while True:
             item = layout.takeAt(0)
@@ -1468,7 +1813,12 @@ class Main(QtWidgets.QMainWindow):
             path = row.path or ()
             top = path[0] if path else "_misc"
             # mirror the same "section" rule used by _add_row_to_tab_or_section
-            section = path[1] if len(path) >= 2 and top.lower() not in ("top-level", "paths", "monitors") else None
+            section = (
+                path[1]
+                if len(path) >= 2
+                and top.lower() not in ("top-level", "paths", "monitors")
+                else None
+            )
             grouped.setdefault(top, {}).setdefault(section, []).append(row)
 
         # Build UI
@@ -1477,7 +1827,9 @@ class Main(QtWidgets.QMainWindow):
             vbox.addWidget(top_box)
             inner = top_box.layout_for_rows()
 
-            for section_key in sorted(grouped[top_key].keys(), key=lambda x: (x is not None, str(x))):
+            for section_key in sorted(
+                grouped[top_key].keys(), key=lambda x: (x is not None, str(x))
+            ):
                 rows = grouped[top_key][section_key]
                 if section_key is None:
                     # no section—just add rows
@@ -1510,7 +1862,6 @@ class Main(QtWidgets.QMainWindow):
         self._search_tab_idx = None
         self._rebuild_base_titles()
 
-
     def _apply_default_selection(self):
         """Ensure a concrete file is selected and loaded at startup."""
         folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
@@ -1542,7 +1893,11 @@ class Main(QtWidgets.QMainWindow):
             # swap highlighter
             if hasattr(self, "_hl") and self._hl:
                 self._hl.setDocument(None)
-            self._hl = YamlHL(self.json.document()) if kind == "yaml" else JsonHL(self.json.document())
+            self._hl = (
+                YamlHL(self.json.document())
+                if kind == "yaml"
+                else JsonHL(self.json.document())
+            )
             self.json.blockSignals(False)
             self._build_tabs(self._data)
 
@@ -1575,6 +1930,7 @@ class Main(QtWidgets.QMainWindow):
     # --- label helpers used by tab-building ---------------------------------
     def _humanize_label(self, s: str) -> str:
         import re
+
         s = (s or "").replace("_", " ").replace(".", "•")
         s = re.sub(r"\s+", " ", s).strip()
         return s.title()
@@ -1582,15 +1938,21 @@ class Main(QtWidgets.QMainWindow):
     def _pretty_label(self, tab: str, full_label: str) -> str:
         """Trim the tab's key prefix from a dotted label and title-case it."""
         base = tab.lower().replace(" ", "_")
-        if base in ("top-level", "paths", "monitors", getattr(self, "_search_tab_name", "search").lower()):
+        if base in (
+            "top-level",
+            "paths",
+            "monitors",
+            getattr(self, "_search_tab_name", "search").lower(),
+        ):
             return self._humanize_label(full_label)
         low = full_label.lower()
         pref = base + "."
-        trimmed = full_label[len(pref):] if low.startswith(pref) else full_label
+        trimmed = full_label[len(pref) :] if low.startswith(pref) else full_label
         return self._humanize_label(trimmed)
 
-    def _add_row_to_tab_or_section(self, tab: str, full_label: str,
-                               path: tuple[str, ...], val):
+    def _add_row_to_tab_or_section(
+        self, tab: str, full_label: str, path: tuple[str, ...], val
+    ):
         self._add_tab(tab)
 
         # Only sectionize if the tab corresponds to path[0] AND the second-level key is a dict.
@@ -1603,7 +1965,7 @@ class Main(QtWidgets.QMainWindow):
         section_keys = self._section_keys_by_tab.get(tab, set())
 
         section_key = None
-        if (tab_base_snake == path0_snake and len(path) >= 2):
+        if tab_base_snake == path0_snake and len(path) >= 2:
             k2 = str(path[1])
             if k2 in section_keys:
                 section_key = k2
@@ -1625,16 +1987,16 @@ class Main(QtWidgets.QMainWindow):
         if section_key is not None:
             pref = f"{base}.{section_key.lower()}."
             if low.startswith(pref):
-                trimmed = full_label[len(pref):]
+                trimmed = full_label[len(pref) :]
         else:
             pref = base + "."
             if low.startswith(pref):
-                trimmed = full_label[len(pref):]
+                trimmed = full_label[len(pref) :]
 
         label = self._humanize_label(trimmed)
         row = KVRow(label, path, val)
         row.changed.connect(self._row_changed)
-        
+
         indent = max(0, len(path) - (2 if section_key else 1))
         if indent and hasattr(row, "layout"):
             row.layout().setContentsMargins(12 * indent, 0, 0, 0)
@@ -1647,7 +2009,6 @@ class Main(QtWidgets.QMainWindow):
             self._rows_in_section[(tab, section_key)].append(row)
         self._index_row(tab, row)
 
-
     # --- search normalization / indexing ------------------------------------
     def _norm(self, s: str) -> str:
         """
@@ -1655,7 +2016,8 @@ class Main(QtWidgets.QMainWindow):
         'Monitor.Recheck_Newest_Every_Seconds' -> 'monitorrechecknewesteveryseconds'
         """
         import re
-        return re.sub(r'[^a-z0-9]+', '', (s or '').lower())
+
+        return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
 
     def _index_row(self, tab_name: str, row: "KVRow"):
         if not hasattr(self, "_search_index"):
@@ -1664,7 +2026,7 @@ class Main(QtWidgets.QMainWindow):
         label = row.label_text or ""
         path = row.path or ()
         dotted = ".".join(path)
-        snake  = "_".join(path)
+        snake = "_".join(path)
         spaced = " ".join(path)
 
         # Find the section this row belongs to (now a tuple full-path)
@@ -1684,7 +2046,9 @@ class Main(QtWidgets.QMainWindow):
 
         raw_candidates = {
             label,
-            dotted, snake, spaced,
+            dotted,
+            snake,
+            spaced,
             f"{tab_path}.{label}" if tab_path else label,
             f"{tab_path}.{dotted}" if tab_path else dotted,
         }
@@ -1694,9 +2058,15 @@ class Main(QtWidgets.QMainWindow):
                 toks.add(r.lower())
                 toks.add(self._norm(r))
         self._search_index[row] = toks
-    
-    def _add_scalar_row(self, tab_name: str, layout: QtWidgets.QVBoxLayout,
-                    path: tuple[str, ...], value, depth: int):
+
+    def _add_scalar_row(
+        self,
+        tab_name: str,
+        layout: QtWidgets.QVBoxLayout,
+        path: tuple[str, ...],
+        value,
+        depth: int,
+    ):
         """
         Add a single KVRow into the current layout (no legacy sectionizer).
         Indents visually based on depth; indexes for search; tracks section membership.
@@ -1719,12 +2089,14 @@ class Main(QtWidgets.QMainWindow):
         # also attach it to the closest section box (if any)
         # we store sections by full-path tuples
         parent_section = tuple(path[:-1])  # the dict that owns this scalar
-        if hasattr(self, "_section_boxes") and (tab_name, parent_section) in self._section_boxes:
+        if (
+            hasattr(self, "_section_boxes")
+            and (tab_name, parent_section) in self._section_boxes
+        ):
             self._rows_in_section.setdefault((tab_name, parent_section), []).append(row)
 
         # build search tokens
         self._index_row(tab_name, row)
-
 
     def _build_tabs(self, data: dict):
         """Build tabs with unlimited nested collapsible sections, preserving YAML order."""
@@ -1770,16 +2142,23 @@ class Main(QtWidgets.QMainWindow):
             if isinstance(v, dict):
                 dict_tabs.append((k, v))
             else:
-                self._add_scalar_row("Top-level", self.tab_layouts["Top-level"], (str(k),), v, depth=0)
+                self._add_scalar_row(
+                    "Top-level", self.tab_layouts["Top-level"], (str(k),), v, depth=0
+                )
 
         # recursive renderer
-        def render_into(tab_name: str, layout: QtWidgets.QVBoxLayout,
-                prefix: tuple[str, ...], node, depth: int):
+        def render_into(
+            tab_name: str,
+            layout: QtWidgets.QVBoxLayout,
+            prefix: tuple[str, ...],
+            node,
+            depth: int,
+        ):
             if isinstance(node, dict):
                 inner_layout = layout
                 if depth > 0:  # every dict below the tab root gets a box
                     title = _human_title(prefix[-1])
-                    #title = _human_title(" / ".join(prefix[1:]))
+                    # title = _human_title(" / ".join(prefix[1:]))
                     box = CollapsibleBox(title)
                     layout.addWidget(box)
                     inner_layout = box.layout_for_rows()
@@ -1787,11 +2166,18 @@ class Main(QtWidgets.QMainWindow):
                     self._section_boxes[(tab_name, prefix)] = box
 
                 for ck in _iter_keys_preserve(node):
-                    render_into(tab_name, inner_layout, prefix + (str(ck),), node[ck], depth + 1)
+                    render_into(
+                        tab_name, inner_layout, prefix + (str(ck),), node[ck], depth + 1
+                    )
             else:
-                val = node if not isinstance(node, list) else ", ".join(str(x) for x in node)
-                self._add_scalar_row(tab_name, layout, prefix, val, depth=max(depth - 1, 0))
-
+                val = (
+                    node
+                    if not isinstance(node, list)
+                    else ", ".join(str(x) for x in node)
+                )
+                self._add_scalar_row(
+                    tab_name, layout, prefix, val, depth=max(depth - 1, 0)
+                )
 
         # build each tab
         for k, node in dict_tabs:
@@ -1805,7 +2191,7 @@ class Main(QtWidgets.QMainWindow):
 
         # apply current filter so counts/visibility are correct
         self._apply_filter(self.filter.text())
-    
+
     def _make_proxy_row(self, src_row: "KVRow") -> "KVRow":
         """
         Create an editable proxy KVRow for the Search tab that stays in sync with the
@@ -1822,10 +2208,14 @@ class Main(QtWidgets.QMainWindow):
         proxy = KVRow(src_row.label_text, path, cur_val)
         # 1) when proxy changes → commit to data and push into the source row
         proxy.changed.connect(self._row_changed)
-        proxy.changed.connect(lambda p, v: (self.rows.get(p) and self.rows[p].set_value(v)))
+        proxy.changed.connect(
+            lambda p, v: (self.rows.get(p) and self.rows[p].set_value(v))
+        )
 
         # 2) when source changes → mirror into the proxy row
-        src_row.changed.connect(lambda p, v: (proxy.set_value(v) if p == path else None))
+        src_row.changed.connect(
+            lambda p, v: (proxy.set_value(v) if p == path else None)
+        )
         return proxy
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
@@ -1862,11 +2252,14 @@ class Main(QtWidgets.QMainWindow):
     def validate_config(self):
         try:
             if _is_yaml_path(self.config_path):
-                if not _HAVE_RUAMEL: raise RuntimeError("ruamel.yaml not installed")
-                y = YAML(); y.preserve_quotes = True
+                if not _HAVE_RUAMEL:
+                    raise RuntimeError("ruamel.yaml not installed")
+                y = YAML()
+                y.preserve_quotes = True
                 y.load(self.json.toPlainText())
             else:
                 import json as _json
+
                 _json.loads(self.json.toPlainText())
             self._status("Config parses ✅")
         except Exception as e:
@@ -1875,8 +2268,8 @@ class Main(QtWidgets.QMainWindow):
     def _read_cfg_root_for_backups(self):
         try:
             cfg, _, _ = _load_any_config(self.config_path)
-            b = (cfg.get("backups", {}) or {})
-            root = (b.get("root") or b.get("paths", {}).get("root") or None)
+            b = cfg.get("backups", {}) or {}
+            root = b.get("root") or b.get("paths", {}).get("root") or None
             return Path(root) if root else None
         except Exception:
             return None
@@ -1884,8 +2277,8 @@ class Main(QtWidgets.QMainWindow):
     def _read_cfg_root_for_backups(self):
         try:
             cfg, _, _ = _load_any_config(self.config_path)
-            b = (cfg.get("backups", {}) or {})
-            root = (b.get("root") or b.get("paths", {}).get("root") or None)
+            b = cfg.get("backups", {}) or {}
+            root = b.get("root") or b.get("paths", {}).get("root") or None
             return Path(root) if root else None
         except Exception:
             return None
@@ -1917,12 +2310,19 @@ class Main(QtWidgets.QMainWindow):
 
             # 0) Backup current file first
             if path.exists():
-                bk_root = self._read_cfg_root_for_backups() or Path(__file__).resolve().parents[1] / "Backups"
+                bk_root = (
+                    self._read_cfg_root_for_backups()
+                    or Path(__file__).resolve().parents[1] / "Backups"
+                )
                 (bk_root / "Configs").mkdir(parents=True, exist_ok=True)
-                ts = QtCore.QDateTime.currentDateTimeUtc().toString("yyyy-MM-ddThh-mm-ss-zzz'Z'")
+                ts = QtCore.QDateTime.currentDateTimeUtc().toString(
+                    "yyyy-MM-ddThh-mm-ss-zzz'Z'"
+                )
                 backup_path = bk_root / "Configs" / f"{path.stem}-{ts}{path.suffix}"
                 try:
-                    backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+                    backup_path.write_text(
+                        path.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
                 except Exception:
                     pass
 
@@ -1931,18 +2331,26 @@ class Main(QtWidgets.QMainWindow):
                 cfg, kind, ydoc = _load_any_config(self.config_path)
                 auto_bump = False
                 try:
-                    auto_bump = bool((cfg.get("lifecycle", {}) or {}).get("auto_bump_version", False))
+                    auto_bump = bool(
+                        (cfg.get("lifecycle", {}) or {}).get("auto_bump_version", False)
+                    )
                 except Exception:
                     auto_bump = False
 
-                if auto_bump and self._cfg_kind == "yaml" and self._yaml_doc is not None:
+                if (
+                    auto_bump
+                    and self._cfg_kind == "yaml"
+                    and self._yaml_doc is not None
+                ):
                     if not hasattr(self, "_yaml_doc") or self._yaml_doc is None:
                         self._status("Config saved (no version bump: legacy format).")
                         return
                     self._bump_version_in_yaml_doc()
                     # mirror updated YAML into editor
                     self.json.blockSignals(True)
-                    self.json.setPlainText(_dump_any_config(self._data, "yaml", ydoc=self._yaml_doc))
+                    self.json.setPlainText(
+                        _dump_any_config(self._data, "yaml", ydoc=self._yaml_doc)
+                    )
                     self.json.blockSignals(False)
             except Exception:
                 pass
@@ -1964,13 +2372,17 @@ class Main(QtWidgets.QMainWindow):
         try:
             if hasattr(self, "watcher"):
                 for p in self.watcher.files():
-                    try: self.watcher.removePath(p)
-                    except Exception: pass
+                    try:
+                        self.watcher.removePath(p)
+                    except Exception:
+                        pass
             self.watcher = QtCore.QFileSystemWatcher(self)
             if Path(self.config_path).exists():
                 self.watcher.addPath(self.config_path)
-            self.watcher.fileChanged.connect(lambda _:
-                (self._saving and None) or QtCore.QTimer.singleShot(300, self.load_config_text))
+            self.watcher.fileChanged.connect(
+                lambda _: (self._saving and None)
+                or QtCore.QTimer.singleShot(300, self.load_config_text)
+            )
         except Exception:
             pass
 
@@ -1978,7 +2390,7 @@ class Main(QtWidgets.QMainWindow):
         w = self.logTabs.currentWidget()
         if isinstance(w, QtWidgets.QPlainTextEdit):
             w.clear()
-    
+
     def _current_game_log_path(self) -> Path:
         # Prefer the monitor’s notion of the active file if available
         rt = _rt_paths(self.config_path)
@@ -2079,9 +2491,8 @@ class Main(QtWidgets.QMainWindow):
             widget.moveCursor(QtGui.QTextCursor.End)
 
         flush_buf(self._buf_game, self.log_game)
-        flush_buf(self._buf_lm,   self.log_lm)
-        flush_buf(self._buf_cm,   self.log_cm)
-
+        flush_buf(self._buf_lm, self.log_lm)
+        flush_buf(self._buf_cm, self.log_cm)
 
     # ------------------------ Server / monitors -------------------------------
     def _resolved_paths(self) -> Dict[str, Path]:
@@ -2092,8 +2503,10 @@ class Main(QtWidgets.QMainWindow):
         paths = self._resolved_paths()
         py = paths["start_server"]
         if not py.exists():
-            self._status("start_server.py not found."); return
-        env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
+            self._status("start_server.py not found.")
+            return
+        env = os.environ.copy()
+        env["VEIN_CONFIG"] = self.config_path
         srv_stdout = LOGS_DIR / "server.stdout.log"
         try:
             spawn_logged(f'{_pyexe()} "{py}"', srv_stdout, py.parent, env=env)
@@ -2101,19 +2514,27 @@ class Main(QtWidgets.QMainWindow):
         except Exception as e:
             self._status(f"Start failed: {e}")
 
-
     def stop_server(self):
         paths = self._resolved_paths()
         py = paths["shutdown_server"]
         if not py.exists():
-            self._status("shutdown_server.py not found."); return
+            self._status("shutdown_server.py not found.")
+            return
         try:
             code, out, err = run_once(f'{_pyexe()} "{py}"', cwd=py.parent, timeout=180)
             if out:
-                (LOGS_DIR / "vein_manager.subproc.out.log").write_text(out, encoding="utf-8")
+                (LOGS_DIR / "vein_manager.subproc.out.log").write_text(
+                    out, encoding="utf-8"
+                )
             if err:
-                (LOGS_DIR / "vein_manager.subproc.err.log").write_text(err, encoding="utf-8")
-            self._status("Server stop requested." if code == 0 else f"Stop returned {code}. {err or out}")
+                (LOGS_DIR / "vein_manager.subproc.err.log").write_text(
+                    err, encoding="utf-8"
+                )
+            self._status(
+                "Server stop requested."
+                if code == 0
+                else f"Stop returned {code}. {err or out}"
+            )
         except Exception as e:
             self._status(f"Stop failed: {e}")
 
@@ -2125,15 +2546,20 @@ class Main(QtWidgets.QMainWindow):
         paths = self._resolved_paths()
         mon_py = paths["monitor_log"]
         if not mon_py.exists():
-            self._status("monitor_log.py not found."); return
+            self._status("monitor_log.py not found.")
+            return
         rp = _rt_paths(self.config_path)
-        _rm(rp["stop_log"]); _rm(rp["pid_log"])
-        env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
+        _rm(rp["stop_log"])
+        _rm(rp["pid_log"])
+        env = os.environ.copy()
+        env["VEIN_CONFIG"] = self.config_path
 
         # Write monitor stdout/stderr here:
         lm_stdout = LOGS_DIR / "monitor_log.stdout.log"
         try:
-            spawn_logged(f'{_pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env)
+            spawn_logged(
+                f'{_pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env
+            )
             self._status("Log monitor starting…")
         except Exception as e:
             self._status(f"Log monitor start failed: {e}")
@@ -2151,17 +2577,20 @@ class Main(QtWidgets.QMainWindow):
             # gentle Python fallback (existing utils hook)
             try:
                 run_once(
-                    f'{_pyexe()} -c "import sys;sys.path.insert(0, r\'{CTRL_DIR}\');import utils;utils.stop_log_monitor();print(\'OK\')"',
-                    CTRL_DIR, timeout=10
+                    f"{_pyexe()} -c \"import sys;sys.path.insert(0, r'{CTRL_DIR}');from Tools import monitors;monitors.stop_log_monitor();print('OK')\"",
+                    CTRL_DIR,
+                    timeout=10,
                 )
             except Exception:
                 pass
             if not _wait_for_monitor_exit(rp["pid_log"], timeout_sec=10):
                 # last resort: force-kill by command line match
                 try:
-                    run_once('powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
-                             'Where-Object { $_.CommandLine -match \'monitor_log.py\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
-                             timeout=8)
+                    run_once(
+                        'powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
+                        "Where-Object { $_.CommandLine -match 'monitor_log.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"",
+                        timeout=8,
+                    )
                 except Exception:
                     pass
             self._status("Log Monitor stop requested.")
@@ -2170,10 +2599,13 @@ class Main(QtWidgets.QMainWindow):
         paths = self._resolved_paths()
         cm_py = paths["crash_monitor"]
         if not cm_py.exists():
-            self._status("crash_monitor.py not found."); return
+            self._status("crash_monitor.py not found.")
+            return
         rp = _rt_paths(self.config_path)
-        _rm(rp["stop_crash"]); _rm(rp["pid_crash"])
-        env = os.environ.copy(); env["VEIN_CONFIG"] = self.config_path
+        _rm(rp["stop_crash"])
+        _rm(rp["pid_crash"])
+        env = os.environ.copy()
+        env["VEIN_CONFIG"] = self.config_path
 
         cm_stdout = LOGS_DIR / "crash_monitor.stdout.log"
         try:
@@ -2191,16 +2623,19 @@ class Main(QtWidgets.QMainWindow):
         else:
             try:
                 run_once(
-                    f'{_pyexe()} -c "import sys;sys.path.insert(0, r\'{CTRL_DIR}\');import utils;utils.stop_crash_monitor();print(\'OK\')"',
-                    CTRL_DIR, timeout=10
+                    f"{_pyexe()} -c \"import sys;sys.path.insert(0, r'{CTRL_DIR}');from Tools import monitors;monitors.stop_crash_monitor();print('OK')\"",
+                    CTRL_DIR,
+                    timeout=10,
                 )
             except Exception:
                 pass
             if not _wait_for_monitor_exit(rp["pid_crash"], timeout_sec=10):
                 try:
-                    run_once('powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
-                             'Where-Object { $_.CommandLine -match \'crash_monitor.py\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"',
-                             timeout=8)
+                    run_once(
+                        'powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
+                        "Where-Object { $_.CommandLine -match 'crash_monitor.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"",
+                        timeout=8,
+                    )
                 except Exception:
                     pass
             self._status("Crash Monitor stop requested.")
@@ -2210,12 +2645,15 @@ class Main(QtWidgets.QMainWindow):
         # Update gumballs without blocking
         def dot(on, warn=False):
             return _dot(on, warn)
+
         # Server
         self.dot_srv.setStyleSheet(dot(snap.get("server", False)))
         # Log monitor: green if alive+fresh; yellow if alive but stale
         lm_on = snap.get("logmon", False)
         lm_fresh = snap.get("logmon_fresh", False)
-        self.dot_lm.setStyleSheet(dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh)))
+        self.dot_lm.setStyleSheet(
+            dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh))
+        )
         # Crash monitor
         cm_on = snap.get("crashmon", False)
         self.dot_cm.setStyleSheet(dot(cm_on))
@@ -2229,21 +2667,28 @@ class Main(QtWidgets.QMainWindow):
         rt = _rt_paths(self.config_path)
         st = self._safe_json(rp["server_state"])
         lms = self._safe_json(rt["state_log"])
-        last = (lms.get("last_updated") if lms else None)
-        self.lblLogDot.setStyleSheet(dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh)))
+        last = lms.get("last_updated") if lms else None
+        self.lblLogDot.setStyleSheet(
+            dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh))
+        )
         self.lblLogStatus.setText("running" if lm_on else "stopped")
         self.lblLogLast.setText(f"Last update: {_age_str(last)}")
         self.lblLogJoin.setText(f"Joinable: {st.get('server_joinable') if st else '—'}")
         self.lblLogPlayers.setText(f"Players: {st.get('player_count') if st else '—'}")
         if st and isinstance(st.get("uptime_seconds"), int):
-            up = st["uptime_seconds"]; self.lblLogUptime.setText(f"Uptime: {up//3600:02d}:{(up%3600)//60:02d}:{up%60:02d}")
+            up = st["uptime_seconds"]
+            self.lblLogUptime.setText(
+                f"Uptime: {up//3600:02d}:{(up%3600)//60:02d}:{up%60:02d}"
+            )
         else:
             self.lblLogUptime.setText("Uptime: —")
 
         # Hint the tailer in case path switched (next poll will re-open)
         if self.tail_game:
             try:
-                _ = self._current_game_log_path()  # will be read by provider on next poll
+                _ = (
+                    self._current_game_log_path()
+                )  # will be read by provider on next poll
             except Exception:
                 pass
 
@@ -2258,13 +2703,17 @@ class Main(QtWidgets.QMainWindow):
 
         # --- Backups card update ---
         bk_enabled = bool((snap.get("backup") or {}).get("enabled", True))
-        bk_counts  = (snap.get("backup") or {}).get("counts") or {}
+        bk_counts = (snap.get("backup") or {}).get("counts") or {}
         age = _age_str(bk_last) if bk_last and bk_last != "—" else "—"
+
         def _fmt_counts(d: dict) -> str:
-            if not d: return "—"
+            if not d:
+                return "—"
             keys = [k for k in d.keys() if k != "TOTAL"]
             keys.sort()
-            return "  ".join([*(f"{k}={d.get(k,0)}" for k in keys), f"TOTAL={d.get('TOTAL',0)}"])
+            return "  ".join(
+                [*(f"{k}={d.get(k,0)}" for k in keys), f"TOTAL={d.get('TOTAL',0)}"]
+            )
 
         self.lblBkEnabled.setText("ON" if bk_enabled else "OFF")
         self.lblBkLast.setText(bk_last)
@@ -2286,10 +2735,12 @@ class Main(QtWidgets.QMainWindow):
 
         # Nice UX touch: show details on the “Open Backups” button
         try:
-            self.btn_bak.setToolTip(f"Last backup: {bk_last}\nFile: {bk_file}\nTotal archives: {bk_total}")
+            self.btn_bak.setToolTip(
+                f"Last backup: {bk_last}\nFile: {bk_file}\nTotal archives: {bk_total}"
+            )
         except Exception:
             pass
-        
+
         # Auto-(re)start log monitor if:
         #   - server is running,
         #   - log monitor feature is enabled in config,
@@ -2334,7 +2785,7 @@ class Main(QtWidgets.QMainWindow):
                 return json.load(f)
         except Exception:
             return {}
-        
+
     def _row_matched(self, r: "KVRow") -> bool:
         return bool(getattr(r, "_match", False))
 
@@ -2343,8 +2794,9 @@ class Main(QtWidgets.QMainWindow):
         active = bool(t)
 
         import re
+
         def norm(s: str) -> str:
-            s = (s or "")
+            s = s or ""
             s = s.replace("•", ".").replace("_", ".")
             s = re.sub(r"\s+", ".", s)
             return s.lower()
@@ -2356,19 +2808,23 @@ class Main(QtWidgets.QMainWindow):
             idx = self._tab_index(tab_name)
             if idx >= 0:
                 base = base_of_tabtext(self.tabs.tabText(idx))
-                self.tabs.setTabText(idx, base if (count <= 0 and not show_zero) else f"{base} ({count})")
+                self.tabs.setTabText(
+                    idx, base if (count <= 0 and not show_zero) else f"{base} ({count})"
+                )
 
         if not active:
             # show everything + clear badges + remove Search tab
             for rows in self._rows_by_tab.values():
                 for r in rows:
-                    r._match = True         # reset match state
+                    r._match = True  # reset match state
                     r.setVisible(True)
             for i in range(self.tabs.count()):
                 base = base_of_tabtext(self.tabs.tabText(i))
                 self.tabs.setTabText(i, base)
-                try: self.tabs.setTabVisible(i, True)
-                except Exception: pass
+                try:
+                    self.tabs.setTabVisible(i, True)
+                except Exception:
+                    pass
             self._remove_search_tab()
             return
 
@@ -2391,7 +2847,7 @@ class Main(QtWidgets.QMainWindow):
                     except Exception:
                         ok = False
 
-                r._match = bool(ok)     # <- store match state for counting
+                r._match = bool(ok)  # <- store match state for counting
                 r.setVisible(ok)
                 if ok:
                     matches.append(r)
@@ -2414,8 +2870,10 @@ class Main(QtWidgets.QMainWindow):
 
         # 4) Keep all tabs visible during search
         for i in range(self.tabs.count()):
-            try: self.tabs.setTabVisible(i, True)
-            except Exception: pass
+            try:
+                self.tabs.setTabVisible(i, True)
+            except Exception:
+                pass
 
         # 5) Build/refresh the Search tab and badge it
         search_tab = self._ensure_search_tab()
@@ -2428,10 +2886,12 @@ class Main(QtWidgets.QMainWindow):
         if self._search_tab_idx is not None and self._search_tab_idx >= 0:
             self.tabs.setCurrentIndex(self._search_tab_idx)
 
-    def _status(self, s: str): self.status.setText(f"Status: {s}")
+    def _status(self, s: str):
+        self.status.setText(f"Status: {s}")
 
     def _open_folder(self, p: Path):
-        if not p: return
+        if not p:
+            return
         try:
             os.startfile(str(p))  # Windows
         except Exception:
@@ -2451,9 +2911,12 @@ class Main(QtWidgets.QMainWindow):
 
     def _restore_state(self):
         q = QtCore.QSettings(APP_ORG, APP_NAME)
-        g = q.value("main/geometry"); st = q.value("main/state")
-        if g: self.restoreGeometry(g)
-        if st: self.restoreState(st)
+        g = q.value("main/geometry")
+        st = q.value("main/state")
+        if g:
+            self.restoreGeometry(g)
+        if st:
+            self.restoreState(st)
 
     def closeEvent(self, e: QtGui.QCloseEvent):
         q = QtCore.QSettings(APP_ORG, APP_NAME)
@@ -2461,14 +2924,17 @@ class Main(QtWidgets.QMainWindow):
         q.setValue("main/state", self.saveState())
         e.accept()
 
+
 # --------------------------------- main --------------------------------------
 def main():
     _setup_process_logging()
     app = QtWidgets.QApplication(sys.argv)
     if os.name == "nt":
         app.setStyle("Fusion")
-    w = Main(); w.show()
+    w = Main()
+    w.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,39 @@
+# Tools/ Modules Summary — Vein Server Management Suite
+
+The legacy monolithic `utils.py` module has been decomposed into focused helpers
+under `Controller/Tools/`. Each module now has a single responsibility, which
+makes the controller scripts easier to understand and test.
+
+---
+
+## Key Modules
+
+- **process.py** — process discovery, launch, shutdown, and Steam executable selection.
+- **runtime.py** — Runtime flag management (`server_running.flag`, startup/shutdown locks, state writers).
+- **restart.py** — Controlled restart orchestration used by the crash monitor.
+- **features.py** — Centralized feature gating (`is_feature_enabled`).
+- **paths.py** — Normalized server/log/save paths plus `resolve_save_file()`.
+- **config_summary.py** — Human-readable config summaries for preflight diagnostics.
+- **update_steam.py** — `check_for_steam_update()` and CLI wrapper around SteamCMD.
+- **backups.py / backups_api.py** — Backup plumbing plus a safe API for controllers/GUI.
+- **monitors.py** — Convenience helpers for stopping log/crash monitors.
+- **discord.py** — Webhook utilities (`send_discord_message`, per-channel gating).
+- **state_io.py** — Atomic state/heartbeat writers (shared by monitors & GUI).
+
+Other helper modules (log_events.py, steam_version.py, config_io.py, etc.) are unchanged.
+
+---
+
+## Migration Notes
+
+- Any imports that previously referenced `utils` should now point directly to the relevant `Tools` module.
+- Shutdown/monitor scripts should import `send_discord_message` from `Tools.discord` and process helpers
+  from `Tools.process`.
+- Backup consumers should use `Tools.backups_api` instead of the old `utils.backup_save_file()` shim.
+
+This decomposition makes it clear which module provides which behavior and prevents a single file from
+becoming a bottleneck for future changes.
+
+---
+
+_Last updated after the removal of `Controller/utils.py`._

@@ -12,6 +12,7 @@ Also honors env:
   - VEIN_MGMT_ROOT        -> forces the ServerManagement root
   - DISCORD_WEBHOOK_URL   -> universal webhook override
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -63,34 +64,33 @@ def _migrate_v2_layout(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     # If there is no structured layout, nothing to do.
     paths = cfg.get("paths") or {}
     server = cfg.get("server") or {}
-    monitor = cfg.get("monitor") or {}
-    backup_v2 = cfg.get("backup") or {}
+    monitor_section = cfg.get("monitor")
+    log_monitor_section = cfg.get("log_monitor")
+    crash_monitor_section = cfg.get("crash_monitor")
+    backups_section = cfg.get("backups") or cfg.get("backup") or {}
+    steam_section = cfg.get("steam") or {}
+
+    features = cfg.get("features")
+    if not isinstance(features, dict):
+        features = {}
+        cfg["features"] = features
 
     if isinstance(paths, dict):
-        server_root = paths.get("server_root") or paths.get("server_dir")
-        if server_root and not cfg.get("server_dir"):
-            cfg["server_dir"] = server_root
-
-        saves = paths.get("saves_dir") or paths.get("save_dir")
-        if saves and not cfg.get("save_dir"):
-            cfg["save_dir"] = saves
-
-        logs = paths.get("logs_dir")
-        if logs and not cfg.get("logs_dir"):
-            cfg["logs_dir"] = logs
-
-        runtime = paths.get("runtime_dir")
-        if runtime and not cfg.get("runtime_dir"):
-            cfg["runtime_dir"] = runtime
-
-        abs_log = paths.get("absolute_log_file")
-        if abs_log and not cfg.get("absolute_log_file"):
-            cfg["absolute_log_file"] = abs_log
-
-        # Optional backup root under paths (if you ever add it there)
-        path_backup_root = paths.get("backup_root")
-        if path_backup_root and not cfg.get("backup_root"):
-            cfg["backup_root"] = path_backup_root
+        path_map = {
+            "server_root": "server_dir",
+            "server_dir": "server_dir",
+            "saves_dir": "save_dir",
+            "save_dir": "save_dir",
+            "logs_dir": "logs_dir",
+            "runtime_dir": "runtime_dir",
+            "absolute_log_file": "absolute_log_file",
+            "mgmt_log_dir": "mgmt_log_dir",
+            "backup_root": "backup_root",
+        }
+        for new_key, legacy_key in path_map.items():
+            val = paths.get(new_key)
+            if val and not cfg.get(legacy_key):
+                cfg[legacy_key] = val
 
     # Map structured `server` block to legacy flat keys
     if isinstance(server, dict):
@@ -103,58 +103,166 @@ def _migrate_v2_layout(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
             cfg["preferred_exe"] = pref
 
         ports = server.get("ports") or {}
-        game_port = ports.get("game")
-        if game_port and not cfg.get("game_port"):
-            try:
-                cfg["game_port"] = int(game_port)
-            except Exception:
-                pass
+        direct_keys = {
+            "game": ("game_port", int),
+            "query": ("query_port", int),
+            "bind_ip": ("multi_home_ip", str),
+        }
+        for new_key, (legacy_key, cast) in direct_keys.items():
+            val = ports.get(new_key)
+            if val and not cfg.get(legacy_key):
+                try:
+                    cfg[legacy_key] = cast(val)
+                except Exception:
+                    cfg[legacy_key] = val
 
-        query_port = ports.get("query")
-        if query_port and not cfg.get("query_port"):
-            try:
-                cfg["query_port"] = int(query_port)
-            except Exception:
-                pass
-
-        bind_ip = ports.get("bind_ip")
-        if bind_ip and not cfg.get("multi_home_ip"):
-            cfg["multi_home_ip"] = bind_ip
-
-        opts = server.get("options") or {}
-        max_players = opts.get("max_players")
+        max_players = server.get("max_players") or (server.get("options") or {}).get(
+            "max_players"
+        )
         if max_players and not cfg.get("max_players"):
             try:
                 cfg["max_players"] = int(max_players)
             except Exception:
-                pass
-        
-        # Map server.headless_mode -> flat headless_mode for older code
-        if "headless_mode" in server and not cfg.get("headless_mode"):
-            cfg["headless_mode"] = bool(server["headless_mode"])
+                cfg["max_players"] = max_players
 
-    # Map structured `monitor` block to legacy knobs
+        # Map simple passthrough keys if present
+        simple_keys = [
+            "headless_mode",
+            "show_monitor_window",
+            "multi_home_ip",
+            "map_path",
+            "extra_launch_args",
+            "enable_query_port",
+            "kill_ue_helpers_on_shutdown",
+        ]
+        for key in simple_keys:
+            if key in server and not cfg.get(key):
+                cfg[key] = server[key]
+
+    # Merge structured `monitor` / `log_monitor` blocks and map legacy knobs
+    monitor_combined = None
+    if isinstance(monitor_section, dict):
+        monitor_combined = dict(monitor_section)
+    if isinstance(log_monitor_section, dict):
+        monitor_combined = monitor_combined or {}
+        monitor_combined.update(log_monitor_section)
+    if monitor_combined is not None:
+        cfg["monitor"] = monitor_combined
+        cfg["log_monitor"] = monitor_combined
+        monitor = monitor_combined
+    else:
+        monitor = monitor_section if isinstance(monitor_section, dict) else {}
+
     if isinstance(monitor, dict):
-        hb = monitor.get("heartbeat_seconds")
+        hb = monitor.get("heartbeat_seconds") or monitor.get(
+            "heartbeat_interval_seconds"
+        )
         if hb and not cfg.get("monitor_heartbeat_interval_seconds"):
             try:
                 cfg["monitor_heartbeat_interval_seconds"] = int(hb)
             except Exception:
                 pass
 
+        if "enabled" in monitor and "enable_log_monitor" not in features:
+            features["enable_log_monitor"] = bool(monitor["enabled"])
+
         # Preserve structured monitor.discord for new code.
         # Older code mostly uses flat `discord_webhook`, handled separately.
         if "discord" in monitor and not cfg.get("monitor_discord"):
             cfg["monitor_discord"] = monitor["discord"]
 
+    # Map structured crash_monitor block to legacy knobs
+    crash_monitor = None
+    if isinstance(crash_monitor_section, dict):
+        crash_monitor = dict(crash_monitor_section)
+        cfg["crash_monitor"] = crash_monitor
+    else:
+        crash_monitor = {}
+
+    if crash_monitor:
+        if "enabled" in crash_monitor and "enable_crash_monitor" not in features:
+            features["enable_crash_monitor"] = bool(crash_monitor["enabled"])
+
+        crash_map = {
+            "heartbeat_seconds": "crash_monitor_interval_seconds",
+            "idle_notify_minutes": "crash_monitor_idle_notify_minutes",
+            "notify_debounce_seconds": "crash_notify_debounce_seconds",
+            "crash_backoff_base": "crash_backoff_base",
+            "crash_backoff_max_seconds": "crash_backoff_max_seconds",
+            "crash_loop_max_attempts": "crash_loop_max_attempts",
+            "crash_loop_window_minutes": "crash_loop_window_minutes",
+            "crash_loop_cooldown_seconds": "crash_loop_cooldown_seconds",
+            "shutdown_timeout_sec": "shutdown_timeout_sec",
+            "restart_throttle_seconds": "restart_throttle_seconds",
+        }
+        for new_key, legacy_key in crash_map.items():
+            if legacy_key in cfg:
+                continue
+            val = crash_monitor.get(new_key)
+            if val is None:
+                continue
+            try:
+                cfg[legacy_key] = int(val)
+            except Exception:
+                cfg[legacy_key] = val
+
+        if (
+            "stale_flag_delay_sec" in crash_monitor
+            and "stale_flag_delay_sec" not in cfg
+        ):
+            cfg["stale_flag_delay_sec"] = crash_monitor["stale_flag_delay_sec"]
+
     # Map new backup layout to legacy globals where helpful
-    if isinstance(backup_v2, dict):
+    backup_v2: Dict[str, Any] = {}
+    if isinstance(backups_section, dict):
+        backup_v2.update(backups_section)
+    legacy_backup = cfg.get("backup")
+    if isinstance(legacy_backup, dict):
+        # legacy keys should not override the structured section
+        for k, v in legacy_backup.items():
+            backup_v2.setdefault(k, v)
+    if backup_v2:
+        cfg["backups"] = backup_v2
+        cfg["backup"] = backup_v2
+
+        enable_flag = backup_v2.get("enabled")
+        if enable_flag is None:
+            enable_flag = backup_v2.get("enable")
+        if enable_flag is not None and "enable_backups" not in features:
+            features["enable_backups"] = bool(enable_flag)
+
         root = backup_v2.get("root")
         if root and not cfg.get("backup_root"):
             cfg["backup_root"] = root
 
         # Older JSON used a top-level `backups` block; keep it if present.
-        # We intentionally do *not* overwrite it from `backup` here.
+
+    # Map structured steam block to legacy flat keys
+    if isinstance(steam_section, dict):
+        steam_path = steam_section.get("steamcmd_path")
+        if steam_path and not cfg.get("steamcmd_path"):
+            cfg["steamcmd_path"] = steam_path
+
+        app_id = steam_section.get("app_id")
+        if app_id and not cfg.get("app_id"):
+            cfg["app_id"] = app_id
+
+        auto_start = steam_section.get("auto_update_on_start")
+        if auto_start is not None and "auto_update_on_start" not in cfg:
+            cfg["auto_update_on_start"] = auto_start
+
+        mapping = {
+            "steam_update_validate": "steam_update_validate",
+            "steam_update_beta": "steam_update_beta",
+            "steam_update_beta_password": "steam_update_beta_password",
+            "steam_update_retries": "steam_update_retries",
+            "steam_update_timeout_seconds": "steam_update_timeout_seconds",
+        }
+        for new_key, legacy_key in mapping.items():
+            if legacy_key in cfg:
+                continue
+            if new_key in steam_section:
+                cfg[legacy_key] = steam_section[new_key]
 
     # Map lifecycle.startup/shutdown -> legacy flat knobs
     lifecycle = cfg.get("lifecycle") or {}
@@ -203,13 +311,17 @@ def _migrate_v2_layout(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
                 except Exception:
                     pass
 
-
     # Ensure there is *some* server_dir so existing validation has a chance.
     if not cfg.get("server_dir"):
         # As an absolute last resort, assume the game lives under the
         # ServerManagement parent like before.
         guess = str(mgmt_root.parent / "VeinServer")
         cfg.setdefault("server_dir", guess)
+
+    # Discord block can now express enable/disable
+    discord_cfg = cfg.get("discord")
+    if isinstance(discord_cfg, dict) and "enabled" in discord_cfg:
+        features.setdefault("enable_discord", bool(discord_cfg["enabled"]))
 
     return cfg
 
@@ -239,7 +351,9 @@ def _with_defaults(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     cfg.setdefault("restart_throttle_seconds", 120)
 
     # Executable candidates
-    cfg.setdefault("server_executables", ["VeinServer.exe", "VeinServer-Win64-Test.exe"])
+    cfg.setdefault(
+        "server_executables", ["VeinServer.exe", "VeinServer-Win64-Test.exe"]
+    )
 
     # Default backup_root to ServerManagement\Backups if missing
     if not cfg.get("backup_root"):
@@ -255,14 +369,19 @@ def _with_defaults(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
 
 def _normalize_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize key filesystem paths to absolute paths (prevents CWD surprises)."""
+
     def _abs(p: str | None) -> str | None:
         if not p or not isinstance(p, str):
             return p
         return os.path.abspath(os.path.normpath(p))
 
     path_keys = [
-        "server_dir", "backup_root", "steamcmd_path",
-        "save_dir", "logs_dir", "absolute_log_file",
+        "server_dir",
+        "backup_root",
+        "steamcmd_path",
+        "save_dir",
+        "logs_dir",
+        "absolute_log_file",
         "runtime_dir",
     ]
     for k in path_keys:
@@ -319,7 +438,9 @@ def _resolve_discord_webhook(cfg: Dict[str, Any]) -> None:
         if env_val:
             cfg["discord_webhook"] = env_val
         else:
-            print(f"[Config] Discord webhook env var '{env_name}' not set; disabling Discord.")
+            print(
+                f"[Config] Discord webhook env var '{env_name}' not set; disabling Discord."
+            )
             cfg["discord_webhook"] = ""
     elif not isinstance(val, str):
         cfg["discord_webhook"] = ""
@@ -346,7 +467,9 @@ def _validate(cfg: Dict[str, Any]) -> None:
             try:
                 os.makedirs(br, exist_ok=True)
             except Exception:
-                problems.append(f"backup_root does not exist and could not be created: {br}")
+                problems.append(
+                    f"backup_root does not exist and could not be created: {br}"
+                )
         else:
             problems.append(f"backup_root does not exist: {br}")
 
@@ -359,7 +482,9 @@ def _validate(cfg: Dict[str, Any]) -> None:
                 try:
                     os.makedirs(br2, exist_ok=True)
                 except Exception:
-                    problems.append(f"backup.root does not exist and could not be created: {br2}")
+                    problems.append(
+                        f"backup.root does not exist and could not be created: {br2}"
+                    )
             else:
                 problems.append(f"backup.root does not exist: {br2}")
 
@@ -388,7 +513,11 @@ def _load_first_existing(paths: list[Path]) -> tuple[Path, dict]:
     if env_path and Path(env_path).exists():
         p = Path(env_path)
         with p.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) if p.suffix.lower() in (".yaml", ".yml") else json.load(f)
+            data = (
+                yaml.safe_load(f)
+                if p.suffix.lower() in (".yaml", ".yml")
+                else json.load(f)
+            )
         return p, data or {}
 
     # 2) Fallback discovery
@@ -398,7 +527,11 @@ def _load_first_existing(paths: list[Path]) -> tuple[Path, dict]:
     for p in yaml_paths + json_paths:
         if p.exists():
             with p.open("r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) if p.suffix.lower() in (".yaml", ".yml") else json.load(f)
+                data = (
+                    yaml.safe_load(f)
+                    if p.suffix.lower() in (".yaml", ".yml")
+                    else json.load(f)
+                )
             return p, data or {}
 
     raise FileNotFoundError(

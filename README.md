@@ -1,167 +1,276 @@
 # Vein Server Management Suite
 
-A modular, self-healing control system for the **Vein Dedicated Server** on Windows.  
-Includes automated backups, crash recovery, Steam updates, and Discord event reporting — all configurable through JSON and managed via an integrated GUI.
+A Python + PySide6 toolkit for hosting and supervising a **Vein** dedicated server on Windows.
 
----
+This project **does not contain the game**.  
+It is a management layer that lives alongside your Steam-installed Vein server and handles:
 
-## 🚀 Features
+- Starting / stopping the dedicated server
+- Crash monitoring and restart logic
+- Log tailing and health checks
+- Nightly / manual backups
+- Discord notifications
+- A GUI dashboard for local control
 
-- ✅ One-click startup with crash + log monitors  
-- 🔄 Auto-recovery after crashes or disconnects  
-- 🕓 Automated scheduled (nightly) backups  
-- 🧩 Full GUI for editing config and viewing logs (`vein_manager.py`)  
-- 💬 Discord integration for startup, crash, join, and shutdown events  
-- ⚙️ Completely config-driven — no hardcoded paths  
+Typical layout on disk:
 
----
-
-## 📁 Project Structure
+G:\Servers\Vein\                  # Game server install (NOT part of this repo)
+G:\Servers\VeinServerManagement\  # This repository
+📂 Repository Layout
+Root (this repo):
 
 VeinServerManagement/
+├── AGENTS.md           # AI / Codex rules (this is for tools like Codex)
+├── Backups/            # Backup output folders (LastPlayer, Manual, etc.)
 ├── Config/
-│ └── config.json
+│   ├── config.yaml     # Primary config file (YAML)
+│   └── Backup/         # Legacy sample/backup configs (JSON/YAML)
 ├── Controller/
-│ ├── start_server.py
-│ ├── shutdown_server.py
-│ ├── crash_monitor.py
-│ ├── monitor_log.py
-│ ├── nightly_backup.py
-│ ├── vein_manager.py
-│ ├── config.py
-│ ├── config_helper.py
-│ └── utils.py
+│   ├── config.py           # Config loader (YAML/JSON, env-aware)
+│   ├── config_helper.py    # Ergonomic wrapper around config dict
+│   ├── crash_monitor.py    # Crash monitor entrypoint
+│   ├── monitor_log.py      # Log monitor entrypoint
+│   ├── nightly_backup.py   # Scheduled backup helper
+│   ├── shutdown_server.py  # Clean shutdown script
+│   ├── start_server.py     # Server startup script
+│   ├── Tools/              # Shared helper modules (process, runtime, backups, restart, etc.)
+│   ├── vein_manager.py     # PySide6 GUI (main window + StatusPoller)
+│   ├── │   │   ├── backups.py
+│   │   ├── config_io.py
+│   │   ├── discord.py
+│   │   ├── log_events.py
+│   │   ├── process.py
+│   │   ├── state_io.py
+│   │   ├── steam_version.py
+│   │   ├── update_steam.py
+│   │   └── vein_http_api.py
+│   └── Legacy/             # Older scripts kept for reference
+├── Docs/               # Developer docs (control_layer_overview, Developer_Guide, etc.)
+├── Logs/               # Management logs (stdout/stderr from tools)
+├── Runtime/            # PID files, flags, small JSON state (created at runtime)
 ├── Scripts/
-│ ├── env_setup.bat
-│ ├── StartServer.bat
-│ ├── StartCrashMonitor.bat
-│ ├── StartLogMonitor.bat
-│ └── ShutdownServer.bat
-├── Runtime/
-│ ├── *.pid / *.json / *.flag
-│ └── ...
-├── Backups/
-│ ├── Manual/
-│ ├── Startup/
-│ ├── Autosave/
-│ ├── Crash/
-│ └── Nightly/
-└── Docs/
-├── utils_summary.md
-├── start_server_summary.md
-├── monitor_log_summary.md
-├── crash_monitor_summary.md
-├── shutdown_server_summary.md
-├── config_helper_summary.md
-├── config_summary.md
-├── config_reference.md
-├── vein_manager_summary.md
-├── nightly_backup_summary.md
-├── env_setup_summary.md
-└── control_layer_overview.md
+│   ├── env_setup.bat
+│   ├── StartServer.bat
+│   ├── StartAllMonitors.bat
+│   ├── StartServerWithMonitors.bat
+│   ├── StartCrashMonitor.bat
+│   ├── StartLogMonitor.bat
+│   ├── RestartServer.bat
+│   ├── Start_VeinManager.bat
+│   ├── StopServer.bat
+│   └── … (other helpers, health checks, web admin, git hooks, etc.)
+└── .git, .gitignore, .gitattributes, etc.
+Important:
+The Vein game server itself lives elsewhere (e.g. G:\Servers\Vein\) and is treated as read-only by this project, aside from reading logs and saves as configured in Config/config.yaml.
 
-yaml
+🧩 Core Components
+Controller layer (Controller/)
+These scripts form the core “brain” of the management suite:
+
+start_server.py
+Launches the Vein server, sets runtime flags, and can start monitors as needed.
+
+crash_monitor.py
+Watches for unexpected server termination and handles restart logic / Discord notifications.
+
+monitor_log.py
+Tails the Vein log file, tracks freshness, and emits lightweight state JSONs in Runtime/.
+
+nightly_backup.py
+Implements scheduled backups and cleanup rules.
+
+shutdown_server.py
+Performs clean shutdown:
+
+Marks intentional shutdown
+
+Notifies Discord
+
+Stops monitors
+
+Stops the server process
+
+Optionally triggers backups (based on config)
+
+Clears runtime flags
+
+utils.py
+Large shared helper module:
+
+Process discovery and termination helpers
+
+Runtime flags (PID files, lock files)
+
+Backup helpers (manual, autosave, nightly)
+
+Discord send functions
+
+Steam update helpers (via Tools/update_steam.py)
+
+Config preflight and status summarizers
+
+config.py / config_helper.py
+
+config.py: Robust loader that searches for Config/config.yaml, config.yml, then config.json (or an override via VEIN_CONFIG).
+
+config_helper.py: Higher-level accessors and convenience functions for reading the config and feature gates.
+
+vein_manager.py
+PySide6 GUI:
+
+Main window and tabs
+
+StatusPoller QRunnable to read the small Runtime/ JSONs off the UI thread
+
+Buttons for starting/stopping server and monitors
+
+Filter/search UI for logs/events
+
+Visual health indicators for monitors and server status
+
+Tools layer (Controller/Tools/)
+All shared helpers now live here (process/running state, restart orchestration, backups, Discord helpers, feature gates, paths, etc.). The legacy `utils.py` module has been retired in favor of these focused files.
+
+backups.py — backup plumbing (locations, naming, retention helpers)
+
+config_io.py — config file I/O helpers (JSON/YAML, migration quirks)
+
+discord.py — Discord webhook integration
+
+log_events.py — structured interpretation of Vein log events
+
+process.py — process enumeration, PID inspection
+
+state_io.py — reading/writing runtime state (JSON flags in Runtime/)
+
+steam_version.py / update_steam.py — SteamCMD version checks & updates
+
+vein_http_api.py — any HTTP/API hooks for Vein if present
+
+⚙️ Configuration
+The main configuration file is:
+
+Config/config.yaml
+Controller/config.py searches in this order:
+
+VEIN_CONFIG environment variable (explicit override)
+
+Config/config.yaml
+
+Config/config.yml
+
+Config/config.json (legacy)
+
+Controller-local config.json (legacy fallback)
+
+So you can keep using JSON if you like, but YAML (Config/config.yaml) is the current primary format.
+
+Key sections include (see Config/config.yaml and Docs/config_reference.md):
+
+paths.* — server root, runtime dir, saves dir, logs dir, log file, etc.
+
+server.* — arguments, update behavior, startup options.
+
+lifecycle.* — quiet windows, restart throttling, shutdown countdowns.
+
+backups.* — paths, schedules, retention strategies.
+
+discord.* — feature flags and webhook configuration.
+
+monitors.* — crash/log monitor intervals and behavior.
+
+🖥️ How to Run It (locally)
+These commands assume you are in the VeinServerManagement root folder.
+
+Option A — Use the batch wrappers (recommended on Windows)
+Open a terminal in Scripts/.
+
+Initialize the environment:
+
+bat
 Copy code
+env_setup.bat
+Start the server:
 
----
-
-## ⚙️ Setup
-
-### 1. Prerequisites
-- Windows 10/11  
-- Python 3.10+  
-- SteamCMD (for automatic updates)
-- Discord webhook URL (optional but recommended)
-
-### 2. Configure
-Edit `Config/config.json` to match your paths and desired behavior.  
-See detailed explanations in **[Docs/config_reference.md](Docs/config_reference.md)**.
-
-### 3. Launch Options
-| Task | How |
-|------|-----|
-| Start everything | `Scripts\StartServer.bat` |
-| Start monitors only | `Scripts\StartMonitors.bat` |
-| Shut down gracefully | `Scripts\ShutdownServer.bat` |
-| Use GUI | Run `Controller\vein_manager.py` |
-| Run nightly backup | `py Controller\nightly_backup.py` or schedule it |
-
-All batch files automatically call `Scripts/env_setup.bat` to set paths.
-
----
-
-## 🧩 Core Components
-
-| Module | Summary |
-|---------|----------|
-| **start_server.py** | Launches the server, applies config, starts monitors. |
-| **crash_monitor.py** | Detects unexpected exits, performs controlled restarts. |
-| **monitor_log.py** | Parses the live log for player events and crash signatures. |
-| **shutdown_server.py** | Performs graceful shutdown + backup. |
-| **nightly_backup.py** | Creates and prunes daily “Nightly” backups. |
-| **config_helper.py** | Unified getter interface for `config.json`. |
-| **vein_manager.py** | Full-featured GUI to manage the suite. |
-| **env_setup.bat** | Sets all required environment variables for the suite. |
-
-Full documentation for each file is available in the [Docs](Docs/) folder.
-
----
-
-## 🧠 Understanding the Control Layer
-
-If you want to understand how the system pieces fit together, read:  
-📘 **[Docs/control_layer_overview.md](Docs/control_layer_overview.md)**  
-It includes an ASCII flow diagram and cross-module interactions.
-
----
-
-## 🕓 Automation
-
-To automate nightly backups, schedule:
-py -3 Controller\nightly_backup.py
-
-yaml
+bat
 Copy code
-in Windows Task Scheduler.  
-See [Docs/nightly_backup_summary.md](Docs/nightly_backup_summary.md) for more details.
+StartServer.bat
+Start monitors (if not started automatically):
 
----
+bat
+Copy code
+StartAllMonitors.bat
+Start the GUI:
 
-## 🧰 Troubleshooting
+bat
+Copy code
+Start_VeinManager.bat
+Shut down the server cleanly:
 
-| Issue | Solution |
-|-------|-----------|
-| Server starts twice | Check for stale `startup_in_progress.lock` in `Runtime/` |
-| Crash monitor restarts too fast | Increase `startup_quiet_seconds` or `restart_throttle_seconds` |
-| No Discord messages | Verify `enable_discord` and webhook variable |
-| GUI gumballs never turn green | Ensure monitor state JSONs are updating under `Runtime/` |
+bat
+Copy code
+StopServer.bat
+Option B — Direct Python entrypoints
+Make sure VEIN_MGMT_ROOT is set or run from the repo root.
 
----
+bash
+Copy code
+# Start server
+python Controller/start_server.py
 
-## 🧾 Documentation Index
+# Start crash/log monitors
+python Controller/crash_monitor.py
+python Controller/monitor_log.py
 
-| Topic | File |
-|--------|------|
-| System Overview | [Docs/control_layer_overview.md](Docs/control_layer_overview.md) |
-| Config Reference | [Docs/config_reference.md](Docs/config_reference.md) |
-| Configuration Loader | [Docs/config_summary.md](Docs/config_summary.md) |
-| Config Helper | [Docs/config_helper_summary.md](Docs/config_helper_summary.md) |
-| Server Startup | [Docs/start_server_summary.md](Docs/start_server_summary.md) |
-| Shutdown | [Docs/shutdown_server_summary.md](Docs/shutdown_server_summary.md) |
-| Crash Monitor | [Docs/crash_monitor_summary.md](Docs/crash_monitor_summary.md) |
-| Log Monitor | [Docs/monitor_log_summary.md](Docs/monitor_log_summary.md) |
-| Nightly Backup | [Docs/nightly_backup_summary.md](Docs/nightly_backup_summary.md) |
-| Environment Setup | [Docs/env_setup_summary.md](Docs/env_setup_summary.md) |
-| GUI (Vein Manager) | [Docs/vein_manager_summary.md](Docs/vein_manager_summary.md) |
-| Utilities | [Docs/utils_summary.md](Docs/utils_summary.md) |
+# Run nightly backup task manually
+python Controller/nightly_backup.py
 
----
+# Open GUI
+python Controller/vein_manager.py
 
-## 🧱 Legacy Technical Notes
+# Clean shutdown
+python Controller/shutdown_server.py
+🧪 Documentation & Developer Info
+All deeper technical docs live in Docs/:
 
-For the full deep-dive legacy documentation from v2.1 (“Notify Ready”),  
-see **[Docs/Legacy_README_v2.1.md](Docs/Legacy_README_v2.1.md)**.
+Docs/control_layer_overview.md — overall architecture
 
----
+Docs/Developer_Guide.md — detailed module-by-module breakdown
 
-_Last updated by AI documentation generator for the Vein Server Management project._
+Docs/config_reference.md — config key reference (JSON-era but still accurate conceptually)
+
+Docs/config_summary.md — quick config overview
+
+Docs/utils_summary.md, Docs/vein_manager_summary.md — focused module summaries
+
+Docs/env_setup_summary.md — environment & batch script overview
+
+Start with Docs/_index.md if you’re exploring the system.
+
+🧠 AI / Codex Usage
+This repo is designed to work well with tools like OpenAI Codex and GitHub Copilot:
+
+AGENTS.md defines strict rules for AI assistants (what they may / may not touch).
+
+Keep most new shared logic in:
+
+Controller/utils.py, or
+
+small modules in Controller/Tools/.
+
+All config access should go through:
+
+Controller/config.py + Controller/config_helper.py.
+
+When starting a Codex session in VS Code, have it:
+
+Read README.md
+
+Read AGENTS.md
+
+Optionally consult Docs/Developer_Guide.md
+
+Then ask it to propose a small, explicit plan before editing any files.
+
+🤝 Contributing
+See CONTRIBUTING.md for guidelines on contributing, branch flow, and coding standards.

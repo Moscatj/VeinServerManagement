@@ -11,7 +11,7 @@ It handles environment setup, configuration loading, process management, monitor
 - Initialize the runtime environment and resolve `config.json`.
 - Validate the server executable and print a preflight summary.
 - Handle pre-existing server instances (restart, skip, or backup).
-- Optionally run SteamCMD updates, restore saves, and rotate logs.
+- Optionally run SteamCMD updates and restore saves.
 - Launch the Vein server and start crash/log monitors as needed.
 - Send live Discord messages during each startup stage.
 
@@ -23,7 +23,7 @@ It handles environment setup, configuration loading, process management, monitor
   - Server discovery and launch (`find_running_server`, `start_vein_server`)
   - Flag and lock helpers (`create_startup_lock`, `clear_flag`, `end_intentional_shutdown`)
   - Discord notifications
-  - Backups, Steam updates, log rotation, quiet window management
+  - Backups, Steam updates, quiet window management
 - **psutil**, **subprocess**, **pathlib.Path** → process control and I/O.
 - Designed for Windows (uses `taskkill`, PowerShell-style command flags).
 

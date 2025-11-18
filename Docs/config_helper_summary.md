@@ -83,7 +83,7 @@ Used by controllers for:
 | crash_monitor.py | Reads crash_monitor_interval_seconds, crash_monitor_idle_notify_minutes |
 | shutdown_server.py | Uses for optional pre-shutdown warnings and quiet-window lengths |
 | vein_manager.py | GUI editor loads and saves config values through this module |
-| utils.py | References features to decide which subsystems to start (backups, monitors, Discord, etc.) |
+| Controller/Tools/* | Shared helpers (process/runtime/backups/Discord) read feature flags to decide which subsystems start. |
 
 ---
 

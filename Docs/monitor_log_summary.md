@@ -126,7 +126,7 @@ Generator that yields new lines as they’re written; sleeps `tail_poll_interval
 - **GUI (vein_manager.py):**
   - Reads `log_monitor_state.json` and `log_monitor.pid` to show live status.
   - Can create `stop_log_monitor.flag` to request a clean shutdown.
-- **utils.py:**
+- **Controller/Tools/**:
   - `is_server_running()` to stop monitoring when server ends.
   - `send_discord_message()` for all outbound notifications.
   - `backup_save_file()` for autosave-triggered backups.

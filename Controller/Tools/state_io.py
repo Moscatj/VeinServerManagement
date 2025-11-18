@@ -7,19 +7,26 @@ import json, os
 
 STATE_SCHEMA_VERSION = "1.0"
 
+
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
 
 def default_state(status="stopped", pid=None, headless=True, version=None) -> dict:
     return {
         "schema": STATE_SCHEMA_VERSION,
-        "status": status,               # running | stopped | restart_pending
-        "last_updated": now_iso(),      # ISO-8601 Z
-        "uptime_seconds": 0,            # monitor-reported
+        "status": status,  # running | stopped | restart_pending
+        "last_updated": now_iso(),  # ISO-8601 Z
+        "uptime_seconds": 0,  # monitor-reported
         "pid": pid,
         "headless": bool(headless),
-        "version": version or "unknown" # monitor code version
+        "version": version or "unknown",  # monitor code version
     }
+
 
 def write_state(path: Path, state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -27,6 +34,7 @@ def write_state(path: Path, state: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
     tmp.replace(path)
+
 
 def bump_heartbeat(path: Path, incr_seconds: int = 0) -> dict:
     try:

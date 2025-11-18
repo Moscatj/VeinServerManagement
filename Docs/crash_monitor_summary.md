@@ -88,7 +88,7 @@ Typical messages:
 ---
 
 ## Integration Points
-- **utils.py**  
+- **Controller/Tools/** modules (process, runtime, restart)  
   - Paths: `RUNTIME_DIR`, `STATE_FLAG`  
   - Process/flags: `find_running_server()`, `is_shutdown_in_progress()`  
   - Windows/throttle logic: `startup_grace_active()`, `autorestart_quiet_active()`  

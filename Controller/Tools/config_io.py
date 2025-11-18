@@ -89,8 +89,9 @@ def _as_float(d: Dict[str, Any], key: str, default: float) -> float:
         return default
 
 
-def load_and_validate_config(cfg_path: str | os.PathLike | None = None,
-                             *, fatal: bool = True) -> ValidConfig:
+def load_and_validate_config(
+    cfg_path: str | os.PathLike | None = None, *, fatal: bool = True
+) -> ValidConfig:
     """
     Return a ValidConfig with normalized paths and knobs.
 
@@ -113,7 +114,9 @@ def load_and_validate_config(cfg_path: str | os.PathLike | None = None,
     logs_dir = Path(raw.get("logs_dir", "")).expanduser()
     save_dir = Path(raw.get("save_dir", "")).expanduser()
 
-    abs_log = raw.get("absolute_log_file") or (raw.get("paths") or {}).get("absolute_log_file")
+    abs_log = raw.get("absolute_log_file") or (raw.get("paths") or {}).get(
+        "absolute_log_file"
+    )
     absolute_log_file = Path(abs_log).expanduser() if abs_log else None
 
     # Executables

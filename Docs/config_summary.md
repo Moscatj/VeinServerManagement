@@ -129,7 +129,7 @@ This ensures all paths and defaults are applied before use.
 |---------|------|
 | `config_helper.py` | Imports `load_config()` and exposes convenient getters. |
 | `start_server.py` | Validates and reads path, port, and executable list. |
-| `utils.py` | Reads config for feature toggles, backups, logging, and Steam update behavior. |
+| `Controller/Tools/*` | Shared helpers for process/runtime/backups/Discord read the same config toggles. |
 | `vein_manager.py` | GUI configuration editor and viewer. |
 | `shutdown_server.py` | Reads for quiet window and shutdown countdown. |
 | `monitor_log.py` / `crash_monitor.py` | Reads monitoring cadence and tracking toggles. |

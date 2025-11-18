@@ -9,13 +9,16 @@ from dataclasses import is_dataclass, asdict
 
 from Tools.config_io import load_and_validate_config
 from .state_io import write_state, now_iso
-from utils import send_discord_message, is_discord_channel_enabled
+from Tools.discord import send_discord_message, is_discord_channel_enabled
+
 
 class BackupError(Exception):
     """A hard failure while attempting a backup (e.g., IO/zip errors)."""
 
+
 class BackupSkip(BackupError):
     """A soft skip (feature disabled, no save found, etc.)."""
+
 
 def _active_cfg_path() -> Path:
     """Honor VEIN_CONFIG; otherwise prefer YAML then JSON in Config/."""
@@ -28,9 +31,13 @@ def _active_cfg_path() -> Path:
         cands = sorted(cfg_dir.glob(pat))
         if cands:
             return cands[0]
-    raise BackupError("No configuration found. Set VEIN_CONFIG or place YAML/JSON under Config/.")
+    raise BackupError(
+        "No configuration found. Set VEIN_CONFIG or place YAML/JSON under Config/."
+    )
+
 
 from dataclasses import is_dataclass, asdict
+
 
 def _cfg_to_dict(v):
     """Normalize ValidConfig/dataclass/dict to a plain dict."""
@@ -45,12 +52,22 @@ def _cfg_to_dict(v):
         return asdict(v)
     # last-resort: pull known attrs we use in backups.py
     out = {}
-    for k in ("backups","features","paths","save_dir","server_dir",
-              "backup_root","runtime_dir","max_backups",
-              "backup_max_age_days","backup_folders"):
+    for k in (
+        "backups",
+        "features",
+        "paths",
+        "save_dir",
+        "server_dir",
+        "backup_root",
+        "runtime_dir",
+        "max_backups",
+        "backup_max_age_days",
+        "backup_folders",
+    ):
         if hasattr(v, k):
             out[k] = getattr(v, k)
     return out
+
 
 def _cfg() -> dict:
     """Load the active config fresh each call (no caching)."""
@@ -61,19 +78,22 @@ def _cfg() -> dict:
 
 # --- Runtime state writer (lazy; no new hard deps) ---------------------------
 
+
 def _runtime_dir() -> Path:
     try:
         cfg = _cfg()
         p = cfg.get("runtime_dir") or (cfg.get("paths", {}) or {}).get("runtime_dir")
         return Path(p) if p else (Path(__file__).resolve().parents[2] / "Runtime")
     except Exception:
-        return (Path(__file__).resolve().parents[2] / "Runtime")
+        return Path(__file__).resolve().parents[2] / "Runtime"
+
 
 def _safe_mkdir(p: Path) -> None:
     try:
         p.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
+
 
 def _count_all() -> dict:
     """Return counts by reason and TOTAL."""
@@ -95,6 +115,7 @@ def _count_all() -> dict:
         pass
     counts["TOTAL"] = total
     return counts
+
 
 def _write_backup_state(*, last_reason: str | None, last_zip: Path | None) -> None:
     """
@@ -120,11 +141,12 @@ def _write_backup_state(*, last_reason: str | None, last_zip: Path | None) -> No
     except Exception as e:
         print(f"[Backup] state write failed: {e}")
 
+
 # -----------------------------
 # Config helpers
 # -----------------------------
 def _b(cfg_path: str, default=None):
-    b = (_cfg().get("backups") or {})
+    b = _cfg().get("backups") or {}
     cur = b
     for part in cfg_path.split("."):
         if not isinstance(cur, dict) or part not in cur:
@@ -132,16 +154,19 @@ def _b(cfg_path: str, default=None):
         cur = cur[part]
     return cur
 
+
 def _save_dir() -> Path:
     cfg = _cfg()
     # Highest priority: backups.save_dir (if you expose it)
-    b = (cfg.get("backups") or {})
+    b = cfg.get("backups") or {}
     sd = b.get("save_dir")
-    if sd: return Path(str(sd))
+    if sd:
+        return Path(str(sd))
 
     # Next: top-level or paths.save_dir
     sd = cfg.get("save_dir") or (cfg.get("paths", {}) or {}).get("save_dir")
-    if sd: return Path(str(sd))
+    if sd:
+        return Path(str(sd))
 
     # Fallback: derive from server_dir
     server_dir = cfg.get("server_dir")
@@ -150,6 +175,7 @@ def _save_dir() -> Path:
 
     # Last-ditch project-relative guess
     return Path(__file__).resolve().parents[3] / "Vein" / "Saved" / "SaveGames"
+
 
 def _save_filenames() -> list[str]:
     cfg = _cfg()
@@ -161,19 +187,25 @@ def _save_filenames() -> list[str]:
         return [str(n) for n in names]
     return ["Server.vns"]
 
+
 def _feature_enabled() -> bool:
     cfg = _cfg()
-    return bool(_b("enable", (cfg.get("features", {}) or {}).get("enable_backups", True)))
+    return bool(
+        _b("enable", (cfg.get("features", {}) or {}).get("enable_backups", True))
+    )
+
 
 def _root() -> Path:
     cfg = _cfg()
     r = _b("root") or cfg.get("backup_root")
     return Path(str(r)) if r else (Path(__file__).resolve().parents[2] / "Backups")
 
+
 def _folders() -> Dict[str, str]:
     cfg = _cfg()
     f = _b("folders") or cfg.get("backup_folders", {})
     return dict(f or {})
+
 
 def _retention_for(reason: str) -> Dict[str, int]:
     cfg = _cfg()
@@ -181,23 +213,29 @@ def _retention_for(reason: str) -> Dict[str, int]:
     rc = ret.get(reason) or {}
     dc = ret.get("default") or {}
     max_count = rc.get("max_backups", dc.get("max_backups", cfg.get("max_backups", 10)))
-    max_age   = rc.get("max_age_days", dc.get("max_age_days", cfg.get("backup_max_age_days", 7)))
+    max_age = rc.get(
+        "max_age_days", dc.get("max_age_days", cfg.get("backup_max_age_days", 7))
+    )
     return {"max_backups": int(max_count), "max_age_days": int(max_age)}
+
 
 def _discord_flags() -> Dict[str, bool]:
     d = _b("discord", {}) or {}
     return {
         "on_create": bool(d.get("notify_on_create", True)),
-        "on_prune":  bool(d.get("notify_on_prune", False)),
+        "on_prune": bool(d.get("notify_on_prune", False)),
     }
+
 
 def _save_candidates() -> List[Path]:
     sd = _save_dir()
     return [sd / n for n in _save_filenames()]
 
+
 def _dest_for(reason: str) -> Path:
     sub = _folders().get(reason, reason)
     return _root() / sub
+
 
 # -----------------------------
 # Utilities
@@ -208,6 +246,7 @@ def _sha256(p: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def _pick_existing_save() -> Optional[Path]:
     for c in _save_candidates():
@@ -220,10 +259,22 @@ def _pick_existing_save() -> Optional[Path]:
         msg = "<error building candidate list>"
     print(f"[Backup] No save found. Checked: {msg}")
     if is_discord_channel_enabled("backups"):
-        send_discord_message(f"⚠️ Backup skipped: save file not found. Checked: `{msg}`", channel="backups")
+        send_discord_message(
+            f"⚠️ Backup skipped: save file not found. Checked: `{msg}`",
+            channel="backups",
+        )
     return None
 
-def _write_manifest(zf: zipfile.ZipFile, *, reason: str, save_name: str, src_path: Path, size: int, sha: str) -> None:
+
+def _write_manifest(
+    zf: zipfile.ZipFile,
+    *,
+    reason: str,
+    save_name: str,
+    src_path: Path,
+    size: int,
+    sha: str,
+) -> None:
     manifest = {
         "reason": reason,
         "created_utc": now_iso(),
@@ -236,22 +287,26 @@ def _write_manifest(zf: zipfile.ZipFile, *, reason: str, save_name: str, src_pat
     }
     zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
+
 # --- Log snapshot config (separate from save backups) ------------------------
 def _log_root() -> Path:
     cfg = _cfg()
     # allow overrides
-    r = (cfg.get("log_backup_root")
-         or (cfg.get("paths", {}) or {}).get("log_backup_root"))
+    r = cfg.get("log_backup_root") or (cfg.get("paths", {}) or {}).get(
+        "log_backup_root"
+    )
     if r:
         return Path(str(r))
     # default: Backups\Logs under the standard backup root
     return _root() / "Logs"
 
+
 def _log_retention() -> dict:
     cfg = _cfg()
-    keep = (cfg.get("log_backup_max_files", 100))
-    days = (cfg.get("log_backup_max_age_days", 30))
+    keep = cfg.get("log_backup_max_files", 100)
+    days = cfg.get("log_backup_max_age_days", 30)
     return {"max_files": int(keep), "max_age_days": int(days)}
+
 
 def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
     """
@@ -265,8 +320,8 @@ def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
         dst_root.mkdir(parents=True, exist_ok=True)
 
         stamp = now_iso().replace(":", "-").replace(".", "-")
-        base  = f"Vein-log-{label + '_' if label else ''}{stamp}.log"
-        raw   = dst_root / base
+        base = f"Vein-log-{label + '_' if label else ''}{stamp}.log"
+        raw = dst_root / base
         zip_p = dst_root / (base + ".zip")
 
         shutil.copy2(src, raw)
@@ -277,7 +332,9 @@ def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
         # optional: Discord breadcrumb (channel “monitor” keeps it consistent)
         try:
             if is_discord_channel_enabled("monitor"):
-                send_discord_message(f"🧾 Log snapshot archived: `{zip_p.name}`", channel="monitor")
+                send_discord_message(
+                    f"🧾 Log snapshot archived: `{zip_p.name}`", channel="monitor"
+                )
         except Exception:
             pass
 
@@ -287,15 +344,18 @@ def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
         print(f"[Logs] export_log_snapshot() failed: {e}")
         return None
 
+
 def _prune_log_snapshots() -> dict:
     """Count/age prune for Backups\\Logs."""
     policy = _log_retention()
-    root   = _log_root()
+    root = _log_root()
     root.mkdir(parents=True, exist_ok=True)
 
     deleted = 0
-    zips = sorted([p for p in root.glob("*.log.zip") if p.is_file()],
-                  key=lambda p: p.stat().st_mtime)
+    zips = sorted(
+        [p for p in root.glob("*.log.zip") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+    )
     # by count
     while len(zips) > policy["max_files"]:
         old = zips.pop(0)
@@ -315,10 +375,13 @@ def _prune_log_snapshots() -> dict:
             pass
     return {"deleted": deleted}
 
+
 # -----------------------------
 # Public API
 # -----------------------------
-def make_backup(reason: str, files: list[Path] | None = None, *, dst: Path | None = None) -> Optional[Path]:
+def make_backup(
+    reason: str, files: list[Path] | None = None, *, dst: Path | None = None
+) -> Optional[Path]:
     """
     Create a timestamped ZIP containing the current save (and optional extra files).
     Raises:
@@ -377,10 +440,14 @@ def make_backup(reason: str, files: list[Path] | None = None, *, dst: Path | Non
                             zf.write(extra, arcname=f"extra/{extra.name}")
                     except Exception:
                         pass
-            _write_manifest(zf, reason=reason, save_name=src.name, src_path=src, size=size, sha=sha)
+            _write_manifest(
+                zf, reason=reason, save_name=src.name, src_path=src, size=size, sha=sha
+            )
 
         if _discord_flags()["on_create"] and is_discord_channel_enabled("backups"):
-            send_discord_message(f"💾 Backup created: `{zip_path.name}`", channel="backups")
+            send_discord_message(
+                f"💾 Backup created: `{zip_path.name}`", channel="backups"
+            )
 
         prune_backups(reason)
         try:
@@ -404,18 +471,22 @@ def make_backup(reason: str, files: list[Path] | None = None, *, dst: Path | Non
         except Exception:
             pass
 
+
 def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dict:
     """
     Prune by per-reason policy (count/age). Returns {'deleted': int}.
     """
-    folder = path or ( _dest_for(reason) if reason else _root() )
+    folder = path or (_dest_for(reason) if reason else _root())
     folder.mkdir(parents=True, exist_ok=True)
     policy = _retention_for(reason or "default")
     max_count = int(policy["max_backups"])
     max_age = int(policy["max_age_days"])
 
     deleted = 0
-    zips = sorted([p for p in folder.glob("*.zip") if p.is_file()], key=lambda p: p.stat().st_mtime)
+    zips = sorted(
+        [p for p in folder.glob("*.zip") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+    )
     now = datetime.now()
     for p in list(zips):
         age_days = (now - datetime.fromtimestamp(p.stat().st_mtime)).days
@@ -429,14 +500,21 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
             except Exception:
                 pass
 
-    if deleted and _discord_flags()["on_prune"] and is_discord_channel_enabled("backups"):
-        send_discord_message(f"🧹 Pruned {deleted} old backups in `{folder.name}`.", channel="backups")
+    if (
+        deleted
+        and _discord_flags()["on_prune"]
+        and is_discord_channel_enabled("backups")
+    ):
+        send_discord_message(
+            f"🧹 Pruned {deleted} old backups in `{folder.name}`.", channel="backups"
+        )
         # Update state after pruning (even if 0 deletions) so counts stay fresh
     try:
         _write_backup_state(last_reason=None, last_zip=None)
     except Exception:
         pass
     return {"deleted": deleted}
+
 
 def latest_backup(reason: str | None = None) -> Optional[Path]:
     candidates: List[Path] = []
@@ -454,6 +532,7 @@ def latest_backup(reason: str | None = None) -> Optional[Path]:
 
     return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
 
+
 def restore_from_latest(target_name: str) -> bool:
     """
     Restore a specific save filename (e.g., 'Server.vns') from the newest archive that contains it.
@@ -463,7 +542,7 @@ def restore_from_latest(target_name: str) -> bool:
         print("[Restore] No backup archives found.")
         return False
 
-    target = _save_dir() / target_name   # <— FIX: use YAML-resolved save_dir
+    target = _save_dir() / target_name  # <— FIX: use YAML-resolved save_dir
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         with zipfile.ZipFile(z, "r") as zf:

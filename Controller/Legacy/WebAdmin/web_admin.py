@@ -1,6 +1,12 @@
-
 from flask import Flask, render_template, redirect, url_for, request, flash
-from flask_login import LoginManager, login_user, logout_user, login_required, UserMixin, current_user
+from flask_login import (
+    LoginManager,
+    login_user,
+    logout_user,
+    login_required,
+    UserMixin,
+    current_user,
+)
 import subprocess
 import os
 import json
@@ -18,22 +24,26 @@ BACKUP_ROOT = os.path.join(SERVER_DIR, "Vein", "Backups")
 PORT = 5000
 
 sys.path.append(TOOLS_DIR)
-from utils import is_server_running, send_discord_message, backup_save_file, get_backup_status
+from Tools.process import is_server_running
+from Tools.discord import send_discord_message
+from Tools.backups_api import make_backup as backup_save_file
 
-app = Flask(__name__,
-            template_folder=os.path.join(WEBADMIN_DIR, "templates"))
+app = Flask(__name__, template_folder=os.path.join(WEBADMIN_DIR, "templates"))
 app.secret_key = "REPLACE_WITH_STRONG_SECRET_KEY"
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+
 
 class User(UserMixin):
     def __init__(self, id, role):
         self.id = id
         self.role = role
 
+
 def load_users():
     with open(USERS_FILE, "r") as f:
         return json.load(f)
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -41,6 +51,7 @@ def load_user(user_id):
     if user_id in users:
         return User(user_id, users[user_id]["role"])
     return None
+
 
 def read_state_file():
     if not os.path.exists(STATE_FILE):
@@ -51,18 +62,38 @@ def read_state_file():
     except:
         return {"players": [], "player_count": 0}
 
+
+def get_backup_status(root: str) -> dict:
+    status = {}
+    root_path = Path(root)
+    if not root_path.exists():
+        return status
+    for category in sorted(root_path.iterdir()):
+        if not category.is_dir():
+            continue
+        archives = sorted(category.glob("*.zip"), reverse=True)
+        status[category.name] = {
+            "count": len(archives),
+            "latest": archives[0].name if archives else None,
+        }
+    return status
+
+
 @app.route("/")
 @login_required
 def index():
     server_running = is_server_running()
     state = read_state_file()
     backup_status = get_backup_status(BACKUP_ROOT)
-    return render_template("index.html",
-                           server_running=server_running,
-                           player_count=state.get("player_count", 0),
-                           players=state.get("players", []),
-                           backup_status=backup_status,
-                           user=current_user)
+    return render_template(
+        "index.html",
+        server_running=server_running,
+        player_count=state.get("player_count", 0),
+        players=state.get("players", []),
+        backup_status=backup_status,
+        user=current_user,
+    )
+
 
 @app.route("/start")
 @login_required
@@ -71,10 +102,15 @@ def start_server():
         flash("Permission Denied: Admins only.")
         return redirect(url_for("index"))
 
-    subprocess.Popen(["cmd", "/c", os.path.join(SERVER_DIR, "StartServer.bat")], shell=True)
+    subprocess.Popen(
+        ["cmd", "/c", os.path.join(SERVER_DIR, "StartServer.bat")], shell=True
+    )
     flash("Server start command issued.")
-    send_discord_message("🟢 Server start command issued via Web Admin.", channel="startup")
+    send_discord_message(
+        "🟢 Server start command issued via Web Admin.", channel="startup"
+    )
     return redirect(url_for("index"))
+
 
 @app.route("/stop")
 @login_required
@@ -83,10 +119,15 @@ def stop_server():
         flash("Permission Denied: Admins only.")
         return redirect(url_for("index"))
 
-    subprocess.Popen(["cmd", "/c", os.path.join(SERVER_DIR, "ShutdownServer.bat")], shell=True)
+    subprocess.Popen(
+        ["cmd", "/c", os.path.join(SERVER_DIR, "ShutdownServer.bat")], shell=True
+    )
     flash("Server shutdown command issued.")
-    send_discord_message("🔴 Server shutdown command issued via Web Admin.", channel="shutdown")
+    send_discord_message(
+        "🔴 Server shutdown command issued via Web Admin.", channel="shutdown"
+    )
     return redirect(url_for("index"))
+
 
 @app.route("/backup")
 @login_required
@@ -99,6 +140,7 @@ def manual_backup():
     flash("Manual backup created successfully.")
     send_discord_message("💾 Manual backup triggered via Web Admin.", channel="backups")
     return redirect(url_for("index"))
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -115,11 +157,13 @@ def login():
             flash("Invalid credentials")
     return render_template("login.html")
 
+
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=True)

@@ -16,77 +16,75 @@ import time
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from glob import glob
 
 from Tools import backups as _bk
 
-from utils import (
-    config,
-    LOGS_DIR,
-    ABSOLUTE_LOG_FILE,
-    RUNTIME_DIR,
-    is_server_running,
-    send_discord_message,
-    is_discord_channel_enabled,
-    backup_save_file,
-    current_headless_flag,
-)
+from config_helper import config
+from Tools.paths import logs_dir, absolute_log_file
+from Tools.process import is_server_running, current_headless_flag
+from Tools.discord import send_discord_message, is_discord_channel_enabled
+from Tools.discord import send_discord_message
+from Tools.backups_api import make_backup as backup_save_file
+from Tools.runtime import RUNTIME_DIR, SHUTDOWN_FLAG
 
+LOGS_DIR = logs_dir()
+ABSOLUTE_LOG_FILE = absolute_log_file()
 PID_FILE = RUNTIME_DIR / "log_monitor.pid"
 
 # ---- Config knobs (with sensible defaults) ----
-_MON = dict(config.get("monitor", {}))
-TRACK      = dict(_MON.get("track", {}))
-BACKUPS    = dict(_MON.get("backups", {}))
-NOTIFY     = dict(_MON.get("notify", {}))
+_MON = dict(config.get("log_monitor") or config.get("monitor") or {})
+TRACK = dict(_MON.get("track", {}))
+BACKUPS = dict(_MON.get("backups", {}))
+NOTIFY = dict(_MON.get("notify", {}))
 STATE_REFRESH_S = int(_MON.get("state_refresh_seconds", 15))
 LINGER_WHEN_SERVER_DOWN = bool(_MON.get("linger_when_server_down", True))
-RECHECK_NEWEST_EVERY_S  = int(_MON.get("recheck_newest_every_seconds", 5))
+RECHECK_NEWEST_EVERY_S = int(_MON.get("recheck_newest_every_seconds", 5))
 
-HEARTBEAT_INTERVAL_S      = int(
+HEARTBEAT_INTERVAL_S = int(
     _MON.get(
         "heartbeat_interval_seconds",
         config.get("monitor_heartbeat_interval_seconds", 300),
     )
 )
-WAIT_FOR_LOG_S            = int(_MON.get("wait_for_log_appearance_seconds", 120))
-TAIL_POLL_MS              = int(_MON.get("tail_poll_interval_ms", 500))
+WAIT_FOR_LOG_S = int(_MON.get("wait_for_log_appearance_seconds", 120))
+TAIL_POLL_MS = int(_MON.get("tail_poll_interval_ms", 500))
 
-TRACK_STARTUP    = bool(TRACK.get("startup", True))
-TRACK_AUTH       = bool(TRACK.get("auth", True))
-TRACK_JOIN       = bool(TRACK.get("join", True))
-TRACK_CHARACTER  = bool(TRACK.get("character", True))
+TRACK_STARTUP = bool(TRACK.get("startup", True))
+TRACK_AUTH = bool(TRACK.get("auth", True))
+TRACK_JOIN = bool(TRACK.get("join", True))
+TRACK_CHARACTER = bool(TRACK.get("character", True))
 TRACK_DISCONNECT = bool(TRACK.get("disconnect", True))
-TRACK_AUTOSAVE   = bool(TRACK.get("autosave", True))
-TRACK_CRASH      = bool(TRACK.get("crash", True))
-TRACK_HEARTBEAT  = bool(TRACK.get("heartbeat", True))
+TRACK_AUTOSAVE = bool(TRACK.get("autosave", True))
+TRACK_CRASH = bool(TRACK.get("crash", True))
+TRACK_HEARTBEAT = bool(TRACK.get("heartbeat", True))
 
-NOTIFY_STARTUP   = bool(NOTIFY.get("startup", True))
-NOTIFY_JOINABLE  = bool(NOTIFY.get("joinable", True))
-NOTIFY_AUTH      = bool(NOTIFY.get("auth", True))
-NOTIFY_JOIN      = bool(NOTIFY.get("join", True))
+NOTIFY_STARTUP = bool(NOTIFY.get("startup", True))
+NOTIFY_JOINABLE = bool(NOTIFY.get("joinable", True))
+NOTIFY_AUTH = bool(NOTIFY.get("auth", True))
+NOTIFY_JOIN = bool(NOTIFY.get("join", True))
 NOTIFY_CHARACTER = bool(NOTIFY.get("character", True))
-NOTIFY_DISC      = bool(NOTIFY.get("disconnect", True))
-NOTIFY_AUTOSAVE  = bool(NOTIFY.get("autosave", False))
-NOTIFY_CRASH     = bool(NOTIFY.get("crash", True))
-NOTIFY_HB        = bool(NOTIFY.get("heartbeat", False))
-NOTIFY_STATUS    = bool(NOTIFY.get("monitor_status", True))
+NOTIFY_DISC = bool(NOTIFY.get("disconnect", True))
+NOTIFY_AUTOSAVE = bool(NOTIFY.get("autosave", False))
+NOTIFY_CRASH = bool(NOTIFY.get("crash", True))
+NOTIFY_HB = bool(NOTIFY.get("heartbeat", False))
+NOTIFY_STATUS = bool(NOTIFY.get("monitor_status", True))
 
 # ---- Regex library tuned to real Vein.log lines ----
-RX_LISTEN   = re.compile(r"RamjetSteamNetDriver_.*started listening on (\d+)", re.I)
+RX_LISTEN = re.compile(r"RamjetSteamNetDriver_.*started listening on (\d+)", re.I)
 RX_WORLD_UP = re.compile(r"LogWorld: Bringing World .* up for play", re.I)
 RX_STEAM_OK = re.compile(r"Steamworks server initialized", re.I)
 
-RX_LOGIN    = re.compile(r"LogNet: Login request:")  # (defined for future use)
-RX_AUTH_OK  = re.compile(r"LogRamjetNetworking: Authenticated (\d+)")
-RX_JOINED   = re.compile(r"LogNet: Join succeeded:\s*(.+)")
-RX_CHARSEL  = re.compile(r"selected character .* \(aka ([^)]+)\)", re.I)
-RX_DISC     = re.compile(r"closed by peer|Logout|Connection closed", re.I)
+RX_LOGIN = re.compile(r"LogNet: Login request:")  # (defined for future use)
+RX_AUTH_OK = re.compile(r"LogRamjetNetworking: Authenticated (\d+)")
+RX_JOINED = re.compile(r"LogNet: Join succeeded:\s*(.+)")
+RX_CHARSEL = re.compile(r"selected character .* \(aka ([^)]+)\)", re.I)
+RX_DISC = re.compile(r"closed by peer|Logout|Connection closed", re.I)
 
 RX_AUTOSAVE = re.compile(r"LogVeinSaveGame: Saved save game to disk", re.I)
 
-RX_CRASH    = re.compile(
+RX_CRASH = re.compile(
     r"Fatal error|Access violation|EXCEPTION_ACCESS_VIOLATION|Assertion failed|ensure\(!\)",
     re.I,
 )
@@ -94,35 +92,57 @@ RX_CRASH    = re.compile(
 _BEH = dict((_MON.get("heartbeat", {}) or {}))
 
 _MONITOR_HB_CHANNEL = str(_BEH.get("channel", "monitor"))
-_MONITOR_HB_PREFIX  = str(_BEH.get("prefix", "🩺"))
+_MONITOR_HB_PREFIX = str(_BEH.get("prefix", "🩺"))
 
 # Backups events section
-_BEV = dict((config.get("backups", {}) or {}).get("events", {}) or {})
+_BACKUP_CFG = dict(config.get("backups", {}) or {})
+_BACKUP_EVENTS = dict(_BACKUP_CFG.get("events", {}) or {})
+_BACKUP_TRIGGERS = dict(_BACKUP_CFG.get("triggers", {}) or {})
 
-_EVT_AUTOSAVE = dict(_BEV.get("autosave", {}) or {})
-_EVT_LAST    = dict(_BEV.get("last_player", {}) or {})
-_EVT_CRASH   = dict(_BEV.get("crash", {}) or {})
-_EVT_SHUT    = dict(_BEV.get("shutdown", {}) or {})
 
-AUTOSAVE_ENABLED   = bool(_EVT_AUTOSAVE.get("enabled", True))
-AUTOSAVE_COOLDOWN  = int(
+def _trigger_section(new_key: str, legacy_key: str) -> dict:
+    """Merge backups.triggers + backups.events for compatibility."""
+    merged: dict[str, Any] = {}
+    legacy = _BACKUP_EVENTS.get(legacy_key)
+    if isinstance(legacy, dict):
+        merged.update(legacy)
+    trig = _BACKUP_TRIGGERS.get(new_key)
+    trig_dict: dict[str, Any] = {}
+    if isinstance(trig, bool):
+        trig_dict = {"enabled": trig}
+    elif isinstance(trig, dict):
+        trig_dict = trig
+    merged.update(trig_dict)
+    if "enabled" not in merged and "save_backup" in trig_dict:
+        merged["enabled"] = bool(trig_dict.get("save_backup"))
+    return merged
+
+
+_EVT_AUTOSAVE = _trigger_section("on_autosave", "autosave")
+_EVT_LAST = _trigger_section("last_player", "last_player")
+_EVT_CRASH = _trigger_section("on_crash_detect", "crash")
+_EVT_SHUT = _trigger_section("shutdown", "shutdown")
+
+AUTOSAVE_ENABLED = bool(_EVT_AUTOSAVE.get("enabled", True))
+AUTOSAVE_COOLDOWN = int(
     _EVT_AUTOSAVE.get(
         "cooldown_seconds",
         int(config.get("autosave_backup_cooldown_seconds", 300)),
     )
 )
 
-LAST_ENABLED       = bool(_EVT_LAST.get("enabled", True))
-LAST_COOLDOWN      = int(_EVT_LAST.get("cooldown_seconds", 600))
+LAST_ENABLED = bool(_EVT_LAST.get("enabled", True))
+LAST_COOLDOWN = int(_EVT_LAST.get("cooldown_seconds", 600))
 
-CRASH_ENABLED      = bool(_EVT_CRASH.get("enabled", True))
-CRASH_DEBOUNCE     = int(_EVT_CRASH.get("debounce_seconds", 120))
+CRASH_ENABLED = bool(_EVT_CRASH.get("enabled", True))
+CRASH_DEBOUNCE = int(_EVT_CRASH.get("debounce_seconds", 120))
 
-SHUT_ENABLED       = bool(_EVT_SHUT.get("enabled", True))
-SHUT_GRACE         = int(_EVT_SHUT.get("grace_seconds", 900))
+SHUT_ENABLED = bool(_EVT_SHUT.get("enabled", True))
+SHUT_GRACE = int(_EVT_SHUT.get("grace_seconds", 900))
 
 # shutdown flag (we re-create the same path utils uses)
-SHUTDOWN_FLAG = RUNTIME_DIR / "shutdown_in_progress.flag"
+# Provided by Tools.runtime; kept for backward compat with local constants
+# SHUTDOWN_FLAG = RUNTIME_DIR / "shutdown_in_progress.flag"
 
 
 def _backup(reason: str) -> None:
@@ -210,10 +230,10 @@ def _runtime_paths() -> dict:
         pass
 
     return {
-        "runtime":    base,
-        "state_log":  base / "log_monitor.state.json",  # GUI reads this
-        "pid_log":    base / "log_monitor.pid",         # GUI checks this
-        "stop_log":   base / "log_monitor.stop",        # touch this to stop monitor
+        "runtime": base,
+        "state_log": base / "log_monitor.state.json",  # GUI reads this
+        "pid_log": base / "log_monitor.pid",  # GUI checks this
+        "stop_log": base / "log_monitor.stop",  # touch this to stop monitor
     }
 
 
@@ -235,7 +255,7 @@ def _write_logmon_state(
         "active": bool(active),
         "tailing_file": tailing_file,
         "watching_server": bool(watching_server),
-        "last_updated": now,   # ISO8601 with tzinfo
+        "last_updated": now,  # ISO8601 with tzinfo
     }
     try:
         with rp["state_log"].open("w", encoding="utf-8") as f:
@@ -270,7 +290,7 @@ def monitor() -> None:
     # cooldowns to avoid spammy loops
     last_hb = 0.0
     last_status_announce = 0.0
-    last_down_announce   = 0.0
+    last_down_announce = 0.0
     last_attach_announce = 0.0
 
     current_path: Path | None = None
@@ -295,7 +315,9 @@ def monitor() -> None:
             # External stop request
             if stop_flag.exists():
                 if NOTIFY_STATUS:
-                    _discord("🛑 Log monitor stop flag detected; exiting.", channel="monitor")
+                    _discord(
+                        "🛑 Log monitor stop flag detected; exiting.", channel="monitor"
+                    )
                 break
 
             # Re-resolve log if none
@@ -307,7 +329,9 @@ def monitor() -> None:
                     pos = 0
                     last_sig = None
                     if NOTIFY_STATUS:
-                        _discord(f"📜 Log monitor attached to `{p.name}`", channel="monitor")
+                        _discord(
+                            f"📜 Log monitor attached to `{p.name}`", channel="monitor"
+                        )
                     last_attach_announce = time.time()
                 else:
                     # No log yet; optionally linger and announce occasionally
@@ -315,17 +339,26 @@ def monitor() -> None:
                     proc_up = is_server_running()
                     if not proc_up and not LINGER_WHEN_SERVER_DOWN:
                         if NOTIFY_STATUS and (now - last_down_announce > 30):
-                            _discord("⏹ Server not running; log monitor idling.", channel="monitor")
+                            _discord(
+                                "⏹ Server not running; log monitor idling.",
+                                channel="monitor",
+                            )
                             last_down_announce = now
-                        _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+                        _write_logmon_state(
+                            active=False, tailing_file=None, watching_server=False
+                        )
                         time.sleep(1.0)
                         continue
 
                     if now - last_down_announce > 20:
-                        _discord("⏳ Waiting for Vein log file to appear…", channel="monitor")
+                        _discord(
+                            "⏳ Waiting for Vein log file to appear…", channel="monitor"
+                        )
                         last_down_announce = now
 
-                    _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+                    _write_logmon_state(
+                        active=False, tailing_file=None, watching_server=False
+                    )
                     time.sleep(1.0)
                     continue
 
@@ -360,7 +393,11 @@ def monitor() -> None:
                     continue
 
                 # Heartbeat (coarse)
-                if TRACK_HEARTBEAT and NOTIFY_HB and (now - last_hb > HEARTBEAT_INTERVAL_S):
+                if (
+                    TRACK_HEARTBEAT
+                    and NOTIFY_HB
+                    and (now - last_hb > HEARTBEAT_INTERVAL_S)
+                ):
                     last_hb = now
                     _discord(
                         f"{_MONITOR_HB_PREFIX} Log monitor heartbeat — still tailing `{p.name}`",
@@ -421,7 +458,10 @@ def monitor() -> None:
                     if now - last_autosave_ts >= AUTOSAVE_COOLDOWN:
                         last_autosave_ts = now
                         if NOTIFY_AUTOSAVE:
-                            _discord("💾 Autosave detected; creating backup…", channel="monitor")
+                            _discord(
+                                "💾 Autosave detected; creating backup…",
+                                channel="monitor",
+                            )
                         try:
                             backup_save_file(reason="Autosave")
                         except Exception:
@@ -432,7 +472,10 @@ def monitor() -> None:
                     if now - last_crash_ts >= CRASH_DEBOUNCE:
                         last_crash_ts = now
                         if NOTIFY_CRASH:
-                            _discord("💥 Crash detected in Vein.log — creating backup…", channel="monitor")
+                            _discord(
+                                "💥 Crash detected in Vein.log — creating backup…",
+                                channel="monitor",
+                            )
                         _backup("Crash")
 
             # Linger + shutdown backup check

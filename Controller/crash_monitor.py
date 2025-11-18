@@ -6,61 +6,98 @@ import json, os, time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from config_helper import config, is_feature_enabled
-from Tools.process import find_running_server as proc_find, is_server_running
+from config_helper import config
+from Tools.features import is_feature_enabled
+from Tools.process import (
+    current_headless_flag,
+    find_running_server,
+    is_server_running,
+)
 from Tools.discord import send_discord_message as send_discord
 from Tools.state_io import write_state
-from utils import (
+from Tools.restart import initiate_controlled_restart
+from Tools.runtime import (
     STATE_FLAG,
     is_shutdown_in_progress,
     startup_grace_active,
     autorestart_quiet_active,
-    initiate_controlled_restart,
-    send_discord_message,
-    current_headless_flag,
 )
 
+_CRASH_CFG = dict(config.get("crash_monitor") or {})
+
+
+def _crash_int(new_key: str, legacy_key: str, default: int) -> int:
+    val = _CRASH_CFG.get(new_key)
+    if val is None:
+        val = config.get(legacy_key, default)
+    try:
+        return int(val)
+    except Exception:
+        return int(default)
+
+
 # Cadence
-MONITOR_INTERVAL_SEC   = max(5, int(config.get("crash_monitor_interval_seconds", 60)))
-IDLE_NOTIFY_MINUTES    = int(config.get("crash_monitor_idle_notify_minutes", 15))
+MONITOR_INTERVAL_SEC = max(
+    5, _crash_int("heartbeat_seconds", "crash_monitor_interval_seconds", 60)
+)
+IDLE_NOTIFY_MINUTES = _crash_int(
+    "idle_notify_minutes", "crash_monitor_idle_notify_minutes", 15
+)
 
 # New, optional knobs (with safe defaults)
-CRASH_NOTIFY_DEBOUNCE  = int(config.get("crash_notify_debounce_seconds", 300))
-BACKOFF_BASE           = int(config.get("crash_backoff_base", 2))
-BACKOFF_MAX_SECONDS    = int(config.get("crash_backoff_max_seconds", 900))
-BREAKER_MAX_ATTEMPTS   = int(config.get("crash_loop_max_attempts", 5))
-BREAKER_WINDOW_MIN     = int(config.get("crash_loop_window_minutes", 10))
-BREAKER_COOLDOWN_SEC   = int(config.get("crash_loop_cooldown_seconds", 600))
+CRASH_NOTIFY_DEBOUNCE = _crash_int(
+    "notify_debounce_seconds", "crash_notify_debounce_seconds", 300
+)
+BACKOFF_BASE = _crash_int("crash_backoff_base", "crash_backoff_base", 2)
+BACKOFF_MAX_SECONDS = _crash_int(
+    "crash_backoff_max_seconds", "crash_backoff_max_seconds", 900
+)
+BREAKER_MAX_ATTEMPTS = _crash_int(
+    "crash_loop_max_attempts", "crash_loop_max_attempts", 5
+)
+BREAKER_WINDOW_MIN = _crash_int(
+    "crash_loop_window_minutes", "crash_loop_window_minutes", 10
+)
+BREAKER_COOLDOWN_SEC = _crash_int(
+    "crash_loop_cooldown_seconds", "crash_loop_cooldown_seconds", 600
+)
 
 # Runtime files
-#PID_FILE    = Path(RUNTIME_DIR) / "crash_monitor.pid"
-#STATE_FILE  = Path(RUNTIME_DIR) / "crash_monitor_state.json"
-#STOP_FLAG   = Path(RUNTIME_DIR) / "stop_crash_monitor.flag"
-#RESTART_LOG = Path(RUNTIME_DIR) / "restart_state.json"
-#BREAKER     = Path(RUNTIME_DIR) / "breaker.tripped"
-#LAST_CRASH_NOTIFY = Path(RUNTIME_DIR) / "crash_notify.last"
+# PID_FILE    = Path(RUNTIME_DIR) / "crash_monitor.pid"
+# STATE_FILE  = Path(RUNTIME_DIR) / "crash_monitor_state.json"
+# STOP_FLAG   = Path(RUNTIME_DIR) / "stop_crash_monitor.flag"
+# RESTART_LOG = Path(RUNTIME_DIR) / "restart_state.json"
+# BREAKER     = Path(RUNTIME_DIR) / "breaker.tripped"
+# LAST_CRASH_NOTIFY = Path(RUNTIME_DIR) / "crash_notify.last"
+
 
 def _rt() -> dict:
-    base = Path(config.get("runtime_dir") or Path(__file__).parents[1] / "Runtime").expanduser()
-    try: base.mkdir(parents=True, exist_ok=True)
-    except Exception: pass
+    base = Path(
+        config.get("runtime_dir") or Path(__file__).parents[1] / "Runtime"
+    ).expanduser()
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     return {
         "runtime": base,
-        "pid":     base / "crash_monitor.pid",
+        "pid": base / "crash_monitor.pid",
         # Primary flag name used by GUI:
-        "stop":    base / "stop_crash_monitor.flag",
+        "stop": base / "stop_crash_monitor.flag",
         # Accept old name too (for compatibility):
         "stop_legacy": base / "crash_monitor.stop",
         # unified + legacy state files
-        "state":   base / "crash_monitor.state.json",
+        "state": base / "crash_monitor.state.json",
         "state_legacy": base / "crash_monitor_state.json",
-        "restart_log":  base / "restart_state.json",
-        "breaker":      base / "breaker.tripped",
-        "last_notify":  base / "crash_notify.last",
+        "restart_log": base / "restart_state.json",
+        "breaker": base / "breaker.tripped",
+        "last_notify": base / "crash_notify.last",
     }
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
     try:
@@ -71,6 +108,7 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
     except Exception:
         pass
 
+
 def _write_state_mode(mode: str, *, active=None, watching=None) -> None:
     r = _rt()
     now = _now().isoformat()
@@ -80,8 +118,12 @@ def _write_state_mode(mode: str, *, active=None, watching=None) -> None:
         "pid": os.getpid(),
         "last_updated": now,
         "mode": mode,
-        "active": bool(active if active is not None else mode in ("startup", "watching")),
-        "watching_server": bool(watching if watching is not None else mode == "watching"),
+        "active": bool(
+            active if active is not None else mode in ("startup", "watching")
+        ),
+        "watching_server": bool(
+            watching if watching is not None else mode == "watching"
+        ),
     }
     write_state(r["state"], payload)
 
@@ -94,16 +136,23 @@ def _write_state_mode(mode: str, *, active=None, watching=None) -> None:
     }
     _atomic_write_json(r["state_legacy"], legacy)
 
+
 def _write_pid() -> None:
     r = _rt()
-    try: r["pid"].write_text(str(os.getpid()), encoding="utf-8")
-    except Exception: pass
+    try:
+        r["pid"].write_text(str(os.getpid()), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def _clear_pid_and_stopflag() -> None:
     r = _rt()
     for p in (r["pid"], r["stop"], r["stop_legacy"]):
-        try: p.unlink(missing_ok=True)
-        except Exception: pass
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
 
 def _debounced_crash_notify(msg: str) -> None:
     r = _rt()
@@ -114,16 +163,33 @@ def _debounced_crash_notify(msg: str) -> None:
     now = int(time.time())
     if now - last >= CRASH_NOTIFY_DEBOUNCE:
         _send(msg)
-        try: r["last_notify"].write_text(str(now), encoding="utf-8")
-        except Exception: pass
+        try:
+            r["last_notify"].write_text(str(now), encoding="utf-8")
+        except Exception:
+            pass
+
 
 def _send(msg: str) -> None:
     send_discord(msg, channel="crash_monitor")
+
+
+def _running_server_exists() -> bool:
+    """
+    Guarded wrapper around find_running_server to prevent psutil issues
+    from killing the monitor loop.
+    """
+    try:
+        return find_running_server() is not None
+    except Exception as exc:
+        print(f"[CrashMon] Failed to enumerate server processes: {exc}")
+        return False
+
 
 # --- helper: did someone request we stop? (support both flag names) ---
 def _stop_requested() -> bool:
     r = _rt()
     return r["stop"].exists() or r["stop_legacy"].exists()
+
 
 def _append_attempt(backoff_sec: int) -> None:
     r = _rt()
@@ -137,6 +203,7 @@ def _append_attempt(backoff_sec: int) -> None:
     data["attempts"] = at[-100:]
     data["last_backoff_sec"] = backoff_sec
     _atomic_write_json(r["restart_log"], data)
+
 
 def _count_attempts_in_window(minutes: int) -> int:
     r = _rt()
@@ -158,6 +225,7 @@ def _count_attempts_in_window(minutes: int) -> int:
             pass
     return c
 
+
 def _breaker_active() -> bool:
     r = _rt()
     br = r["breaker"]
@@ -175,6 +243,7 @@ def _breaker_active() -> bool:
         pass
     return False
 
+
 def _trip_breaker() -> None:
     r = _rt()
     until = int(time.time()) + BREAKER_COOLDOWN_SEC
@@ -184,10 +253,14 @@ def _trip_breaker() -> None:
         pass
     _send(f"⚠️ Crash loop detected — breaker tripped for {BREAKER_COOLDOWN_SEC}s.")
 
+
 def _next_backoff(prev: int) -> int:
-    if prev <= 0: back = 1
-    else: back = min(BACKOFF_MAX_SECONDS, prev * BACKOFF_BASE)
+    if prev <= 0:
+        back = 1
+    else:
+        back = min(BACKOFF_MAX_SECONDS, prev * BACKOFF_BASE)
     return back
+
 
 def main() -> None:
     if not is_feature_enabled("enable_crash_monitor"):
@@ -205,7 +278,7 @@ def main() -> None:
     backoff = 0
 
     while True:
-        
+
         if _stop_requested():
             _send("🛑 Crash monitor stop requested; exiting.")
             _write_state_mode("stopped", active=False, watching=False)
@@ -252,7 +325,7 @@ def main() -> None:
             continue
 
         # transient double-check: if we see it again, revert to watching
-        if find_running_server() is not None:
+        if _running_server_exists():
             _write_state_mode("watching", active=True, watching=True)
             missing_count = 0
             time.sleep(MONITOR_INTERVAL_SEC)
@@ -289,7 +362,7 @@ def main() -> None:
         ok = initiate_controlled_restart(reason="proc_missing")  # ← only once
         if ok:
             _send("🔄 Auto-restart initiated by crash monitor.")
-            _append_attempt(sleep_for)   # ← use the actual backoff we slept
+            _append_attempt(sleep_for)  # ← use the actual backoff we slept
             backoff = 0
             missing_count = 0
             time.sleep(int(config.get("restart_settle_seconds", 5)))
@@ -297,6 +370,7 @@ def main() -> None:
             # already restarting or throttled — don’t count as attempt
             time.sleep(MONITOR_INTERVAL_SEC)
             continue
+
 
 if __name__ == "__main__":
     try:

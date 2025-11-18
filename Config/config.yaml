@@ -1,23 +1,23 @@
 # version: used by GUI for display; auto-bumped when auto_bump_version=true under lifecycle
-version: "2.0"
+version: "2.1"
 
 # =============================== PATHS (TAB) ================================
 paths:                      # File system locations used by tools
   server_root: "G:/Servers/VeinServer"
   runtime_dir: "G:/Servers/VeinServer/VeinServerManagement/Runtime"   # temp/state files
-  saves_dir:   "G:/Servers/VeinServer/Vein/Saved/SaveGames"           # .sav/.vns
-  logs_dir:    "G:/Servers/VeinServer/Vein/Saved/Logs"                # live Vein.log
+  saves_dir: "G:/Servers/VeinServer/Vein/Saved/SaveGames"             # .sav/.vns
+  logs_dir: "G:/Servers/VeinServer/Vein/Saved/Logs"                   # live Vein.log
   absolute_log_file: "G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log" # override if needed
   mgmt_log_dir: "G:/Servers/VeinServer/VeinServerManagement/Logs"     # stdout of our tools
 
 # =============================== SERVER (TAB) ===============================
 server:                     # How we launch the dedicated server
   executables:              # Candidates (relative to server_root)
-    - "Vein/Binaries/Win64/VeinServer.exe"
-    - "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
+  - "Vein/Binaries/Win64/VeinServer.exe"
+  - "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
   preferred_exe: "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"      # chosen binary
   extra_launch_args:        # Additional CLI flags
-    - "-SteamSockets"
+  - "-SteamSockets"
   headless_mode: true
   show_monitor_window: false
   multi_home_ip: "0.0.0.0"
@@ -41,22 +41,22 @@ lifecycle:
     startup_quiet_seconds: 120
     verify_executable: true
     ensure_dirs:
-      - "${paths.runtime_dir}"
-      - "${paths.mgmt_log_dir}"
+    - "${paths.runtime_dir}"
+    - "${paths.mgmt_log_dir}"
     steam_update: "inherit"
     scripts:
       before: []
-      after:  []
+      after: []
 
   shutdown:
-    warn_seconds: 30
-    final_warning_at: 10
+    warn_seconds: 5
+    final_warning_at: 1
     grace_seconds: 900
     export_log_snapshot: true              # snapshot via backups.logs policy
     kill_helpers: true
     scripts:
       before: []
-      after:  []
+      after: []
 
 # ============================== STEAM (TAB) =================================
 steam:                      # SteamCMD update policy
@@ -119,9 +119,9 @@ log_monitor:
   heartbeat_seconds: 60
   fresh_window_multiplier: 2.0
   crash_signatures:
-    - "Fatal error"
-    - "Unhandled Exception"
-    - "ensureMsgf("
+  - "Fatal error"
+  - "Unhandled Exception"
+  - "ensureMsgf("
 
   # Debounce/cooldowns (monitor behavior only)
   crash_snippet_lines: 200
@@ -162,7 +162,7 @@ discord:
   # we fall back to "default", then to any non-empty of status/monitor.
   webhooks:
     default: "ENV:DISCORD_WEBHOOK_URL"
-    status:  ""     # lifecycle + general status
+    status: ""      # lifecycle + general status
     monitor: ""     # joins/leaves + crash alerts
     backups: ""     # optional dedicated channel for backup-created messages
 
@@ -177,20 +177,20 @@ discord:
   # default templates for each message type
     # (Used when no per-message/per-reason override exists)
     templates:
-      startup:    "{emoji} Server starting… {server} {ts}"
-      joinable:   "✅ Server is up and joinable. {server} {ts}"
-      crash:      "❌ Crash detected. Restarting… {server} {ts}"
-      restart:    "🔄 Controlled restart initiated. {server} {ts}"
-      autosave:   "💾 Autosave detected. {server} {ts}"
+      startup: "{emoji} Server starting… {server} {ts}"
+      joinable: "✅ Server is up and joinable. {server} {ts}"
+      crash: "❌ Crash detected. Restarting… {server} {ts}"
+      restart: "🔄 Controlled restart initiated. {server} {ts}"
+      autosave: "💾 Autosave detected. {server} {ts}"
       monitor_status: "🧭 Monitor OK. Last update {ts}"
-      auth:          "🔐 Auth OK for {steam_id}. {server} {ts}"
-      join:          "➡️ {player} joined. {server} {ts}"
-      character:     "🎭 {player} selected a character. {ts}"
-      disconnect:    "⬅️ {player} disconnected. {ts}"
-      heartbeat:     "💓 Heartbeat — monitors alive. {ts}"
+      auth: "🔐 Auth OK for {steam_id}. {server} {ts}"
+      join: "➡️ {player} joined. {server} {ts}"
+      character: "🎭 {player} selected a character. {ts}"
+      disconnect: "⬅️ {player} disconnected. {ts}"
+      heartbeat: "💓 Heartbeat — monitors alive. {ts}"
 
       # Default “backup created” message
-      backups:    "💾 Backup created — **{reason}** {zip_name} {size_human} {ts}"
+      backups: "💾 Backup created — **{reason}** {zip_name} {size_human} {ts}"
 
   # Per-message configuration: toggle + (optional) overrides
   messages:

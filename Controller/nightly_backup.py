@@ -9,6 +9,7 @@ try:
 except Exception:
     load_and_validate_config = None
 
+
 def main() -> int:
     # If the GUI launched this, VEIN_CONFIG is already set. If not, backups.py will auto-pick YAML > JSON.
     cfg_path = os.environ.get("VEIN_CONFIG", "")
@@ -21,6 +22,7 @@ def main() -> int:
 
     try:
         from Tools.backups import make_backup, BackupSkip, BackupError, prune_backups
+
         # Create Nightly backup
         zip_path = make_backup("Nightly")
         print(f"[Nightly] OK: {zip_path}")
@@ -34,6 +36,7 @@ def main() -> int:
         print(f"[Nightly] FAIL: {e}")
         traceback.print_exc()
         return 2
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -35,16 +35,19 @@ except Exception as e:
 # Caching utilities
 # ───────────────────────────────────────────────────────────────
 
+
 def _runtime_dir() -> Path:
     rd = config.get("runtime_dir")
     if rd:
         return Path(rd)
     return ROOT / "Runtime"
 
+
 def _cache_path(app_id: str, branch: str) -> Path:
     safe_branch = branch.lower().replace("/", "_")
     _runtime_dir().mkdir(parents=True, exist_ok=True)
     return _runtime_dir() / f"steam_version_cache_{app_id}_{safe_branch}.json"
+
 
 def _load_cache(app_id: str, branch: str) -> Optional[Dict[str, Any]]:
     p = _cache_path(app_id, branch)
@@ -54,6 +57,7 @@ def _load_cache(app_id: str, branch: str) -> Optional[Dict[str, Any]]:
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+
 
 def _save_cache(app_id: str, branch: str, buildid: Optional[str]) -> None:
     p = _cache_path(app_id, branch)
@@ -68,15 +72,18 @@ def _save_cache(app_id: str, branch: str, buildid: Optional[str]) -> None:
     except Exception:
         pass
 
+
 def _cache_fresh(cache: Dict[str, Any], ttl: int) -> bool:
     try:
         return (int(time.time()) - int(cache.get("fetched_at", 0))) <= int(ttl)
     except Exception:
         return False
 
+
 # ───────────────────────────────────────────────────────────────
 # Version fetching
 # ───────────────────────────────────────────────────────────────
+
 
 def _read_installed_buildid(server_dir: Path, app_id: str) -> Optional[str]:
     mf = server_dir / "steamapps" / f"appmanifest_{app_id}.acf"
@@ -89,15 +96,21 @@ def _read_installed_buildid(server_dir: Path, app_id: str) -> Optional[str]:
     m = re.search(r'"\s*buildid\s*"\s*"(?P<id>\d+)"', txt)
     return m.group("id") if m else None
 
-def _query_remote_buildid(steamcmd: Path, app_id: str, branch: Optional[str], timeout_sec: int) -> Optional[str]:
+
+def _query_remote_buildid(
+    steamcmd: Path, app_id: str, branch: Optional[str], timeout_sec: int
+) -> Optional[str]:
     if not steamcmd.exists():
         return None
 
     args = [
         str(steamcmd),
-        "+login", "anonymous",
-        "+app_info_update", "1",
-        "+app_info_print", str(app_id),
+        "+login",
+        "anonymous",
+        "+app_info_update",
+        "1",
+        "+app_info_print",
+        str(app_id),
         "+quit",
     ]
     try:
@@ -139,23 +152,27 @@ def _query_remote_buildid(steamcmd: Path, app_id: str, branch: Optional[str], ti
     m_any = re.search(r'"\s*buildid\s*"\s*"(?P<id>\d+)"', out)
     return m_any.group("id") if m_any else None
 
+
 # ───────────────────────────────────────────────────────────────
 # Public API
 # ───────────────────────────────────────────────────────────────
 
-def get_versions(branch: Optional[str] = None,
-                 timeout_sec: int = 15,
-                 ttl_sec: int = 300,
-                 use_cache: bool = True) -> dict:
+
+def get_versions(
+    branch: Optional[str] = None,
+    timeout_sec: int = 15,
+    ttl_sec: int = 300,
+    use_cache: bool = True,
+) -> dict:
     """
     Returns:
       { ok, installed_buildid, remote_buildid, branch, app_id, server_dir, cached }
     """
     server_dir = Path(get_path("server_dir"))
-    steamcmd   = Path(config.get("steamcmd_path") or "")
-    app_id     = str(config.get("app_id") or "").strip()
+    steamcmd = Path(config.get("steamcmd_path") or "")
+    app_id = str(config.get("app_id") or "").strip()
     cfg_branch = str(config.get("steam_update_beta", "") or "").strip() or "public"
-    branch     = (branch or cfg_branch).strip()
+    branch = (branch or cfg_branch).strip()
 
     result = {
         "ok": False,
@@ -180,7 +197,9 @@ def get_versions(branch: Optional[str] = None,
             result["cached"] = True
 
     if remote is None:
-        remote = _query_remote_buildid(steamcmd, app_id, branch, timeout_sec=timeout_sec)
+        remote = _query_remote_buildid(
+            steamcmd, app_id, branch, timeout_sec=timeout_sec
+        )
         _save_cache(app_id, branch, remote)
 
     result.update(
@@ -189,6 +208,7 @@ def get_versions(branch: Optional[str] = None,
         ok=bool(installed) or bool(remote),
     )
     return result
+
 
 def invalidate_cache(app_id: str, branch: str) -> None:
     """Public cache invalidator for callers (e.g., after updates)."""
@@ -199,10 +219,13 @@ def invalidate_cache(app_id: str, branch: str) -> None:
     except Exception:
         pass
 
-def get_version_status(branch: Optional[str] = None,
-                       ttl_sec: int = 300,
-                       timeout_sec: int = 15,
-                       use_cache: bool = True) -> dict:
+
+def get_version_status(
+    branch: Optional[str] = None,
+    ttl_sec: int = 300,
+    timeout_sec: int = 15,
+    use_cache: bool = True,
+) -> dict:
     """
     Returns a lightweight dict suitable for GUI:
       {
@@ -216,8 +239,9 @@ def get_version_status(branch: Optional[str] = None,
         ...
       }
     """
-    info = get_versions(branch=branch, ttl_sec=ttl_sec,
-                        timeout_sec=timeout_sec, use_cache=use_cache)
+    info = get_versions(
+        branch=branch, ttl_sec=ttl_sec, timeout_sec=timeout_sec, use_cache=use_cache
+    )
     installed, remote = info.get("installed_buildid"), info.get("remote_buildid")
     status = "Unknown"
     color = "red"
@@ -238,9 +262,11 @@ def get_version_status(branch: Optional[str] = None,
         "state": state,
     }
 
+
 # ───────────────────────────────────────────────────────────────
 # CLI
 # ───────────────────────────────────────────────────────────────
+
 
 def _parse_args(argv: list[str]) -> dict:
     args = {
@@ -261,12 +287,16 @@ def _parse_args(argv: list[str]) -> dict:
             args["branch"] = argv[i]
         elif tok == "--timeout" and i + 1 < len(argv):
             i += 1
-            try: args["timeout"] = max(1, int(argv[i]))
-            except Exception: pass
+            try:
+                args["timeout"] = max(1, int(argv[i]))
+            except Exception:
+                pass
         elif tok == "--ttl" and i + 1 < len(argv):
             i += 1
-            try: args["ttl"] = max(0, int(argv[i]))
-            except Exception: pass
+            try:
+                args["ttl"] = max(0, int(argv[i]))
+            except Exception:
+                pass
         elif tok == "--no-cache":
             args["no_cache"] = True
         elif tok == "--status":
@@ -274,13 +304,16 @@ def _parse_args(argv: list[str]) -> dict:
         i += 1
     return args
 
+
 def main(argv: list[str]) -> int:
     args = _parse_args(argv)
     if args["status"]:
-        info = get_version_status(branch=args["branch"],
-                                  ttl_sec=args["ttl"],
-                                  timeout_sec=args["timeout"],
-                                  use_cache=not args["no_cache"])
+        info = get_version_status(
+            branch=args["branch"],
+            ttl_sec=args["ttl"],
+            timeout_sec=args["timeout"],
+            use_cache=not args["no_cache"],
+        )
         if args["json"]:
             print(json.dumps(info))
         else:
@@ -288,24 +321,37 @@ def main(argv: list[str]) -> int:
             print(f"[Steam] Color  : {info['color']}")
             print(f"[Steam] Branch : {info['branch']}")
             print(f"[Steam] Local  : {info['installed_buildid'] or 'unknown'}")
-            print(f"[Steam] Remote : {info['remote_buildid'] or 'unknown'}{' (cached)' if info['cached'] else ''}")
+            print(
+                f"[Steam] Remote : {info['remote_buildid'] or 'unknown'}{' (cached)' if info['cached'] else ''}"
+            )
         return 0 if info.get("installed_buildid") or info.get("remote_buildid") else 1
 
-    info = get_versions(branch=args["branch"],
-                        timeout_sec=args["timeout"],
-                        ttl_sec=args["ttl"],
-                        use_cache=not args["no_cache"])
+    info = get_versions(
+        branch=args["branch"],
+        timeout_sec=args["timeout"],
+        ttl_sec=args["ttl"],
+        use_cache=not args["no_cache"],
+    )
     if args["json"]:
         print(json.dumps(info))
     else:
         print(f"[Steam] Branch     : {info['branch']}")
         print(f"[Steam] Installed  : {info['installed_buildid'] or 'unknown'}")
-        print(f"[Steam] Remote     : {info['remote_buildid'] or 'unknown'}{' (cached)' if info['cached'] else ''}")
+        print(
+            f"[Steam] Remote     : {info['remote_buildid'] or 'unknown'}{' (cached)' if info['cached'] else ''}"
+        )
         if info["installed_buildid"] and info["remote_buildid"]:
-            print("[Steam] Up-to-date : " +
-                  ("YES" if info["installed_buildid"] == info["remote_buildid"] else "NO"))
+            print(
+                "[Steam] Up-to-date : "
+                + (
+                    "YES"
+                    if info["installed_buildid"] == info["remote_buildid"]
+                    else "NO"
+                )
+            )
 
     return 0 if info.get("installed_buildid") or info.get("remote_buildid") else 1
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
