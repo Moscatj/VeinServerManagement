@@ -1,5 +1,5 @@
 # version: used by GUI for display; auto-bumped when auto_bump_version=true under lifecycle
-version: "2.1"
+version: "2.2"
 
 # =============================== PATHS (TAB) ================================
 paths:                      # File system locations used by tools
@@ -27,6 +27,15 @@ server:                     # How we launch the dedicated server
   kill_ue_helpers_on_shutdown: true
   map_path: ""              # optional map override
   max_players: 8
+
+# ============================== HTTP API (TAB) ==============================
+http_api:
+  enabled: true                    # Enable Vein's optional HTTP API integration
+  host: "127.0.0.1"                # Host/IP the HTTP server binds to
+  port: 8080                       # HTTPPort value configured in Game.ini
+  scheme: "http"                   # Protocol (http only for now)
+  base_path: ""                    # Optional prefix if proxied (e.g., /vein-api)
+  timeout_seconds: 5.0             # Request timeout for management tools
 
 # ============================ LIFECYCLE (TAB) ===============================
 lifecycle:
@@ -115,13 +124,15 @@ backups:                    # Save-file backups, log snapshots, schedules, trigg
 # =========================== LOG MONITOR (TAB) ==============================
 log_monitor:
   enabled: true
-  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor_state.json"
+  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor.state.json"
   heartbeat_seconds: 60
   fresh_window_multiplier: 2.0
   crash_signatures:
   - "Fatal error"
   - "Unhandled Exception"
   - "ensureMsgf("
+  track:
+    http_api: true                 # Enrich Runtime/log_monitor.state.json with HTTP API data when available
 
   # Debounce/cooldowns (monitor behavior only)
   crash_snippet_lines: 200
@@ -245,4 +256,3 @@ discord:
           template: "🌙 Nightly backup complete: {zip_name} ({size_human}) {ts}"
         Manual:
           enabled: true
-

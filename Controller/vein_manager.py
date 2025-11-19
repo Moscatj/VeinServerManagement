@@ -4,7 +4,7 @@ from __future__ import annotations
 # --- stdlib imports first
 import json, os, sys, subprocess, time, re
 from pathlib import Path
-from typing import Any, Dict, Tuple, List
+from typing import Any, Dict, Tuple, List, Optional
 from datetime import datetime, timezone
 import collections
 
@@ -289,6 +289,23 @@ def proc_exists_by_cmdline(substr: str) -> bool:
 def _rt_paths(cfg_path: str) -> dict:
     cfg = _load_cfg_for_runtime(cfg_path)
     rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
+    monitor_cfg = cfg.get("monitor") or {}
+    state_candidates: list[Path] = []
+    cfg_state = monitor_cfg.get("state_file")
+    if isinstance(cfg_state, str) and cfg_state.strip():
+        state_candidates.append(Path(cfg_state.strip()))
+    state_candidates.append(rt / "log_monitor.state.json")
+    state_candidates.append(rt / "log_monitor_state.json")
+
+    state_path = state_candidates[0]
+    for cand in state_candidates:
+        try:
+            if cand.exists():
+                state_path = cand
+                break
+        except Exception:
+            continue
+
     return {
         "rt": rt,
         "pid_crash": rt / "crash_monitor.pid",
@@ -296,10 +313,8 @@ def _rt_paths(cfg_path: str) -> dict:
         "stop_crash": rt / "stop_crash_monitor.flag",
         "stop_log": rt / "stop_log_monitor.flag",
         "state_crash": rt / "crash_monitor_state.json",
-        "state_log": Path(
-            (cfg.get("monitor", {}) or {}).get("state_file")
-            or (rt / "log_monitor_state.json")
-        ),
+        "state_log": state_path,
+        "player_snapshot": rt / "player_characters.json",
     }
 
 
@@ -1523,12 +1538,66 @@ class Main(QtWidgets.QMainWindow):
         self.lblLogJoin = QtWidgets.QLabel("Joinable: —")
         self.lblLogPlayers = QtWidgets.QLabel("Players: —")
         self.lblLogUptime = QtWidgets.QLabel("Uptime: —")
+
+        self.lblLogHttpStatus = QtWidgets.QLabel("HTTP API: disabled")
+
+        self.lblLogHttpPlayers = QtWidgets.QLabel("API Players: —")
+
+        self.lblLogHttpWorld = QtWidgets.QLabel("World Time: —")
+
+        self.lblLogHttpWeather = QtWidgets.QLabel("Weather: —")
+
+        for _lbl in (
+            self.lblLogHttpStatus,
+            self.lblLogHttpPlayers,
+            self.lblLogHttpWorld,
+            self.lblLogHttpWeather,
+        ):
+            _lbl.setWordWrap(True)
+        self.lblAdminList = QtWidgets.QLabel("Admins: �")
+        self.lblAdminList.setWordWrap(True)
+        self.lblPlayerSnapshotTs = QtWidgets.QLabel("Players refreshed: �")
+        self.lblPlayerSnapshotTs.setWordWrap(True)
+        self.lblPlayerErrors = QtWidgets.QLabel("")
+        self.lblPlayerErrors.setWordWrap(True)
+        self.lblPlayerErrors.setStyleSheet("color:#E74C3C;")
+        self.playerTree = QtWidgets.QTreeWidget()
+        self.playerTree.setHeaderLabels(["Player / Character", "ID", "Details"])
+        self.playerTree.setRootIsDecorated(True)
+        self.playerTree.setUniformRowHeights(True)
+        self.playerTree.setColumnWidth(0, 220)
+        self.playerTree.setMinimumHeight(180)
+        self.playerTree.itemDoubleClicked.connect(
+            self._on_player_tree_double_clicked
+        )
+        self.lblPlayerHint = QtWidgets.QLabel(
+            "Double-click a player or character for full details."
+        )
+        self.lblPlayerHint.setStyleSheet("font-style: italic; color:#95A5A6;")
+        self._player_snapshot_raw: Dict[str, Any] = {}
+        self._cached_admin_ids: Optional[List[str]] = None
+        self._player_cache: Dict[str, Dict[str, Any]] = {}
+        self._player_tree_signature: Optional[tuple] = None
+        self._status_icon_cache: Dict[str, QtGui.QIcon] = {}
         logLay.addWidget(self.lblLogDot, 0, 0)
         logLay.addWidget(self.lblLogStatus, 0, 1)
         logLay.addWidget(self.lblLogLast, 1, 0, 1, 2)
         logLay.addWidget(self.lblLogJoin, 2, 0, 1, 2)
         logLay.addWidget(self.lblLogPlayers, 3, 0, 1, 2)
         logLay.addWidget(self.lblLogUptime, 4, 0, 1, 2)
+
+        logLay.addWidget(self.lblLogHttpStatus, 5, 0, 1, 2)
+
+        logLay.addWidget(self.lblLogHttpPlayers, 6, 0, 1, 2)
+
+        logLay.addWidget(self.lblLogHttpWorld, 7, 0, 1, 2)
+
+        logLay.addWidget(self.lblLogHttpWeather, 8, 0, 1, 2)
+        logLay.addWidget(self.lblAdminList, 9, 0, 1, 2)
+        logLay.addWidget(self.lblPlayerSnapshotTs, 10, 0, 1, 2)
+        logLay.addWidget(self.playerTree, 11, 0, 1, 2)
+        logLay.addWidget(self.lblPlayerErrors, 12, 0, 1, 2)
+        logLay.addWidget(self.lblPlayerHint, 13, 0, 1, 2)
         mon_v.addWidget(logCard)
 
         # Crash Monitor card
@@ -2683,6 +2752,15 @@ class Main(QtWidgets.QMainWindow):
         else:
             self.lblLogUptime.setText("Uptime: —")
 
+        http_state = lms.get("http_api") if isinstance(lms, dict) else None
+
+        self._update_http_api_summary(http_state)
+        player_snapshot = {}
+        snap_path = rt.get("player_snapshot")
+        if snap_path:
+            player_snapshot = self._safe_json(snap_path)
+        self._render_player_tree(player_snapshot)
+
         # Hint the tailer in case path switched (next poll will re-open)
         if self.tail_game:
             try:
@@ -2772,6 +2850,494 @@ class Main(QtWidgets.QMainWindow):
                 self.start_lm()
         except Exception:
             pass
+
+    def _update_http_api_summary(self, http_state: Optional[dict]) -> None:
+        if not hasattr(self, "lblLogHttpStatus"):
+            return
+
+        status_text = "HTTP API: disabled"
+        players_text = "API Players: —"
+        world_text = "World Time: —"
+        weather_text = "Weather: —"
+
+        if isinstance(http_state, dict):
+            enabled = bool(http_state.get("enabled", False))
+            last_fetch = http_state.get("last_fetch")
+            errors = http_state.get("errors") or []
+
+            if not enabled:
+                err = http_state.get("last_error") or (errors[0] if errors else "")
+                status_text = f"HTTP API: disabled{f' ({err})' if err else ''}"
+            else:
+                if last_fetch:
+                    status_text = f"HTTP API: OK (last {_age_str(last_fetch)} ago)"
+                else:
+                    status_text = "HTTP API: enabled (waiting for first fetch)"
+                if errors:
+                    status_text += f" | Last error: {errors[0]}"
+                players_text = self._format_http_api_players(http_state)
+                world_text = self._format_http_api_time(
+                    http_state.get("time"), http_state.get("status")
+                )
+                weather_text = self._format_http_api_weather(
+                    http_state.get("weather")
+                )
+
+        self.lblLogHttpStatus.setText(status_text)
+        self.lblLogHttpPlayers.setText(players_text)
+        self.lblLogHttpWorld.setText(world_text)
+        self.lblLogHttpWeather.setText(weather_text)
+
+    def _render_player_tree(self, snapshot: Optional[dict]) -> None:
+        if not hasattr(self, "playerTree"):
+            return
+        data = snapshot or {}
+        self._player_snapshot_raw = data
+        cache_entries = self._update_player_cache(data)
+
+        admins = data.get("admins") or []
+        if admins:
+            admin_text = ", ".join(
+                f"{(a.get('name') or a.get('steam_id') or '').strip()} ({a.get('steam_id')})"
+                for a in admins
+                if a
+            )
+            self.lblAdminList.setText(f"Admins online: {admin_text}")
+        else:
+            configured = self._configured_admin_ids()
+            if configured:
+                self.lblAdminList.setText(
+                    "Admins (configured): " + ", ".join(configured)
+                )
+            else:
+                self.lblAdminList.setText("Admins: none configured")
+
+        ts = data.get("last_updated")
+        if ts:
+            age = _age_str(ts)
+            self.lblPlayerSnapshotTs.setText(f"Players refreshed: {age} ago")
+        else:
+            self.lblPlayerSnapshotTs.setText("Players refreshed: �")
+
+        errors = data.get("errors") or []
+        if errors:
+            self.lblPlayerErrors.setText("HTTP errors: " + "; ".join(errors[:3]))
+        else:
+            self.lblPlayerErrors.setText("")
+
+        signature = tuple(
+            (
+                entry.get("steam_id"),
+                entry.get("online"),
+                entry.get("in_character_select"),
+                 entry.get("online_state"),
+                 entry.get("verified_by_api"),
+                 entry.get("last_log_event"),
+                 entry.get("last_http_event"),
+                entry.get("current_character_id"),
+                tuple(
+                    (char.get("character_id"), char.get("name"))
+                    for char in entry.get("characters") or []
+                ),
+            )
+            for entry in cache_entries
+        )
+        if signature == self._player_tree_signature:
+            return
+        self._player_tree_signature = signature
+
+        state = self._capture_player_tree_state()
+        self.playerTree.clear()
+        if not cache_entries:
+            placeholder = QtWidgets.QTreeWidgetItem(["No recent players", "", ""])
+            placeholder.setDisabled(True)
+            self.playerTree.addTopLevelItem(placeholder)
+            return
+
+        for entry in cache_entries:
+            steam_id = entry.get("steam_id") or "?"
+            name = entry.get("name") or steam_id
+            online = entry.get("online", False)
+            in_select = entry.get("in_character_select", False)
+            current_char_id = entry.get("current_character_id")
+            online_state = entry.get("online_state") or (
+                "online" if online else "offline"
+            )
+
+            display = name + ("" if online else " (offline)")
+            status_text = (entry.get("status") or "").strip()
+            detail_bits: list[str] = []
+            if online and in_select:
+                detail_bits.append("state: character select")
+                icon = self._status_icon("select", "#E67E22")
+            elif online:
+                detail_bits.append(f"state: {status_text or online_state}")
+                icon = self._status_icon("online", "#2ECC71")
+            else:
+                last_seen = entry.get("last_online") or entry.get("last_seen")
+                if last_seen:
+                    detail_bits.append(f"last online {_age_str(last_seen)} ago")
+                else:
+                    detail_bits.append("offline")
+                icon = self._status_icon("offline", "#E74C3C")
+            if entry.get("verified_by_api"):
+                detail_bits.append("API ✔")
+            elif online:
+                detail_bits.append("log-only")
+            last_log = entry.get("last_log_event")
+            if last_log:
+                detail_bits.append(f"log {_age_str(last_log)} ago")
+            last_http = entry.get("last_http_event")
+            if last_http:
+                detail_bits.append(f"HTTP {_age_str(last_http)} ago")
+            detail = " | ".join(detail_bits)
+            if current_char_id and online and not in_select:
+                current_char_name = self._find_character_name(entry, current_char_id)
+                if current_char_name:
+                    detail += f" — playing {current_char_name}"
+            player_payload = {"type": "player", "data": entry, "key": f"player:{steam_id}"}
+            top = QtWidgets.QTreeWidgetItem([display, steam_id, detail])
+            if icon:
+                top.setIcon(0, icon)
+            top.setData(0, QtCore.Qt.UserRole, player_payload)
+            if not online:
+                gray = QtGui.QBrush(QtGui.QColor("#95A5A6"))
+                top.setForeground(0, gray)
+                top.setForeground(1, gray)
+                top.setForeground(2, gray)
+
+            for char in entry.get("characters") or []:
+                char_id = char.get("character_id") or "?"
+                char_name = char.get("name") or char_id
+                summary = self._summarize_character(char) or "double-click for inventory"
+                char_payload = {
+                    "type": "character",
+                    "data": char,
+                    "key": f"char:{steam_id}:{char_id}",
+                }
+                char_label = char_name
+                if current_char_id and char_id == current_char_id and online and not in_select:
+                    char_label = f"{char_name} (active)"
+                child = QtWidgets.QTreeWidgetItem([char_label, char_id, summary])
+                child.setData(0, QtCore.Qt.UserRole, char_payload)
+                if not online:
+                    gray = QtGui.QBrush(QtGui.QColor("#95A5A6"))
+                    child.setForeground(0, gray)
+                    child.setForeground(1, gray)
+                    child.setForeground(2, gray)
+                top.addChild(child)
+            self.playerTree.addTopLevelItem(top)
+        self._restore_player_tree_state(state)
+
+    def _summarize_character(self, entry: dict) -> str:
+        data = entry.get("data") or {}
+        char_data = data.get("characterData") or {}
+        pieces: list[str] = []
+        if isinstance(char_data, dict):
+            level = char_data.get("level") or char_data.get("Level")
+            if level is not None:
+                pieces.append(f"level {level}")
+            hp = char_data.get("health") or char_data.get("Health")
+            if hp is not None:
+                pieces.append(f"HP {hp}")
+        inventory = data.get("inventory")
+        if isinstance(inventory, dict):
+            items = inventory.get("items") or inventory.get("Entries")
+            if isinstance(items, list):
+                pieces.append(f"{len(items)} items")
+        return ", ".join(pieces)
+
+    def _find_character_name(self, entry: dict, char_id: str) -> Optional[str]:
+        for char in entry.get("characters") or []:
+            if str(char.get("character_id")) == str(char_id):
+                return char.get("name") or str(char_id)
+        return None
+
+    def _status_icon(self, key: str, color: str) -> QtGui.QIcon:
+        cache_key = (key, color)
+        icon = self._status_icon_cache.get(cache_key)
+        if icon:
+            return icon
+        pix = QtGui.QPixmap(12, 12)
+        pix.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pix)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setBrush(QtGui.QBrush(QtGui.QColor(color)))
+        painter.setPen(QtGui.QPen(QtGui.QColor(color)))
+        painter.drawEllipse(0, 0, 12, 12)
+        painter.end()
+        icon = QtGui.QIcon(pix)
+        self._status_icon_cache[cache_key] = icon
+        return icon
+
+    def _on_player_tree_double_clicked(self, item, column):
+        payload = item.data(0, QtCore.Qt.UserRole)
+        if not isinstance(payload, dict):
+            return
+        kind = payload.get("type")
+        raw = payload.get("data") or {}
+        if kind == "player":
+            title = f"Player {raw.get('name') or raw.get('steam_id')}"
+        elif kind == "character":
+            title = f"Character {raw.get('name') or raw.get('character_id')}"
+        else:
+            title = "Details"
+        self._show_json_dialog(title, raw)
+
+    def _show_json_dialog(self, title: str, payload: Any) -> None:
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(title or "Details")
+        layout = QtWidgets.QVBoxLayout(dlg)
+
+        tabs = QtWidgets.QTabWidget()
+        tree = QtWidgets.QTreeWidget()
+        tree.setHeaderLabels(["Key", "Value"])
+        tree.setUniformRowHeights(True)
+        self._populate_json_tree(tree.invisibleRootItem(), payload)
+        tree.expandToDepth(1)
+        tabs.addTab(tree, "Tree")
+
+        raw_view = QtWidgets.QPlainTextEdit()
+        try:
+            json_text = json.dumps(payload, indent=2, sort_keys=True)
+        except Exception:
+            json_text = str(payload)
+        raw_view.setPlainText(json_text)
+        raw_view.setReadOnly(True)
+        tabs.addTab(raw_view, "Raw JSON")
+
+        layout.addWidget(tabs)
+
+        btn_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        copy_btn = btn_box.addButton("Copy JSON", QtWidgets.QDialogButtonBox.ActionRole)
+        copy_btn.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(json_text))
+        btn_box.accepted.connect(dlg.accept)
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+
+        dlg.resize(750, 550)
+        dlg.exec()
+
+    def _populate_json_tree(self, parent_item: QtWidgets.QTreeWidgetItem, value: Any, key: str = "") -> None:
+        if isinstance(value, dict):
+            node = QtWidgets.QTreeWidgetItem(parent_item, [key or "object", ""])
+            for sub_key, sub_val in value.items():
+                self._populate_json_tree(node, sub_val, str(sub_key))
+        elif isinstance(value, list):
+            label = f"{key} [{len(value)}]" if key else f"array[{len(value)}]"
+            node = QtWidgets.QTreeWidgetItem(parent_item, [label, ""])
+            for idx, item in enumerate(value):
+                self._populate_json_tree(node, item, f"[{idx}]")
+        else:
+            display = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            QtWidgets.QTreeWidgetItem(parent_item, [key or "value", display])
+
+    def _format_http_api_players(self, http_state: dict) -> str:
+        status_payload = http_state.get("status") or {}
+        players_payload = http_state.get("players") or {}
+        names: list[str] = []
+        online_reported = False
+
+        online = status_payload.get("onlinePlayers")
+        if isinstance(online, dict):
+            online_reported = True
+            for sid, pdata in online.items():
+                name = None
+                if isinstance(pdata, dict):
+                    name = (pdata.get("name") or pdata.get("characterId") or "").strip()
+                alias = name or str(sid)
+                if alias:
+                    names.append(alias)
+            if not names:
+                return "API Players: 0"
+
+        if not online_reported:
+            player_ids = players_payload.get("players")
+            if isinstance(player_ids, list):
+                names = [str(pid) for pid in player_ids]
+
+        if not names:
+            return "API Players: 0"
+
+        count = len(names)
+        preview = ", ".join(names[:4])
+        if count > 4:
+            preview += f", +{count - 4} more"
+        return f"API Players: {count} ({preview})"
+    def _format_http_api_time(
+        self, time_payload: Optional[dict], status_payload: Optional[dict]
+    ) -> str:
+        label = "World Time: —"
+        ts = (
+            time_payload.get("unixSeconds")
+            if isinstance(time_payload, dict)
+            else None
+        )
+        if isinstance(ts, (int, float)):
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            label = f"World Time: {dt.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+
+        uptime = (
+            status_payload.get("uptime") if isinstance(status_payload, dict) else None
+        )
+        if isinstance(uptime, (int, float)):
+            seconds = int(uptime * 3600) if uptime < 1e6 else int(uptime)
+            label += f" | API Uptime: {self._format_duration(seconds)}"
+        return label
+
+    def _format_http_api_weather(self, payload: Optional[dict]) -> str:
+        if not isinstance(payload, dict):
+            return "Weather: —"
+
+        parts: list[str] = []
+        temp = payload.get("temperature")
+        if isinstance(temp, (int, float)):
+            parts.append(f"{temp:.1f}°C")
+
+        humidity = payload.get("relativeHumidity")
+        if isinstance(humidity, (int, float)):
+            pct = humidity * 100 if humidity <= 1 else humidity
+            parts.append(f"humidity {pct:.0f}%")
+
+        wind_dir = payload.get("windDirection")
+        wind_force = payload.get("windForce")
+        if isinstance(wind_dir, (int, float)) and isinstance(wind_force, (int, float)):
+            parts.append(f"wind {wind_dir:.0f}°@{wind_force:.1f}")
+
+        precip = payload.get("precipitation")
+        if isinstance(precip, (int, float)):
+            parts.append(f"precip {precip:.2f}")
+
+        if not parts:
+            return "Weather: —"
+        return f"Weather: {', '.join(parts)}"
+
+    def _configured_admin_ids(self) -> List[str]:
+        if self._cached_admin_ids is not None:
+            return self._cached_admin_ids
+
+        cfg = _load_cfg_for_runtime(self.config_path)
+        ids: list[str] = []
+        for key in ("SuperAdminSteamIDs", "AdminSteamIDs"):
+            raw = cfg.get(key) or []
+            if isinstance(raw, (list, tuple)):
+                for entry in raw:
+                    sid = str(entry).strip()
+                    if sid and sid not in ids:
+                        ids.append(sid)
+            elif isinstance(raw, str) and raw.strip():
+                sid = raw.strip()
+                if sid not in ids:
+                    ids.append(sid)
+
+        self._cached_admin_ids = ids
+        return ids
+
+    def _update_player_cache(self, snapshot: Optional[dict]) -> List[dict]:
+        if not hasattr(self, "_player_cache"):
+            self._player_cache = {}
+
+        players = []
+        if isinstance(snapshot, dict):
+            raw = snapshot.get("players")
+            if isinstance(raw, list):
+                players = raw
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cache = self._player_cache
+        current_ids: set[str] = set()
+        for player in players:
+            steam_id = str(player.get("steam_id") or "").strip()
+            if not steam_id:
+                continue
+            current_ids.add(steam_id)
+            entry = cache.get(steam_id, {})
+            last_seen = player.get("last_seen") or player.get("last_online") or now_iso
+            online_state = player.get("online_state")
+            is_online = online_state != "offline" if online_state else bool(
+                player.get("online", True)
+            )
+            entry.update(
+                steam_id=steam_id,
+                name=player.get("name") or entry.get("name") or steam_id,
+                status=player.get("status"),
+                last_online=last_seen,
+                online=is_online,
+                online_state=online_state or ("online" if is_online else "offline"),
+                in_character_select=player.get("in_character_select", False),
+                current_character_id=player.get("current_character_id"),
+                player=player,
+                characters=player.get("characters") or [],
+                verified_by_api=bool(player.get("verified_by_api")),
+                last_log_event=player.get("last_log_event"),
+                last_http_event=player.get("last_http_event"),
+                events=player.get("events") or entry.get("events") or [],
+            )
+            cache[steam_id] = entry
+
+        for sid, entry in list(cache.items()):
+            if sid not in current_ids:
+                entry["online"] = False
+                entry["online_state"] = "offline"
+                entry["in_character_select"] = False
+                entry.setdefault("last_online", now_iso)
+
+        sorted_entries = sorted(
+            cache.values(),
+            key=lambda e: e.get("last_online") or "",
+            reverse=True,
+        )
+        trimmed = sorted_entries[:10]
+        self._player_cache = {entry["steam_id"]: entry for entry in trimmed}
+        return trimmed
+
+    def _capture_player_tree_state(self) -> dict:
+        state = {"expanded": set(), "selected": None}
+        tree = getattr(self, "playerTree", None)
+        if not tree:
+            return state
+
+        def walk(item):
+            if item is None:
+                return
+            payload = item.data(0, QtCore.Qt.UserRole) or {}
+            key = payload.get("key")
+            if item.isExpanded() and key:
+                state["expanded"].add(key)
+            if item.isSelected() and key:
+                state["selected"] = key
+            for idx in range(item.childCount()):
+                walk(item.child(idx))
+
+        for i in range(tree.topLevelItemCount()):
+            walk(tree.topLevelItem(i))
+        return state
+
+    def _restore_player_tree_state(self, state: dict) -> None:
+        tree = getattr(self, "playerTree", None)
+        if not tree or not state:
+            return
+        expanded = state.get("expanded") or set()
+        selected_key = state.get("selected")
+
+        def walk(item):
+            if item is None:
+                return
+            payload = item.data(0, QtCore.Qt.UserRole) or {}
+            key = payload.get("key")
+            if key in expanded:
+                item.setExpanded(True)
+            if selected_key and key == selected_key:
+                item.setSelected(True)
+                tree.setCurrentItem(item)
+            for idx in range(item.childCount()):
+                walk(item.child(idx))
+
+        for i in range(tree.topLevelItemCount()):
+            walk(tree.topLevelItem(i))
+
+    def _format_duration(self, seconds: int) -> str:
+        seconds = max(0, int(seconds))
+        return f"{seconds//3600:02d}:{(seconds%3600)//60:02d}:{seconds%60:02d}"
 
     def _kick_status_poll(self):
         worker = StatusPoller(self.config_path)

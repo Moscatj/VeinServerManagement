@@ -16,8 +16,9 @@ import time
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, Dict, Deque, List
 from glob import glob
+from collections import deque
 
 from Tools import backups as _bk
 
@@ -28,10 +29,19 @@ from Tools.discord import send_discord_message, is_discord_channel_enabled
 from Tools.discord import send_discord_message
 from Tools.backups_api import make_backup as backup_save_file
 from Tools.runtime import RUNTIME_DIR, SHUTDOWN_FLAG
+from Tools.vein_http_api import (
+    get_configured_client,
+    VeinHTTPAPIError,
+    VeinHTTPClient,
+)
 
 LOGS_DIR = logs_dir()
 ABSOLUTE_LOG_FILE = absolute_log_file()
 PID_FILE = RUNTIME_DIR / "log_monitor.pid"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+MGMT_LOG_DIR = Path(config.get("mgmt_log_dir") or (ROOT_DIR / "Logs"))
+HTTP_LOG_FILE = MGMT_LOG_DIR / "http_api.log"
+PLAYER_SNAPSHOT_FILE = RUNTIME_DIR / "player_characters.json"
 
 # ---- Config knobs (with sensible defaults) ----
 _MON = dict(config.get("log_monitor") or config.get("monitor") or {})
@@ -59,6 +69,7 @@ TRACK_DISCONNECT = bool(TRACK.get("disconnect", True))
 TRACK_AUTOSAVE = bool(TRACK.get("autosave", True))
 TRACK_CRASH = bool(TRACK.get("crash", True))
 TRACK_HEARTBEAT = bool(TRACK.get("heartbeat", True))
+TRACK_HTTP_API = bool(TRACK.get("http_api", True))
 
 NOTIFY_STARTUP = bool(NOTIFY.get("startup", True))
 NOTIFY_JOINABLE = bool(NOTIFY.get("joinable", True))
@@ -76,10 +87,22 @@ RX_LISTEN = re.compile(r"RamjetSteamNetDriver_.*started listening on (\d+)", re.
 RX_WORLD_UP = re.compile(r"LogWorld: Bringing World .* up for play", re.I)
 RX_STEAM_OK = re.compile(r"Steamworks server initialized", re.I)
 
-RX_LOGIN = re.compile(r"LogNet: Login request:")  # (defined for future use)
+RX_LOGIN = re.compile(r"LogNet: Login request:")
 RX_AUTH_OK = re.compile(r"LogRamjetNetworking: Authenticated (\d+)")
 RX_JOINED = re.compile(r"LogNet: Join succeeded:\s*(.+)")
 RX_CHARSEL = re.compile(r"selected character .* \(aka ([^)]+)\)", re.I)
+RX_CHARSEL_FULL = re.compile(
+    r"Player\s+(?P<name>.+?)\s+selected character\s+(?P<char>[A-F0-9]+)",
+    re.I,
+)
+RX_LOGIN_NAME_ID = re.compile(r"\?Name=([^?]+)\?\?ID=(\d+)", re.I)
+RX_SOCKET_STEAMID = re.compile(r"steamid:(\d+)", re.I)
+RX_AUTH_SESSION_END = re.compile(r"Ended auth session for ID\s+(\d+)", re.I)
+RX_PLAYER_AUTH_OK = re.compile(
+    r"LogVein:\s+Player\s+(?P<steam>\d+).+authenticated successfully",
+    re.I,
+)
+RX_PLAYER_STATE_ID = re.compile(r"LogVein:\s+PlayerState ID changed to\s+(\d+)", re.I)
 RX_DISC = re.compile(r"closed by peer|Logout|Connection closed", re.I)
 
 RX_AUTOSAVE = re.compile(r"LogVeinSaveGame: Saved save game to disk", re.I)
@@ -98,6 +121,17 @@ _MONITOR_HB_PREFIX = str(_BEH.get("prefix", "🩺"))
 _BACKUP_CFG = dict(config.get("backups", {}) or {})
 _BACKUP_EVENTS = dict(_BACKUP_CFG.get("events", {}) or {})
 _BACKUP_TRIGGERS = dict(_BACKUP_CFG.get("triggers", {}) or {})
+
+_PLAYER_CACHE: Dict[str, Dict[str, Any]] = {}
+_NAME_TO_ID: Dict[str, str] = {}
+_ID_TO_NAME: Dict[str, str] = {}
+_PLAYER_EVENT_LIMIT = 32
+_PLAYER_CACHE_LIMIT = 12
+_PLAYER_SNAPSHOT_DIRTY = False
+_LAST_PLAYER_SNAPSHOT_WRITE = 0.0
+_PLAYER_SNAPSHOT_INTERVAL = 2.0
+_HTTP_STATE: Optional[Dict[str, Any]] = None
+_HTTP_DISABLED_LOGGED = False
 
 
 def _trigger_section(new_key: str, legacy_key: str) -> dict:
@@ -242,6 +276,452 @@ def _discord(msg: str, channel: str = "monitor"):
         send_discord_message(msg, channel=channel)
 
 
+def _log_http_api(message: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        HTTP_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with HTTP_LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{ts}] {message}\n")
+    except Exception:
+        pass
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    cleaned = " ".join(str(name).split()).strip()
+    return cleaned.lower() if cleaned else None
+
+
+def _name_key(name: Optional[str]) -> Optional[str]:
+    norm = _normalize_name(name)
+    if not norm:
+        return None
+    return f"name:{norm}"
+
+
+def _remember_identity(steam_id: Optional[str], name: Optional[str]) -> None:
+    sid = str(steam_id or "").strip()
+    if not sid:
+        return
+    if name:
+        norm = _normalize_name(name)
+        if norm:
+            _NAME_TO_ID[norm] = sid
+            _ID_TO_NAME[sid] = name.strip()
+            temp_key = _name_key(name)
+            if temp_key and temp_key in _PLAYER_CACHE and sid not in _PLAYER_CACHE:
+                entry = _PLAYER_CACHE.pop(temp_key)
+                entry["steam_id"] = sid
+                _PLAYER_CACHE[sid] = entry
+
+
+def _lookup_id_for_name(name: Optional[str]) -> Optional[str]:
+    norm = _normalize_name(name)
+    if not norm:
+        return None
+    return _NAME_TO_ID.get(norm)
+
+
+def _ensure_player_entry(
+    steam_id: Optional[str], name: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    key = str(steam_id or "").strip()
+    if not key:
+        resolved = _lookup_id_for_name(name)
+        if resolved:
+            key = resolved
+        else:
+            nk = _name_key(name)
+            if nk:
+                key = nk
+            else:
+                return None
+
+    if key not in _PLAYER_CACHE:
+        now = _utc_now_iso()
+        _PLAYER_CACHE[key] = {
+            "steam_id": key if key.isdigit() else "",
+            "name": (name or "").strip(),
+            "first_seen": now,
+            "last_seen": now,
+            "online": False,
+            "online_state": "offline",
+            "in_character_select": False,
+            "verified_by_api": False,
+            "events": deque(maxlen=_PLAYER_EVENT_LIMIT),
+        }
+    entry = _PLAYER_CACHE[key]
+    if steam_id and not key.isdigit():
+        entry = _PLAYER_CACHE.pop(key)
+        _PLAYER_CACHE[steam_id] = entry
+        entry["steam_id"] = steam_id
+        key = steam_id
+
+    if name:
+        entry["name"] = name.strip()
+        _remember_identity(entry.get("steam_id") or key, name)
+    if not entry.get("steam_id"):
+        entry["steam_id"] = key if key.isdigit() else ""
+    return entry
+
+
+def _set_player_state(entry: Dict[str, Any], state: str, ts: str) -> None:
+    state = state or ""
+    if state == "offline":
+        entry["online"] = False
+        entry["online_state"] = "offline"
+        entry["in_character_select"] = False
+        entry["last_disconnect"] = ts
+    elif state == "select":
+        entry["online"] = True
+        entry["online_state"] = "select"
+        entry["in_character_select"] = True
+    elif state == "connecting":
+        entry["online"] = True
+        entry["online_state"] = "connecting"
+        entry["in_character_select"] = False
+    elif state == "online":
+        entry["online"] = True
+        entry["online_state"] = "online"
+        entry["in_character_select"] = False
+    entry["last_seen"] = ts
+
+
+def _mark_player_snapshot_dirty() -> None:
+    global _PLAYER_SNAPSHOT_DIRTY
+    _PLAYER_SNAPSHOT_DIRTY = True
+
+
+def _prune_player_cache() -> None:
+    if len(_PLAYER_CACHE) <= _PLAYER_CACHE_LIMIT * 2:
+        return
+    ordered = sorted(
+        _PLAYER_CACHE.items(),
+        key=lambda pair: pair[1].get("last_seen") or "",
+        reverse=True,
+    )
+    keep = {k for k, _ in ordered[:_PLAYER_CACHE_LIMIT]}
+    for key in list(_PLAYER_CACHE.keys()):
+        if key not in keep:
+            _PLAYER_CACHE.pop(key, None)
+
+
+def _record_player_event(
+    steam_id: Optional[str],
+    event_type: str,
+    *,
+    source: str,
+    name: Optional[str] = None,
+    detail: Optional[str] = None,
+    raw_line: Optional[str] = None,
+    character_id: Optional[str] = None,
+    state: Optional[str] = None,
+) -> None:
+    entry = _ensure_player_entry(steam_id, name)
+    if not entry:
+        return
+
+    ts = _utc_now_iso()
+    event = {
+        "type": event_type,
+        "ts": ts,
+        "source": source,
+    }
+    if detail:
+        event["detail"] = detail
+    if raw_line:
+        event["line"] = raw_line
+    if character_id:
+        event["character_id"] = character_id
+
+    events: Deque[Dict[str, Any]] = entry.setdefault(
+        "events", deque(maxlen=_PLAYER_EVENT_LIMIT)
+    )
+    events.append(event)
+    entry["last_seen"] = ts
+    if source == "log":
+        entry["last_log_event"] = ts
+    elif source == "http":
+        entry["last_http_event"] = ts
+
+    if character_id:
+        entry["current_character_id"] = character_id
+
+    if state:
+        _set_player_state(entry, state, ts)
+
+    _mark_player_snapshot_dirty()
+
+
+def _sorted_player_entries() -> List[Dict[str, Any]]:
+    ordered = sorted(
+        _PLAYER_CACHE.values(),
+        key=lambda entry: entry.get("last_seen") or "",
+        reverse=True,
+    )
+    return ordered[: _PLAYER_CACHE_LIMIT]
+
+
+def _player_snapshot_from_cache(errors: Optional[List[str]] = None) -> Dict[str, Any]:
+    players_out = []
+    for entry in _sorted_player_entries():
+        payload = {
+            "steam_id": entry.get("steam_id") or "",
+            "name": entry.get("name") or entry.get("steam_id") or "Unknown",
+            "status": entry.get("status"),
+            "online": entry.get("online_state") != "offline",
+            "in_character_select": bool(entry.get("in_character_select")),
+            "online_state": entry.get("online_state")
+            or ("online" if entry.get("online") else "offline"),
+            "verified_by_api": bool(entry.get("verified_by_api")),
+            "current_character_id": entry.get("current_character_id"),
+            "last_seen": entry.get("last_seen"),
+            "first_seen": entry.get("first_seen"),
+            "last_log_event": entry.get("last_log_event"),
+            "last_http_event": entry.get("last_http_event"),
+            "last_disconnect": entry.get("last_disconnect"),
+            "events": list(entry.get("events") or []),
+            "player": entry.get("player"),
+            "characters": entry.get("characters"),
+            "time_connected": entry.get("time_connected"),
+            "http": entry.get("http"),
+        }
+        players_out.append(payload)
+    admins = [
+        {"steam_id": p.get("steam_id"), "name": p.get("name")}
+        for p in players_out
+        if (p.get("status") or "").lower() == "admin"
+    ]
+    return {
+        "schema_version": 2,
+        "last_updated": _utc_now_iso(),
+        "players": players_out,
+        "admins": admins,
+        "errors": errors or [],
+    }
+
+
+def _flush_player_snapshot_if_needed(
+    *, force: bool = False, errors: Optional[List[str]] = None
+) -> None:
+    global _PLAYER_SNAPSHOT_DIRTY, _LAST_PLAYER_SNAPSHOT_WRITE
+    if not force and not _PLAYER_SNAPSHOT_DIRTY:
+        return
+    now = time.time()
+    if not force and (now - _LAST_PLAYER_SNAPSHOT_WRITE) < _PLAYER_SNAPSHOT_INTERVAL:
+        return
+    payload = _player_snapshot_from_cache(errors)
+    _write_player_snapshot(payload)
+    _LAST_PLAYER_SNAPSHOT_WRITE = now
+    _PLAYER_SNAPSHOT_DIRTY = False
+    _prune_player_cache()
+
+
+def _player_state_payload() -> Optional[Dict[str, Any]]:
+    if not _PLAYER_CACHE:
+        return None
+    entries = []
+    online = 0
+    for entry in _sorted_player_entries():
+        summary = {
+            "steam_id": entry.get("steam_id") or "",
+            "name": entry.get("name") or entry.get("steam_id") or "Unknown",
+            "online_state": entry.get("online_state")
+            or ("online" if entry.get("online") else "offline"),
+            "verified_by_api": bool(entry.get("verified_by_api")),
+            "last_seen": entry.get("last_seen"),
+            "current_character_id": entry.get("current_character_id"),
+            "in_character_select": bool(entry.get("in_character_select")),
+            "last_log_event": entry.get("last_log_event"),
+            "last_http_event": entry.get("last_http_event"),
+        }
+        if summary["online_state"] != "offline":
+            online += 1
+        entries.append(summary)
+    return {
+        "schema_version": 1,
+        "total": len(entries),
+        "online": online,
+        "entries": entries,
+    }
+
+
+def _extract_steam_id_from_line(line: str, name: Optional[str] = None) -> Optional[str]:
+    for rx in (RX_SOCKET_STEAMID, RX_AUTH_SESSION_END, RX_PLAYER_STATE_ID):
+        match = rx.search(line)
+        if match:
+            steam_id = match.group(1).strip()
+            _remember_identity(steam_id, name)
+            return steam_id
+    return _lookup_id_for_name(name)
+
+
+def _write_player_snapshot(payload: Dict[str, Any]) -> None:
+    try:
+        PLAYER_SNAPSHOT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with PLAYER_SNAPSHOT_FILE.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, sort_keys=True)
+    except Exception:
+        pass
+
+
+def _set_http_state(state: Optional[Dict[str, Any]]) -> None:
+    global _HTTP_STATE
+    _HTTP_STATE = state
+
+
+def _update_player_character_snapshot(
+    snapshot: Dict[str, Any], client: VeinHTTPClient, errors: List[str]
+) -> None:
+    status_payload = snapshot.get("status") if isinstance(snapshot, dict) else {}
+    online_players: Dict[str, Any] = {}
+    if isinstance(status_payload, dict):
+        raw = status_payload.get("onlinePlayers") or {}
+        if isinstance(raw, dict):
+            online_players = raw
+
+    seen_ids: set[str] = set()
+    fetch_errors = errors
+
+    for steam_id, info in online_players.items():
+        if not isinstance(info, dict):
+            continue
+        sid = str(steam_id)
+        name = info.get("name")
+        _remember_identity(sid, name)
+        entry = _ensure_player_entry(sid, name)
+        if not entry:
+            continue
+
+        previously_online = entry.get("online")
+        entry["status"] = info.get("status") or entry.get("status")
+        entry["time_connected"] = info.get("timeConnected")
+        entry["http"] = info
+        entry["verified_by_api"] = True
+        entry["last_http_event"] = snapshot.get("last_fetch") or _utc_now_iso()
+        entry["last_seen"] = entry["last_http_event"]
+        char_id = info.get("characterId")
+        if char_id:
+            entry["current_character_id"] = char_id
+            entry["in_character_select"] = False
+            entry["online_state"] = "online"
+            entry["online"] = True
+        else:
+            entry["in_character_select"] = True
+            entry["online_state"] = "select"
+            entry["online"] = True
+
+        if not previously_online:
+            state_hint = "select" if entry.get("in_character_select") else "online"
+            _record_player_event(
+                sid,
+                "http_online",
+                source="http",
+                name=name,
+                detail="HTTP API reports player online",
+                state=state_hint,
+            )
+
+        try:
+            player_detail = client.player(sid)
+            entry["player"] = player_detail
+        except VeinHTTPAPIError as exc:
+            msg = f"player:{sid}: {exc}"
+            fetch_errors.append(msg)
+            _log_http_api(msg)
+            continue
+        except Exception as exc:  # pragma: no cover - defensive
+            msg = f"player:{sid}: {exc}"
+            fetch_errors.append(msg)
+            _log_http_api(msg)
+            continue
+
+        characters_out: list[Dict[str, Any]] = []
+        char_ids: list[str] = []
+        if isinstance(player_detail, dict):
+            raw_ids = player_detail.get("characterIds")
+            if isinstance(raw_ids, list):
+                char_ids = [str(cid) for cid in raw_ids]
+        for char_id in char_ids:
+            try:
+                char_detail = client.character(char_id)
+            except VeinHTTPAPIError as exc:
+                msg = f"character:{char_id}: {exc}"
+                fetch_errors.append(msg)
+                _log_http_api(msg)
+                continue
+            except Exception as exc:  # pragma: no cover - defensive
+                msg = f"character:{char_id}: {exc}"
+                fetch_errors.append(msg)
+                _log_http_api(msg)
+                continue
+            char_entry: Dict[str, Any] = {
+                "character_id": char_id,
+                "name": None,
+                "data": char_detail,
+            }
+            if isinstance(char_detail, dict):
+                char_entry["name"] = (
+                    (char_detail.get("characterData") or {}).get("name")
+                    if isinstance(char_detail.get("characterData"), dict)
+                    else (char_detail.get("playerCharacterData") or {}).get("name")
+                )
+            characters_out.append(char_entry)
+
+        entry["characters"] = characters_out
+        seen_ids.add(sid)
+
+    for cache_key, entry in list(_PLAYER_CACHE.items()):
+        sid = entry.get("steam_id") or cache_key
+        if not sid or not sid.isdigit():
+            continue
+        if entry.get("verified_by_api") and entry.get("online") and sid not in seen_ids:
+            _record_player_event(
+                sid,
+                "http_offline",
+                source="http",
+                detail="HTTP API reports player offline",
+                state="offline",
+            )
+            entry["online"] = False
+            entry["online_state"] = "offline"
+            entry["in_character_select"] = False
+
+    _flush_player_snapshot_if_needed(force=True, errors=fetch_errors)
+
+
+def _refresh_http_api_state(client: VeinHTTPClient) -> None:
+    snapshot: Dict[str, Any] = {"enabled": True}
+    errors: list[str] = []
+
+    def _call(key: str, func) -> None:
+        try:
+            snapshot[key] = func()
+        except VeinHTTPAPIError as exc:
+            msg = f"{key} request failed: {exc}"
+            errors.append(msg)
+            _log_http_api(msg)
+        except Exception as exc:  # pragma: no cover - defensive
+            msg = f"{key} unexpected error: {exc}"
+            errors.append(msg)
+            _log_http_api(msg)
+
+    _call("status", client.status)
+    _call("players", client.players)
+    _call("time", client.time)
+    _call("weather", client.weather)
+
+    snapshot["last_fetch"] = _utc_now_iso()
+    if errors:
+        snapshot["errors"] = errors
+    _set_http_state(snapshot)
+    _update_player_character_snapshot(snapshot, client, errors)
+
 def _write_logmon_state(
     *,
     active: bool,
@@ -257,6 +737,11 @@ def _write_logmon_state(
         "watching_server": bool(watching_server),
         "last_updated": now,  # ISO8601 with tzinfo
     }
+    if _HTTP_STATE is not None:
+        data["http_api"] = _HTTP_STATE
+    players_block = _player_state_payload()
+    if players_block:
+        data["players"] = players_block
     try:
         with rp["state_log"].open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, sort_keys=True)
@@ -280,6 +765,7 @@ def _clear_pid() -> None:
 
 
 def monitor() -> None:
+    global _HTTP_DISABLED_LOGGED
     rp = _runtime_paths()
     stop_flag = rp["stop_log"]
 
@@ -304,6 +790,58 @@ def monitor() -> None:
     seen_server_up_once = False
     last_seen_server_up = 0.0
     shutdown_backup_done = False
+    http_client: Optional[VeinHTTPClient] = None
+    last_http_refresh = 0.0
+    http_refresh_interval = max(STATE_REFRESH_S, 5)
+
+    if TRACK_HTTP_API:
+        try:
+            http_client = get_configured_client()
+        except Exception:
+            http_client = None
+
+        if http_client is None:
+            _set_http_state(
+                {
+                    "enabled": False,
+                    "last_error": "Vein HTTP API disabled or not configured.",
+                }
+            )
+            if not _HTTP_DISABLED_LOGGED:
+                _log_http_api("HTTP API disabled or misconfigured; polling skipped.")
+                _HTTP_DISABLED_LOGGED = True
+            _write_player_snapshot(
+                {
+                    "schema_version": 2,
+                    "last_updated": _utc_now_iso(),
+                    "players": [],
+                    "admins": [],
+                    "errors": ["Vein HTTP API disabled or not configured."],
+                }
+            )
+        else:
+            _set_http_state({"enabled": True, "last_fetch": None})
+            _HTTP_DISABLED_LOGGED = False
+    else:
+        _set_http_state(None)
+        _write_player_snapshot(
+            {
+                "schema_version": 2,
+                "last_updated": _utc_now_iso(),
+                "players": [],
+                "admins": [],
+                "errors": ["HTTP API tracking disabled via config."],
+            }
+        )
+
+    def _maybe_refresh_http_api(ts: Optional[float] = None) -> None:
+        nonlocal last_http_refresh
+        if not http_client:
+            return
+        now_ts = ts if ts is not None else time.time()
+        if now_ts - last_http_refresh >= http_refresh_interval:
+            _refresh_http_api_state(http_client)
+            last_http_refresh = now_ts
 
     # rotation signature
     def _sig(p: Path) -> tuple[int, float]:
@@ -375,6 +913,7 @@ def monitor() -> None:
                             tailing_file=str(p),
                             watching_server=True,
                         )
+                        _maybe_refresh_http_api()
                         time.sleep(TAIL_POLL_MS / 1000.0)
                         continue
                     pos = f.tell()
@@ -386,11 +925,28 @@ def monitor() -> None:
             _write_logmon_state(active=True, tailing_file=str(p), watching_server=True)
             text = b.decode("utf-8", "replace")
             now = time.time()
+            _maybe_refresh_http_api(now)
 
             for raw in text.splitlines():
                 line = raw.strip()
                 if not line:
                     continue
+
+                if TRACK_JOIN and RX_LOGIN.search(line):
+                    details = RX_LOGIN_NAME_ID.search(line)
+                    if details:
+                        login_name = details.group(1).strip()
+                        login_id = details.group(2).strip()
+                        _remember_identity(login_id, login_name)
+                        _record_player_event(
+                            login_id,
+                            "login_request",
+                            source="log",
+                            name=login_name,
+                            detail="Login request detected",
+                            raw_line=line,
+                            state="connecting",
+                        )
 
                 # Heartbeat (coarse)
                 if (
@@ -420,11 +976,29 @@ def monitor() -> None:
                 # Authenticated player ID (for future use)
                 if TRACK_AUTH:
                     m = RX_AUTH_OK.search(line)
-                    if m and NOTIFY_AUTH:
+                    if m:
                         player_id = m.group(1)
-                        _discord(
-                            f"🔐 Authenticated player ID: {player_id}",
-                            channel="monitor",
+                        _record_player_event(
+                            player_id,
+                            "authenticated",
+                            source="log",
+                            raw_line=line,
+                            state="connecting",
+                        )
+                        if NOTIFY_AUTH:
+                            _discord(
+                                f"🔐 Authenticated player ID: {player_id}",
+                                channel="monitor",
+                            )
+                    m_named = RX_PLAYER_AUTH_OK.search(line)
+                    if m_named:
+                        sid = m_named.group("steam")
+                        _record_player_event(
+                            sid,
+                            "auth_confirmed",
+                            source="log",
+                            raw_line=line,
+                            state="connecting",
                         )
 
                 # Join / character select
@@ -433,6 +1007,16 @@ def monitor() -> None:
                     if m:
                         name = m.group(1).strip()
                         current_players.add(name)
+                        steam_id = _lookup_id_for_name(name)
+                        _record_player_event(
+                            steam_id,
+                            "join",
+                            source="log",
+                            name=name,
+                            detail=f"{name} joined world",
+                            raw_line=line,
+                            state="online",
+                        )
                         if NOTIFY_JOIN:
                             _discord(
                                 f"🚪 Player joined: **{name}**",
@@ -447,9 +1031,33 @@ def monitor() -> None:
                             f"🎭 Character selected: **{aka}**",
                             channel="monitor",
                         )
+                    full = RX_CHARSEL_FULL.search(line)
+                    if full:
+                        pname = full.group("name").strip()
+                        cid = full.group("char").strip()
+                        steam_id = _lookup_id_for_name(pname)
+                        _record_player_event(
+                            steam_id,
+                            "character_select",
+                            source="log",
+                            name=pname,
+                            character_id=cid,
+                            detail=f"{pname} selected character {cid}",
+                            raw_line=line,
+                            state="online",
+                        )
 
                 # Disconnect
                 if TRACK_DISCONNECT and RX_DISC.search(line):
+                    steam_id = _extract_steam_id_from_line(line)
+                    if steam_id:
+                        _record_player_event(
+                            steam_id,
+                            "disconnect",
+                            source="log",
+                            raw_line=line,
+                            state="offline",
+                        )
                     if NOTIFY_DISC:
                         _discord("👋 Player disconnected.", channel="monitor")
 
@@ -478,6 +1086,8 @@ def monitor() -> None:
                             )
                         _backup("Crash")
 
+            _flush_player_snapshot_if_needed()
+
             # Linger + shutdown backup check
             proc_up = is_server_running()
             if proc_up:
@@ -503,6 +1113,7 @@ def monitor() -> None:
 
     finally:
         _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+        _flush_player_snapshot_if_needed(force=True)
         _clear_pid()
 
 

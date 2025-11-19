@@ -47,7 +47,9 @@ VeinServerManagement/
 │   └── Legacy/             # Older scripts kept for reference
 ├── Docs/               # Developer docs (control_layer_overview, Developer_Guide, etc.)
 ├── Logs/               # Management logs (stdout/stderr from tools)
+│   └── http_api.log    # HTTP API polling errors from monitor_log.py
 ├── Runtime/            # PID files, flags, small JSON state (created at runtime)
+│   └── player_characters.json  # HTTP API snapshot of online players + characters
 ├── Scripts/
 │   ├── env_setup.bat
 │   ├── StartServer.bat
@@ -94,20 +96,12 @@ Optionally triggers backups (based on config)
 
 Clears runtime flags
 
-utils.py
-Large shared helper module:
-
-Process discovery and termination helpers
-
-Runtime flags (PID files, lock files)
-
-Backup helpers (manual, autosave, nightly)
-
-Discord send functions
-
-Steam update helpers (via Tools/update_steam.py)
-
-Config preflight and status summarizers
+utils.py (removed)
+The former monolithic helper has been fully deleted and will not be recreated.
+Its historical responsibilities (process helpers, runtime flags, backup helpers,
+Discord senders, Steam update helpers, config summaries, etc.) now live in
+dedicated modules inside `Controller/Tools/`, so any new work must continue to
+extend those focused helpers instead of reviving `Controller/utils.py`.
 
 config.py / config_helper.py
 
@@ -127,6 +121,8 @@ Buttons for starting/stopping server and monitors
 Filter/search UI for logs/events
 
 Visual health indicators for monitors and server status
+
+HTTP API player browser (Monitors tab) showing admins plus online players/characters pulled from `Runtime/player_characters.json` with double-click detail dialogs
 
 Tools layer (Controller/Tools/)
 All shared helpers now live here (process/running state, restart orchestration, backups, Discord helpers, feature gates, paths, etc.). The legacy `utils.py` module has been retired in favor of these focused files.
@@ -170,6 +166,8 @@ Key sections include (see Config/config.yaml and Docs/config_reference.md):
 paths.* — server root, runtime dir, saves dir, logs dir, log file, etc.
 
 server.* — arguments, update behavior, startup options.
+
+http_api.* — host/port/scheme for the optional Vein HTTP API (requires matching HTTPPort in Game.ini).
 
 lifecycle.* — quiet windows, restart throttling, shutdown countdowns.
 

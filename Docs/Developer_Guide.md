@@ -136,7 +136,7 @@ The file is loaded once via `config.py`, cached in memory, and accessed through 
   - Startup and “joinable” events.
   - Player auth, join, character selection, and disconnects.
   - Autosaves and crash markers.
-- Updates `Runtime/log_monitor_state.json` for GUI display.
+- Updates `Runtime/log_monitor.state.json` (mirrored to the legacy `_state` file) for GUI display.
 - Posts messages to Discord via `send_discord_message()`.
 - Optional autosave-triggered backups (debounced).
 
@@ -230,7 +230,8 @@ Every controller imports this module for consistent, reusable functionality.
 | `startup_in_progress.lock` | Prevents crash monitor from misfiring during boot. |
 | `shutdown_in_progress.flag` | Marks controlled shutdowns. |
 | `last_restart_at.txt` | Timestamp used for restart throttling. |
-| `log_monitor_state.json` | Last heartbeat from log monitor. |
+| `log_monitor.state.json` / `log_monitor_state.json` | Last heartbeat from log monitor (new file mirrors the legacy path). |
+| `player_characters.json` | Expanded online player + character/inventory data fetched by `monitor_log.py` for the GUI’s Monitors tab. |
 | `crash_monitor_state.json` | Last heartbeat from crash monitor. |
 
 ---

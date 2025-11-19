@@ -2,7 +2,9 @@
 
 The legacy monolithic `utils.py` module has been decomposed into focused helpers
 under `Controller/Tools/`. Each module now has a single responsibility, which
-makes the controller scripts easier to understand and test.
+makes the controller scripts easier to understand and test. `Controller/utils.py`
+has been deleted permanently—do not recreate or patch it. All future shared
+logic must live in the appropriate Tools module.
 
 ---
 

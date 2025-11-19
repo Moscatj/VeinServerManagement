@@ -48,7 +48,9 @@ Central application controller handling:
 | **Monitor (advanced)** | Nested config: tracking, notification, and backup sections. |
 | **Features** | Feature flags (log monitor, crash monitor, Discord alerts, etc.). |
 | **Top-level** | Unclassified scalars from `config.json`. |
-| **Monitors** | Realtime indicators for Log Monitor and Crash Monitor. |
+| **Monitors** | Realtime indicators for Log/Crash monitors plus HTTP API state (uptime, players, weather) when available. |
+
+The Monitors tab now includes a persistent player/character browser sourced from `Runtime/player_characters.json`. Up to 10 recently seen players remain visible even after they disconnect, greyed out with “offline” markers. Each player row shows a colored status light (green = in-world, orange = character select, red = offline) plus the active character name when available. Details also indicate whether the entry was verified by the HTTP API or came purely from log events, along with the age of the last log/HTTP sighting, so operators immediately see when a player was last observed. Double-clicking any player or character opens a tabbed detail dialog (tree view + raw JSON) built from the cached HTTP payload, so nested data like inventory is much easier to browse and expanded rows stay put while the monitor refreshes.
 
 #### Status Panel
 Displays:

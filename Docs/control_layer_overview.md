@@ -105,7 +105,9 @@ Copy code
 | Step | Producer | Consumer | Data Type |
 |------|-----------|-----------|-----------|
 | Server PID/flag | `start_server.py` | `crash_monitor.py` | JSON (`server_running.flag`) |
-| Log tail state | `monitor_log.py` | `vein_manager.py` | JSON (`log_monitor_state.json`) |
+| Log tail state | `monitor_log.py` | `vein_manager.py` | JSON (`log_monitor.state.json`, legacy `_state` file) |
+| Player snapshot | `monitor_log.py` | `vein_manager.py` | JSON (`player_characters.json`) |
+| HTTP API log | `monitor_log.py` | Operators | Text log (`Logs/http_api.log`) |
 | Crash monitor state | `crash_monitor.py` | `vein_manager.py` | JSON (`crash_monitor_state.json`) |
 | Backups | `utils.backup_save_file()` | File system | ZIP files |
 | Config | `config.py` | All controllers | Dict / cached JSON |
