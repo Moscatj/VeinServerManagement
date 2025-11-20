@@ -20,6 +20,7 @@ Core goals:
 | Layer | Description |
 |-------|--------------|
 | **UI Components** | Built with PySide6 (`QtWidgets`, `QtCore`, `QtGui`). Tabs, dialogs, and status lights visualize configuration and monitor data. |
+| **GUI Helpers** | `Controller/GUI/` hosts emerging reusable widgets that will gradually move layout logic out of `vein_manager.py`. |
 | **Controllers** | Interfaces with backend scripts (`start_server.py`, `shutdown_server.py`, `monitor_log.py`, `crash_monitor.py`) via subprocess calls. |
 | **Runtime Helpers** | Manages PID files, flags, runtime directories, and heartbeat files from the `Runtime/` folder. |
 | **Persistence** | Saves user overrides and window state via `QSettings`. |
@@ -30,35 +31,17 @@ Core goals:
 ## Key Components
 
 ### 1. **Main Window (`Main` class)**
-Central application controller handling:
-- UI layout and initialization.
-- Configuration file selection.
-- Event bindings for all buttons (start/stop/refresh/etc.).
-- JSON load/save/validation.
-- Background polling for status updates.
+Central application controller handling layout, config selection, button wiring, JSON I/O, and background polling. The window is now organized around three persistent zones:
 
-#### Tabs:
-| Tab | Description |
-|------|-------------|
-| **Paths** | Editable directory paths and runtime settings. |
-| **Server** | Launch parameters (ports, player limits, IPs, etc.). |
-| **Steam/Updates** | SteamCMD options and auto-update toggles. |
-| **Backups** | Backup paths, retention, and scheduling. |
-| **Monitor (simple)** | Flat monitoring parameters (intervals, timeouts). |
-| **Monitor (advanced)** | Nested config: tracking, notification, and backup sections. |
-| **Features** | Feature flags (log monitor, crash monitor, Discord alerts, etc.). |
-| **Top-level** | Unclassified scalars from `config.json`. |
-| **Monitors** | Realtime indicators for Log/Crash monitors plus HTTP API state (uptime, players, weather) when available. |
+1. **Command Ribbon** – compact bar with start/stop/restart buttons, LogMon/CrashMon toggles, and a selectable status label so errors can be copied into Discord or issue trackers.
+2. **Navigation Column** – shortcut buttons (logs/runtime/backups/controller), a collapsible “Config Source” picker (folder + file combo box), and the `NavigationPanel` with two sections:
+   - **Monitoring**: currently hosts the “Server Dashboard” view (live server state, monitors, players, backups).
+   - **Configuration**: jump links for `Paths`, `Server`, `Steam/Updates`, `Backups`, `Monitor (simple)`, `Monitor (advanced)`, `Features`, `Top-level`, and the dynamic `Search` tab.
+3. **Content Stack + Log Tail** – central stack swaps between the monitoring dashboard and the auto-built config editor while the right-hand log tail stays visible (and collapsible) regardless of view.
 
-The Monitors tab now includes a persistent player/character browser sourced from `Runtime/player_characters.json`. Up to 10 recently seen players remain visible even after they disconnect, greyed out with “offline” markers. Each player row shows a colored status light (green = in-world, orange = character select, red = offline) plus the active character name when available. Details also indicate whether the entry was verified by the HTTP API or came purely from log events, along with the age of the last log/HTTP sighting, so operators immediately see when a player was last observed. Double-clicking any player or character opens a tabbed detail dialog (tree view + raw JSON) built from the cached HTTP payload, so nested data like inventory is much easier to browse and expanded rows stay put while the monitor refreshes.
+The monitoring dashboard replaces the old “Monitors” tab. It still surfaces log/Crash monitor health, HTTP API world details, the player/character browser (fed by `Runtime/player_characters.json`), and backup status/controls—just with more breathing room for the growing data set. Double-clicking players still opens the detail dialog. Backup buttons live in the dashboard card but the logic (`_on_backup_now_clicked`, `_on_open_backups_clicked`) is unchanged.
 
-#### Status Panel
-Displays:
-- Server (green/red light)
-- Log Monitor (green/yellow/red)
-- Crash Monitor (green/red)
-- Current mode and uptime information
-- Compact runtime summary (flags present/missing)
+The configuration editor itself still relies on the generated tabs listed above; selecting a nav entry simply focuses the matching tab so muscle memory continues to work for long-time operators.
 
 ---
 
@@ -126,13 +109,16 @@ Watches the selected log file and streams content into the GUI in real time:
 ---
 
 ### 8. **UI Experience**
-- Built using Qt `QMainWindow` with split panels:
-  - Left: Config tabs
-  - Middle: Raw JSON editor
-  - Right: Live log view
+- Three-way splitter layout: left navigation column (shortcuts + config picker + `NavigationPanel`), center content stack (monitor dashboard + config editor), right live log tail (collapsible but tailer keeps running).
+- Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.
 - Supports dynamic dark/light themes and Windows Fusion style.
+- The log pane now includes:
+  - **Search Logs** tab (regex + timeframe) powered by the `logcat` worker.
+  - “Include archive” checkbox so searches can optionally scan files in `Logs/Archive/`.
+  - **Subsystem Log** tab that lists every management subsystem and its recent log files, plus an **Archive Logs** button to rotate live logs into `Logs/Archive/`.
+  - **Errors** tab that scans the most recent logs (last hour/day/week presets) and surfaces structured error/warning rows with subsystem/file/level/message metadata.
 
 ---
 

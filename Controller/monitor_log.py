@@ -21,6 +21,7 @@ from glob import glob
 from collections import deque
 
 from Tools import backups as _bk
+from Tools import mgmt_logs
 
 from config_helper import config
 from Tools.paths import logs_dir, absolute_log_file
@@ -39,8 +40,7 @@ LOGS_DIR = logs_dir()
 ABSOLUTE_LOG_FILE = absolute_log_file()
 PID_FILE = RUNTIME_DIR / "log_monitor.pid"
 ROOT_DIR = Path(__file__).resolve().parent.parent
-MGMT_LOG_DIR = Path(config.get("mgmt_log_dir") or (ROOT_DIR / "Logs"))
-HTTP_LOG_FILE = MGMT_LOG_DIR / "http_api.log"
+HTTP_LOG_FILE = mgmt_logs.subsystem_dir("http_api") / "http_api.log"
 PLAYER_SNAPSHOT_FILE = RUNTIME_DIR / "player_characters.json"
 
 # ---- Config knobs (with sensible defaults) ----
@@ -793,6 +793,7 @@ def monitor() -> None:
     http_client: Optional[VeinHTTPClient] = None
     last_http_refresh = 0.0
     http_refresh_interval = max(STATE_REFRESH_S, 5)
+    http_pause_logged = False
 
     if TRACK_HTTP_API:
         try:
@@ -834,11 +835,24 @@ def monitor() -> None:
             }
         )
 
+    def _server_up_recent(now_ts: float) -> bool:
+        if not seen_server_up_once:
+            return False
+        return (now_ts - last_seen_server_up) <= max(http_refresh_interval * 2, 30)
+
     def _maybe_refresh_http_api(ts: Optional[float] = None) -> None:
-        nonlocal last_http_refresh
+        nonlocal last_http_refresh, http_pause_logged
         if not http_client:
             return
         now_ts = ts if ts is not None else time.time()
+        if not _server_up_recent(now_ts):
+            if not http_pause_logged:
+                _log_http_api(
+                    "HTTP API polling paused: server not running or not ready."
+                )
+                http_pause_logged = True
+            return
+        http_pause_logged = False
         if now_ts - last_http_refresh >= http_refresh_interval:
             _refresh_http_api_state(http_client)
             last_http_refresh = now_ts

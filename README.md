@@ -24,6 +24,7 @@ VeinServerManagement/
 ├── Backups/            # Backup output folders (LastPlayer, Manual, etc.)
 ├── Config/
 │   ├── config.yaml     # Primary config file (YAML)
+    config.example.yaml  # Sanitized template copied into release bundles
 │   └── Backup/         # Legacy sample/backup configs (JSON/YAML)
 ├── Controller/
 │   ├── config.py           # Config loader (YAML/JSON, env-aware)
@@ -33,6 +34,7 @@ VeinServerManagement/
 │   ├── nightly_backup.py   # Scheduled backup helper
 │   ├── shutdown_server.py  # Clean shutdown script
 │   ├── start_server.py     # Server startup script
+?",   ?"o?"??"? vein_tools.py       # CLI dispatcher used by packaged builds
 │   ├── Tools/              # Shared helper modules (process, runtime, backups, restart, etc.)
 │   ├── vein_manager.py     # PySide6 GUI (main window + StatusPoller)
 │   ├── │   │   ├── backups.py
@@ -47,11 +49,17 @@ VeinServerManagement/
 │   └── Legacy/             # Older scripts kept for reference
 ├── Docs/               # Developer docs (control_layer_overview, Developer_Guide, etc.)
 ├── Logs/               # Management logs (stdout/stderr from tools)
-│   └── http_api.log    # HTTP API polling errors from monitor_log.py
+│   ├── gui/            # VeinManager stdout/stderr, GUI helper output
+│   ├── monitors/       # monitor_log/crash_monitor stdout + monitors/http_api/http_api.log
+│   ├── controller/     # start/stop scripts and helper subprocess output
+│   ├── Archive/        # auto-archived history rotated out of the live folders
+│   ├── manifest.json   # metadata for each log emission (subsystem, timestamp, PID, etc.)
+│   └── summary.json    # aggregated error summary produced by log_summary.py
 ├── Runtime/            # PID files, flags, small JSON state (created at runtime)
 │   └── player_characters.json  # HTTP API snapshot of online players + characters
 ├── Scripts/
 │   ├── env_setup.bat
+BuildInstaller.bat
 │   ├── StartServer.bat
 │   ├── StartAllMonitors.bat
 │   ├── StartServerWithMonitors.bat
@@ -243,7 +251,22 @@ Docs/utils_summary.md, Docs/vein_manager_summary.md — focused module summaries
 
 Docs/env_setup_summary.md — environment & batch script overview
 
+Docs/packaging_overview.md -- building the GUI `.exe`, staged bundles, and installer plan
+
 Start with Docs/_index.md if you’re exploring the system.
+
+🧾 Log Utilities
+To keep troubleshooting tidy, the suite ships helper scripts that respect `Config/management_logs`:
+
+- `python Controller/logcat.py --search "error"`  
+  Grep-style search across any subsystem’s logs with optional `--subsystem monitor_log`, `--since 6h`, `--limit 300`, and `--case-sensitive`.
+- Add `--include-archive` if you want to search the logs already rotated into `Logs/Archive/…`.
+
+- `python Controller/log_summary.py`  
+  Scans each subsystem’s latest logs for warnings/errors and writes JSON reports to both `Logs/<subsystem>/summary.json` and `Logs/summary.json`.
+
+Both commands rely on the manifest metadata, so CLI output includes paths and line numbers ready for copy/paste.
+The GUI mirrors these capabilities: the right-hand log pane now offers **Search Logs**, **Subsystem Log** (with an *Archive Logs* button), and **Errors** tabs so you can grep, browse entire stdout/stderr captures, or review the latest warnings—plus an “Include archive” checkbox if you do want searches to scan `Logs/Archive/`.
 
 🧠 AI / Codex Usage
 This repo is designed to work well with tools like OpenAI Codex and GitHub Copilot:

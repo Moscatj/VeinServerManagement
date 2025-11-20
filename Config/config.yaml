@@ -3,12 +3,30 @@ version: "2.2"
 
 # =============================== PATHS (TAB) ================================
 paths:                      # File system locations used by tools
-  server_root: "G:/Servers/VeinServer"
-  runtime_dir: "G:/Servers/VeinServer/VeinServerManagement/Runtime"   # temp/state files
-  saves_dir: "G:/Servers/VeinServer/Vein/Saved/SaveGames"             # .sav/.vns
-  logs_dir: "G:/Servers/VeinServer/Vein/Saved/Logs"                   # live Vein.log
-  absolute_log_file: "G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log" # override if needed
-  mgmt_log_dir: "G:/Servers/VeinServer/VeinServerManagement/Logs"     # stdout of our tools
+  server_root: ".."
+  runtime_dir: "Runtime"                                          # temp/state files
+  saves_dir: "../Vein/Saved/SaveGames"                            # .sav/.vns
+  logs_dir: "../Vein/Saved/Logs"                                  # live Vein.log
+  absolute_log_file: "../Vein/Saved/Logs/Vein.log"                # override if needed
+  mgmt_log_dir: "Logs"                                            # stdout of our tools
+
+# ========================== MANAGEMENT LOGS ===============================
+management_logs:
+  root: "Logs"        # default: paths.mgmt_log_dir
+  layout:
+    vein_manager: "gui"
+    start_server: "controller/start_server"
+    monitor_log: "monitors/log_monitor"
+    crash_monitor: "monitors/crash_monitor"
+    http_api: "monitors/http_api"
+  retention:
+    max_files: 6                                                # keep latest N per subsystem
+    max_age_days: 14                                            # archive anything older than this window
+  archive:
+    enabled: true
+    root: "Logs/Archive"
+    max_files: 150
+    max_age_days: 90
 
 # =============================== SERVER (TAB) ===============================
 server:                     # How we launch the dedicated server
@@ -81,7 +99,7 @@ steam:                      # SteamCMD update policy
 # ============================= BACKUPS (TAB) ================================
 backups:                    # Save-file backups, log snapshots, schedules, triggers
   enabled: true
-  root: "G:/Servers/VeinServer/VeinServerManagement/Backups"
+  root: "Backups"
 
   # --- Global retention for save ZIPs ---
   max_backups: 10                          # keep last N save archives
@@ -97,7 +115,7 @@ backups:                    # Save-file backups, log snapshots, schedules, trigg
   # --- Log snapshots (separate from save ZIPs; lives outside game tree) ---
   logs:
     enabled: true
-    root: "G:/Servers/VeinServer/VeinServerManagement/Backups/Logs"
+    root: "Backups/Logs"
     max_files: 120
     max_age_days: 30
     rotation_retries: 3                    # retry logic for snapshot copy/zip
@@ -124,7 +142,7 @@ backups:                    # Save-file backups, log snapshots, schedules, trigg
 # =========================== LOG MONITOR (TAB) ==============================
 log_monitor:
   enabled: true
-  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/log_monitor.state.json"
+  state_file: "Runtime/log_monitor.state.json"
   heartbeat_seconds: 60
   fresh_window_multiplier: 2.0
   crash_signatures:
@@ -147,7 +165,7 @@ crash_monitor:
   enabled: true
   mode: "proc_missing"
   heartbeat_seconds: 60
-  state_file: "G:/Servers/VeinServer/VeinServerManagement/Runtime/crash_monitor_state.json"
+  state_file: "Runtime/crash_monitor_state.json"
   restart_on_crash: true
   preboot_shutdown: true
   shutdown_timeout_sec: 60

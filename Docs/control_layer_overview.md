@@ -107,7 +107,9 @@ Copy code
 | Server PID/flag | `start_server.py` | `crash_monitor.py` | JSON (`server_running.flag`) |
 | Log tail state | `monitor_log.py` | `vein_manager.py` | JSON (`log_monitor.state.json`, legacy `_state` file) |
 | Player snapshot | `monitor_log.py` | `vein_manager.py` | JSON (`player_characters.json`) |
-| HTTP API log | `monitor_log.py` | Operators | Text log (`Logs/http_api.log`) |
+| HTTP API log | `monitor_log.py` | Operators | Text log (`Logs/monitors/http_api/http_api.log`) |
+| Log search CLI | `Controller/logcat.py` | Operators / support | Regex search across all management logs respecting per-subsystem layout |
+| Log summary CLI | `Controller/log_summary.py` | Operators / support | Emits JSON summaries (`Logs/summary.json` + per-subsystem `summary.json`) |
 | Crash monitor state | `crash_monitor.py` | `vein_manager.py` | JSON (`crash_monitor_state.json`) |
 | Backups | `utils.backup_save_file()` | File system | ZIP files |
 | Config | `config.py` | All controllers | Dict / cached JSON |
@@ -139,4 +141,4 @@ Copy code
 
 ---
 
-_Last updated: 2025 — Red Head Garage / Vein Server Management Suite v2.1_
+_Last updated: 2025 — Red Head Software / Vein Server Management Suite v2.1_

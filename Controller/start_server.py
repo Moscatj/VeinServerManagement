@@ -23,6 +23,7 @@ from Tools.runtime import (
     RUNTIME_DIR,
     set_server_state,
 )
+from Tools import mgmt_logs
 
 from Tools.config_io import load_and_validate_config
 
@@ -92,10 +93,14 @@ def _spawn_py(script_name: str) -> bool:
 
         creationflags = win_creationflags_for_headless() if headless_enabled() else 0
 
-        log_dir = Path(config.get("mgmt_log_dir", _controller_root() / "Logs"))
-        log_dir.mkdir(parents=True, exist_ok=True)
-        stdout = open(log_dir / f"{script.stem}.stdout.log", "ab", buffering=0)
-        stderr = open(log_dir / f"{script.stem}.stderr.log", "ab", buffering=0)
+        logs = mgmt_logs.allocate_stream_files(
+            script.stem,
+            label=script.stem,
+            streams=("stdout", "stderr"),
+            metadata={"script": script_name},
+        )
+        stdout = open(logs["stdout"], "ab", buffering=0)
+        stderr = open(logs["stderr"], "ab", buffering=0)
 
         cmd = _py_argv() + [str(script)]
         env = os.environ.copy()

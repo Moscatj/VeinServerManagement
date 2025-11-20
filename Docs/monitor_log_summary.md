@@ -12,7 +12,7 @@ state file for the GUI, and exits cleanly when the server stops or a stop flag i
 - Pick the active Vein log file (from `Config` absolute path or newest `Vein*.log`).
 - Tail and parse lines for server/players/autosaves/crash patterns.
 - Write heartbeat/state for the GUI (`Runtime/log_monitor.state.json`, legacy `log_monitor_state.json`, plus `log_monitor.pid`).
-- When `track.http_api` is enabled, poll the Vein HTTP API (status/players/time/weather), log failures to `Logs/http_api.log`, and publish structured payloads so the GUI can display world info without hammering the API.
+- When `track.http_api` is enabled, poll the Vein HTTP API (status/players/time/weather), log failures to `Logs/monitors/http_api/http_api.log`, and publish structured payloads so the GUI can display world info without hammering the API.
 - Maintain a rolling player cache/timeline (log + HTTP) and surface it through `Runtime/player_characters.json` plus a compact `players` block inside `log_monitor.state.json`.
 - Respect feature flags for **what** to track and **what** to notify on Discord.
 
@@ -24,7 +24,7 @@ state file for the GUI, and exits cleanly when the server stops or a stop flag i
 - **Stop flag:** `Runtime/stop_log_monitor.flag` — if present, monitor stops gracefully.
 - **Log dir:** from `utils.LOGS_DIR`; optional `utils.ABSOLUTE_LOG_FILE` overrides selection.
 - **Player snapshot:** `Runtime/player_characters.json` — enriched Steam player + character/inventory data fetched from the HTTP API.
-- **HTTP API log:** `Logs/http_api.log` — rolling log of HTTP/API errors for troubleshooting.
+- **HTTP API log:** `Logs/monitors/http_api/http_api.log` — rolling log of HTTP/API errors for troubleshooting.
 
 ---
 

@@ -33,7 +33,7 @@ Key folders and files:
   - `Backup/` — old sample configs / backups (JSON/YAML)
 
 - `Controller/`
-  - `start_server.py` — starts the Vein dedicated server
+  - `start_server.py` – starts the Vein dedicated server
   - `shutdown_server.py` — orchestrates **safe shutdown** (CRITICAL)
   - `crash_monitor.py` — process crash monitor
   - `monitor_log.py` — log tail / freshness monitor
@@ -41,7 +41,9 @@ Key folders and files:
   - `Controller/Tools/` modules — shared helpers (processes, runtime flags, backups, Discord)
   - `config.py` — robust config loader (YAML/JSON, env override)
   - `config_helper.py` — ergonomic wrapper around loaded config
-  - `vein_manager.py` — PySide6 GUI (includes `StatusPoller` QRunnable)
+  - `vein_manager.py` – PySide6 GUI (includes `StatusPoller` QRunnable)
+  - `logcat.py` – CLI log search across management subsystems (supports `--include-archive` to scan `Logs/Archive/`)
+  - `log_summary.py` – emits JSON summaries of recent log warnings/errors
   - `Legacy/` — older scripts kept for reference (read-only unless user asks)
 
 - `Controller/Tools/`
@@ -68,7 +70,8 @@ Key folders and files:
   - Output from backup routines (manual, nightly, autosave, etc.)
 
 - `Logs/`
-  - Logs from the management suite (VeinManager stdout/stderr, tools logs).
+  - Per-subsystem management logs (GUI, monitors, controller helpers) plus `Archive/` for rotated history.
+  - `manifest.json` (metadata for every log emission) and `summary.json` (latest aggregated warnings/errors).
 
 - `Docs/`
   - `_index.md` — docs index

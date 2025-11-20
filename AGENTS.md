@@ -231,18 +231,25 @@ Rules:
 
 ---
 
-# 8. GUI SAFETY RULES (PySide6)
+# 8. GUI & RUNTIME SAFETY RULES
 
-Main GUI:  
-`Controller/vein_manager.py`
+Applies to:
+- `Controller/vein_manager.py`
+- `Controller/monitor_log.py`
+- `Controller/crash_monitor.py`
+- Any long-running helper that executes alongside the game server
 
 Rules:
 
-- Never block the UI thread
-- Heavy work must use `QRunnable` (StatusPoller or new tasks)
-- GUI must not kill processes directly
-- GUI must call shared logic from Tools modules
+- Never block the GUI thread (heavy log parsing, disk IO, HTTP calls must use `QRunnable`/background workers)
+- GUI must not kill processes directly and must call shared logic from Tools modules
 - GUI must not modify game files
+- Crash/log monitors must remain lightweight: avoid tight loops, sleep sensibly, and **never** perform work that could impact the Vein server’s CPU/disk usage without user approval
+- Any new feature that reads large logs, snapshots saves, or touches runtime state should:
+  - Run off the UI thread (if initiated from the GUI)
+  - Use bounded work units / sleeps inside monitors
+  - Avoid accessing the Vein server filesystem except for allowed read-only operations
+- Features that could impact in-game performance (e.g., frequent backups, aggressive scans, high-frequency polling) require explicit user approval before implementation.
 
 ---
 

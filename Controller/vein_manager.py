@@ -1,10 +1,10 @@
-# vein_manager.py — Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
+﻿# vein_manager.py — Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
 from __future__ import annotations
 
 # --- stdlib imports first
 import json, os, sys, subprocess, time, re
 from pathlib import Path
-from typing import Any, Dict, Tuple, List, Optional
+from typing import Any, Dict, Tuple, List, Optional, Callable
 from datetime import datetime, timezone
 import collections
 
@@ -30,16 +30,25 @@ except Exception:
 
 # ----------------------------- Environment -----------------------------------
 ENV = os.environ
-ROOT = Path(ENV.get("VEIN_MGMT_ROOT", r"G:\Servers\VeinServer\VeinServerManagement"))
+
+
+def _default_root() -> Path:
+    """Determine the management root for editable resources."""
+    if ENV.get("VEIN_MGMT_ROOT"):
+        return Path(ENV["VEIN_MGMT_ROOT"])
+    if getattr(sys, "frozen", False):
+        # When packaged (PyInstaller) prefer the directory that contains the exe
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+ROOT = _default_root()
 CONFIG_DIR = ROOT / "Config"
 CTRL_DIR = ROOT / "Controller"
 RUNTIME_FALLBACK = ROOT / "Runtime"
 PYEXE_ENV = ENV.get("PYEXE", "")
 APP_ORG = "RHG"
 APP_NAME = "VeinManager"
-LOGS_DIR = ROOT / "Logs"
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
 # Ensure we can import Tools/* even if PYTHONPATH wasn't set by the .bat
 if str(CTRL_DIR) not in sys.path:
     sys.path.insert(0, str(CTRL_DIR))
@@ -47,8 +56,30 @@ if str(CTRL_DIR) not in sys.path:
 # Now it is safe to import Tools modules
 try:
     from Tools.config_io import load_and_validate_config
+    from Tools import mgmt_logs, log_search, log_events
 except Exception as e:
-    print(f"[FATAL] Could not import Tools.config_io from {CTRL_DIR}: {e}")
+    print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
+    sys.exit(1)
+
+try:
+    from GUI import (
+        NavigationItem,
+        NavigationPanel,
+        build_config_editor,
+        build_dashboard,
+        build_command_bar,
+        build_left_panel,
+        build_log_panel,
+    build_placeholder_view,
+    CollapsibleBox,
+    KVRow,
+    handle_player_tree_double_click,
+    StatusBus,
+    StatusPoller,
+    ConfigRenderer,
+) 
+except Exception as e:
+    print(f"[FATAL] Could not import Controller.GUI components: {e}")
     sys.exit(1)
 
 
@@ -86,9 +117,14 @@ from typing import Tuple as _Tuple
 def _setup_process_logging():
     """Redirect VeinManager stdout/stderr to Logs and capture crashes."""
     try:
-        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        out = LOGS_DIR / f"VeinManager.{ts}.stdout.log"
-        err = LOGS_DIR / f"VeinManager.{ts}.stderr.log"
+        files = mgmt_logs.allocate_stream_files(
+            "vein_manager",
+            label="VeinManager",
+            streams=("stdout", "stderr"),
+            metadata={"pid": os.getpid(), "source": "vein_manager"},
+        )
+        out = files["stdout"]
+        err = files["stderr"]
 
         sys.stdout = open(out, "w", buffering=1, encoding="utf-8", errors="replace")
         sys.stderr = open(err, "w", buffering=1, encoding="utf-8", errors="replace")
@@ -486,160 +522,7 @@ def _age_str(iso_ts: str | None) -> str:
         return "—"
 
 
-def _iter_keys_preserve(node):
-    try:
-        return list(node.keys())
-    except Exception:
-        return list(node) if isinstance(node, (list, tuple)) else []
 
-
-def _human_title(k: str) -> str:
-    return (k or "").replace("_", " ").strip().title() or "Top-level"
-
-
-class StatusBus(QtCore.QObject):
-    ready = QtCore.Signal(dict)
-
-
-# ----------------------------- Background poller ------------------------------
-class StatusSnapshot(QtCore.QObject):
-    ready = QtCore.Signal(dict)
-
-
-def _map_v2_paths(raw: dict) -> dict:
-    """
-    Build a minimal flat view for tools expecting legacy keys.
-    v2 examples:
-      paths:
-        server: G:\Servers\VeinServer\Vein
-        runtime: G:\Servers\VeinServer\VeinServerManagement\Runtime
-        logs: G:\Servers\VeinServer\Vein\Saved\Logs
-        saves: G:\Servers\VeinServer\Vein\Saved\SaveGames
-    """
-    p = raw.get("paths", {}) or {}
-
-    def pick(*keys, default=""):
-        for k in keys:
-            v = p.get(k) or raw.get(k)
-            if v:
-                return v
-        return default
-
-    flat = {
-        "server_dir": pick("server", "server_dir"),
-        "runtime_dir": pick("runtime", "runtime_dir"),
-        "logs_dir": pick("logs", "logs_dir"),
-        "save_dir": pick("saves", "save_dir"),
-        # executables
-        "server_executables": list(raw.get("server_executables", []))
-        or list((raw.get("server", {}) or {}).get("executables", [])),
-        "preferred_exe": (
-            raw.get("preferred_exe")
-            or (raw.get("server", {}) or {}).get("preferred_exe")
-            or ""
-        ),
-        # monitor knobs used by config_io
-        "monitor": raw.get("monitor", {}) or {},
-        "steam": raw.get("steam", {}) or {},
-        "backups": raw.get("backups", {}) or raw.get("backup", {}) or {},
-    }
-    # if any required path is empty, leave as-is; config_io will warn but not fatal
-    return flat
-
-
-def reload_config(self):
-    # stop any previous poller
-    if self._poller:
-        self._poller.stop_flag = True
-        self._poller = None
-
-    p = StatusPoller(self.config_path)
-    p.setAutoDelete(False)  # IMPORTANT: don't auto-delete while run() is mid-emit
-    p.signals = self.status_bus  # reuse the stable, parented bus
-    p.stop_flag = False
-    self._poller = p
-    self._pool.start(p)
-
-    self._start_status_poller()  # restart with the new config
-
-
-class StatusPoller(QtCore.QRunnable):
-    """
-    Reads Runtime pid/flags and small JSONs off the UI thread and returns a compact snapshot:
-      {'server':bool,'logmon':bool,'logmon_fresh':bool,'crashmon':bool,'crash_mode':str}
-    """
-
-    def __init__(self, cfg_path: str):
-        super().__init__()
-        self.cfg_path = cfg_path
-        self.signals = StatusSnapshot()
-        self._last_tasklist_at = 0.0
-        self.stop_flag = False
-
-        # --- Try legacy/flat loader first (keeps old installs working)
-        vcfg = None
-        try:
-            vcfg = load_and_validate_config(cfg_path, fatal=False)
-        except Exception:
-            vcfg = None
-
-        if vcfg:
-            # Legacy (v1) field names
-            self.hb_seconds = getattr(vcfg, "hb_seconds", 60)
-            self.fresh_mult = getattr(vcfg, "fresh_window_multiplier", 2.0)
-            self.paths = {
-                "server_dir": getattr(vcfg, "server_dir", ""),
-                "runtime_dir": getattr(vcfg, "runtime_dir", ""),
-                "logs_dir": getattr(vcfg, "logs_dir", ""),
-                "save_dir": getattr(vcfg, "save_dir", ""),
-            }
-            self.selected_exe = getattr(vcfg, "selected_exe", "")
-        else:
-            # Fallback to v2: load with the same universal loader used by the GUI
-            obj, kind, _ = _load_any_config(cfg_path)
-            obj = obj if isinstance(obj, dict) else {}
-
-            p = obj.get("paths", {}) or {}
-            self.paths = {
-                "server_dir": p.get("server") or p.get("server_dir") or "",
-                "runtime_dir": p.get("runtime") or p.get("runtime_dir") or "",
-                "logs_dir": p.get("logs") or p.get("logs_dir") or "",
-                "save_dir": p.get("saves") or p.get("save_dir") or "",
-            }
-
-            # Heartbeat knobs live in log_monitor (v2). Fallback to old "monitor" if present.
-            lm = obj.get("log_monitor", {}) or {}
-            mon = obj.get("monitor", {}) or {}
-            self.hb_seconds = int(
-                lm.get(
-                    "heartbeat_seconds",
-                    lm.get(
-                        "heartbeat_interval_seconds",
-                        mon.get(
-                            "heartbeat_seconds",
-                            mon.get("heartbeat_interval_seconds", 60),
-                        ),
-                    ),
-                )
-            )
-            self.hb_seconds = max(5, self.hb_seconds)
-            self.fresh_mult = float(
-                lm.get(
-                    "fresh_window_multiplier", mon.get("fresh_window_multiplier", 2.0)
-                )
-            )
-            # clamp fresh multiplier a little to avoid nonsense
-            self.fresh_mult = max(0.25, min(10.0, self.fresh_mult))
-
-            # Preferred exe (if GUI wants to display/confirm)
-            srv = obj.get("server", {}) or {}
-            self.selected_exe = srv.get("preferred_exe", "")
-
-        # Normalize to Path objects we’ll use later
-        for k, v in list(self.paths.items()):
-            self.paths[k] = str(v or "").strip()
-
-    # --- StatusPoller helpers ---
     def _runtime_paths_v2(self) -> dict:
         rd = Path(self.paths.get("runtime_dir", "") or "")
         return {
@@ -907,6 +790,138 @@ class FileTail(QtCore.QObject):
             self._open_current(end=False)
 
 
+# ------------------------ Log search worker ---------------------------------
+class LogSearchWorker(QtCore.QRunnable):
+    class Signals(QtCore.QObject):
+        ready = QtCore.Signal(list)
+        error = QtCore.Signal(str)
+
+    def __init__(
+        self,
+        *,
+        subsystems: Optional[List[str]],
+        pattern: str,
+        since: Optional[str],
+        limit: int,
+        case_sensitive: bool,
+        include_archive: bool,
+        archive_only: Optional[set[str]] = None,
+    ):
+        super().__init__()
+        self.subsystems = subsystems
+        self.pattern = pattern
+        self.since = since
+        self.limit = limit
+        self.case_sensitive = case_sensitive
+        self.include_archive = include_archive
+        self.archive_only = archive_only or set()
+        self.signals = self.Signals()
+
+    def run(self) -> None:
+        try:
+            since_ts = log_search.parse_since(self.since)
+            hits = log_search.search_logs(
+                subsystems=self.subsystems,
+                pattern=self.pattern,
+                case_sensitive=self.case_sensitive,
+                since_ts=since_ts,
+                max_hits=self.limit,
+                include_archive=self.include_archive,
+                archive_only=self.archive_only,
+            )
+            payload = [
+                {
+                    "subsystem": hit.subsystem,
+                    "file": str(hit.file),
+                    "line": hit.line_no,
+                    "text": hit.text,
+                }
+                for hit in hits
+            ]
+            self.signals.ready.emit(payload)
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            self.signals.error.emit(str(exc))
+
+
+class LogErrorWorker(QtCore.QRunnable):
+    class Signals(QtCore.QObject):
+        ready = QtCore.Signal(list)
+        error = QtCore.Signal(str)
+
+    def __init__(
+        self,
+        *,
+        subsystems: Optional[List[str]],
+        since: Optional[str],
+        limit: int,
+        include_archive: bool = False,
+        archive_only: bool = False,
+    ):
+        super().__init__()
+        self.subsystems = subsystems
+        self.since = since
+        self.limit = limit
+        self.include_archive = include_archive
+        self.archive_only = archive_only
+        self.signals = self.Signals()
+
+    def run(self) -> None:
+        try:
+            subs = self.subsystems or mgmt_logs.available_subsystems()
+            since_ts = log_search.parse_since(self.since)
+            events = log_events.collect_recent_events(
+                subsystems=subs,
+                since_ts=since_ts,
+                per_file_limit=20,
+                max_events=self.limit,
+                include_archive=self.include_archive,
+                archive_only=self.archive_only,
+            )
+            payload = []
+            root = mgmt_logs.management_log_root()
+            for evt in events:
+                try:
+                    rel = evt.file.relative_to(root)
+                    if len(rel.parts) >= 2:
+                        subsystem = rel.parts[-2]
+                    else:
+                        subsystem = rel.parts[0]
+                except Exception:
+                    rel = evt.file
+                    subsystem = "unknown"
+                payload.append(
+                    {
+                        "subsystem": subsystem,
+                        "file": str(rel),
+                        "line": evt.line_no,
+                        "level": evt.level,
+                        "message": evt.message,
+                        "timestamp": evt.timestamp,
+                    }
+                )
+            self.signals.ready.emit(payload)
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
+
+
+class ArchiveLogsWorker(QtCore.QRunnable):
+    class Signals(QtCore.QObject):
+        ready = QtCore.Signal(list)
+        error = QtCore.Signal(str)
+
+    def __init__(self, *, include_active: bool = False):
+        super().__init__()
+        self.include_active = include_active
+        self.signals = self.Signals()
+
+    def run(self) -> None:
+        try:
+            moved = mgmt_logs.archive_all_logs(include_active=self.include_active)
+            self.signals.ready.emit(moved)
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
+
+
 # ----------------------- JSON syntax highlight -------------------------------
 class JsonHL(QtGui.QSyntaxHighlighter):
     def __init__(self, doc):
@@ -1077,185 +1092,7 @@ class AdvancedDialog(QtWidgets.QDialog):
         return {"use_defaults": use_defs, "overrides": ov}
 
 
-class CollapsibleBox(QtWidgets.QWidget):
-    """Simple collapsible section with a header and a container layout."""
-
-    def __init__(self, title: str):
-        super().__init__()
-        self._title_base = title
-        self._count = 0
-
-        self.toggle = QtWidgets.QToolButton(text=title, checkable=True, checked=True)
-        self.toggle.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-        self.toggle.setArrowType(QtCore.Qt.DownArrow)
-        self.toggle.toggled.connect(self._on_toggled)
-
-        self.header = QtWidgets.QHBoxLayout()
-        self.header.setContentsMargins(0, 0, 0, 0)
-        self.header.addWidget(self.toggle)
-        self.header.addStretch(1)
-
-        self.container = QtWidgets.QWidget()
-        self.vbox = QtWidgets.QVBoxLayout(self.container)
-        self.vbox.setContentsMargins(8, 6, 8, 6)
-        self.vbox.setSpacing(6)
-
-        outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(0, 8, 0, 0)
-        outer.addLayout(self.header)
-        outer.addWidget(self.container)
-
-    def _on_toggled(self, on: bool):
-        self.container.setVisible(on)
-        self.toggle.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
-
-    def layout_for_rows(self) -> QtWidgets.QVBoxLayout:
-        return self.vbox
-
-    def set_count(self, n: int, active: bool):
-        """Update header with a small count when filtering."""
-        self._count = n
-        suffix = f"  ({n})" if active else ""
-        self.toggle.setText(self._title_base + suffix)
-
-    def setContentLayout(self, layout: QtWidgets.QLayout):
-        # Replace the internal vbox with the provided layout
-        # and reparent its items so collapsing still works.
-        # Keep a reference so callers can add rows into it.
-        # (Minimal, safe implementation)
-        # Remove old vbox’s widgets
-        while self.vbox.count():
-            item = self.vbox.takeAt(0)
-            w = item.widget()
-            if w:
-                w.setParent(None)
-        # Install new layout into the container
-        self.vbox = (
-            layout
-            if isinstance(layout, QtWidgets.QVBoxLayout)
-            else QtWidgets.QVBoxLayout(self.container)
-        )
-        self.container.setLayout(self.vbox)
-
-
 # ------------------------------ KV Row editor ---------------------------------
-class KVRow(QtWidgets.QWidget):
-    changed = QtCore.Signal(tuple, object)
-
-    def __init__(self, label: str, path: Tuple[str, ...], value: Any, parent=None):
-        super().__init__(parent)
-        self.path = path
-        self.label_text = label
-        h = QtWidgets.QHBoxLayout(self)
-        h.setContentsMargins(4, 2, 4, 2)
-        h.setSpacing(6)
-        lab = QtWidgets.QLabel(label)
-        lab.setMinimumWidth(180)
-        h.addWidget(lab)
-        self.label = lab
-        if isinstance(value, bool):
-            w = QtWidgets.QCheckBox()
-            w.setChecked(value)
-            w.stateChanged.connect(
-                lambda *_: self.changed.emit(self.path, bool(w.isChecked()))
-            )
-            editor = w
-        elif isinstance(value, int) and not isinstance(value, bool):
-            w = QtWidgets.QLineEdit(str(value))
-            w.setValidator(QtGui.QIntValidator(-2_147_483_648, 2_147_483_647))
-            w.editingFinished.connect(
-                lambda: self.changed.emit(self.path, int(w.text() or 0))
-            )
-            editor = w
-        elif isinstance(value, float):
-            w = QtWidgets.QLineEdit(str(value))
-            w.setValidator(
-                QtGui.QDoubleValidator(bottom=-1e308, top=1e308, decimals=12)
-            )
-            w.editingFinished.connect(
-                lambda: self.changed.emit(self.path, float(w.text() or 0.0))
-            )
-            editor = w
-        else:
-            box = QtWidgets.QWidget()
-            hb = QtWidgets.QHBoxLayout(box)
-            hb.setContentsMargins(0, 0, 0, 0)
-            w = QtWidgets.QLineEdit("" if value is None else str(value))
-            hb.addWidget(w, 1)
-            key = self.path[-1] if self.path else ""
-
-            def looks_path_key(k: str) -> bool:
-                k = k.lower()
-                return any(t in k for t in ("path", "file", "dir", "folder"))
-
-            def is_dir_key(k: str) -> bool:
-                k = k.lower()
-                return "dir" in k or "folder" in k
-
-            if looks_path_key(key):
-                btn = QtWidgets.QToolButton()
-                btn.setText("…")
-                btn.setToolTip("Browse")
-
-                def pick():
-                    cur = w.text().strip() or str(Path.home())
-                    if is_dir_key(key):
-                        d = QtWidgets.QFileDialog.getExistingDirectory(
-                            self, "Select folder", cur
-                        )
-                        if d:
-                            w.setText(d)
-                            self.changed.emit(self.path, d)
-                    else:
-                        p, _ = QtWidgets.QFileDialog.getOpenFileName(
-                            self, "Select file", cur, "All files (*.*)"
-                        )
-                        if p:
-                            w.setText(p)
-                            self.changed.emit(self.path, p)
-
-                btn.clicked.connect(pick)
-                hb.addWidget(btn, 0)
-            w.editingFinished.connect(lambda: self.changed.emit(self.path, w.text()))
-            editor = box
-        editor.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
-        )
-        h.addWidget(editor)
-        self.editor = editor
-
-    def value(self):
-        # checkbox
-        if isinstance(self.editor, QtWidgets.QCheckBox):
-            return bool(self.editor.isChecked())
-        # line edits (inside the wrapper widget or direct)
-        edits = self.editor.findChildren(QtWidgets.QLineEdit) or (
-            [self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else []
-        )
-        if edits:
-            return edits[0].text()
-        return None
-
-    def scrollToMe(self):
-        # simple focus helper used by search jump
-        self.setFocus()
-
-    def set_value(self, value: Any):
-        if isinstance(self.editor, QtWidgets.QCheckBox):
-            self.editor.blockSignals(True)
-            self.editor.setChecked(bool(value))
-            self.editor.blockSignals(False)
-        else:
-            edits = self.editor.findChildren(QtWidgets.QLineEdit) or (
-                [self.editor] if isinstance(self.editor, QtWidgets.QLineEdit) else []
-            )
-            if edits:
-                e = edits[0]
-                e.blockSignals(True)
-                e.setText("" if value is None else str(value))
-                e.blockSignals(False)
-
-
 # ------------------------------ Main window ----------------------------------
 class Main(QtWidgets.QMainWindow):
     def __init__(self):
@@ -1276,15 +1113,25 @@ class Main(QtWidgets.QMainWindow):
         self._rows_in_section = collections.defaultdict(
             list
         )  # type: dict[tuple[str, str], list[KVRow]]
-        self._section_keys_by_tab: dict[str, set[str]] = {}
 
         # settings
         q = QtCore.QSettings(APP_ORG, APP_NAME)
         self.use_defaults = bool(q.value("use_defaults", True))
         self.overrides = dict(q.value("overrides", {}) or {})
 
+        # Structures needed while building the UI
+        self._rows_by_tab = collections.defaultdict(list)  # tab_name -> [KVRow]
+        self._search_tab_name = "Search"
+        self._hl = None  # syntax highlighter holder for JSON editor
+
+        self._player_tree_signature = None
+        self._status_icon_cache = {}
+
         # 1) build UI (creates tabs + self.chk_live, self.log_game/self.log_lm/self.log_cm)
         self._ui()
+
+        # config renderer handles tab + filter state
+        self.config_renderer = ConfigRenderer(self)
 
         # 2) signals
         self._signals()  # should connect: b_clearlog-> _clear_current_log, chk_live-> _retail
@@ -1314,6 +1161,12 @@ class Main(QtWidgets.QMainWindow):
         self.status_bus = StatusBus(self)  # parented to the main window
         self.status_bus.ready.connect(self._status)
         self._pool = QtCore.QThreadPool.globalInstance()
+        self._log_search_running = False
+        self._error_refresh_running = False
+        self._archiving_logs = False
+        self._log_search_worker = None
+        self._error_worker = None
+        self._archive_worker = None
         self._poller = None
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(2000)
@@ -1330,388 +1183,139 @@ class Main(QtWidgets.QMainWindow):
             i: self._tab_base_titles[i] for i in range(self.tabs.count())
         }
 
-        # Row index by tab for search/result grouping
-        self._rows_by_tab = collections.defaultdict(list)  # tab_name -> [KVRow]
-        self._search_tab_name = "Search"
-        self._search_tab_idx = None
-        self._hl = None  # for syntax highlighter swap
-
-    # ------------------------------- UI --------------------------------------
+        # ------------------------------- UI --------------------------------------
     def _ui(self):
-        c = QtWidgets.QWidget()
-        self.setCentralWidget(c)
-        v = QtWidgets.QVBoxLayout(c)
-        v.setContentsMargins(8, 8, 8, 8)
-        v.setSpacing(10)
+        container = QtWidgets.QWidget()
+        self.setCentralWidget(container)
+        root = QtWidgets.QVBoxLayout(container)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
 
-        # ---- Header panel ----
-        header = QtWidgets.QWidget()
-        header.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
+        root.addWidget(build_command_bar(self, _dot))
+
+        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.main_splitter, 1)
+
+        monitor_items = [
+            NavigationItem(
+                "monitor.dashboard",
+                "Server Dashboard",
+                "Live server stats, monitors, and players",
+            )
+        ]
+        config_nav_data = [
+            ("config.paths", "Paths", "Server + runtime directories"),
+            ("config.server", "Server", "Launch arguments and gameplay rules"),
+            ("config.steam", "Steam/Updates", "SteamCMD + update settings"),
+            ("config.backups", "Backups", "Schedules and retention"),
+            ("config.monitor_simple", "Monitor (simple)", "Legacy monitor toggles"),
+            ("config.monitor_adv", "Monitor (advanced)", "Advanced monitor settings"),
+            ("config.features", "Features", "Feature flags and integrations"),
+            ("config.top", "Top-level", "Loose scalar keys"),
+            ("config.search", self._search_tab_name, "Quick search results"),
+        ]
+        self._config_nav_map = {vid: tab for vid, tab, _ in config_nav_data}
+        config_items = [NavigationItem(vid, label, subtitle) for vid, label, subtitle in config_nav_data]
+
+        self.nav_panel = NavigationPanel(monitor_items, config_items)
+        left_panel = build_left_panel(self, self.nav_panel)
+        self.main_splitter.addWidget(left_panel)
+
+        self.content_stack = QtWidgets.QStackedWidget()
+        self.main_splitter.addWidget(self.content_stack)
+
+        log_panel = build_log_panel(self)
+        self.main_splitter.addWidget(log_panel)
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(2, 1)
+        self.main_splitter.setCollapsible(2, True)
+        self._populate_log_sources()
+
+        self._view_routes: dict[str, tuple[QtWidgets.QWidget, Optional[Callable[[], None]]]] = {}
+        self._cached_admin_ids: set[str] | None = None
+        dashboard = build_dashboard(self, _dot)
+        self._register_view("monitor.dashboard", dashboard)
+
+        diag_placeholder = build_placeholder_view(
+            "Monitor diagnostics view is under construction."
         )
-        hv = QtWidgets.QVBoxLayout(header)
-        hv.setContentsMargins(0, 0, 0, 0)
-        hv.setSpacing(8)
+        self._register_view("monitor.diagnostics", diag_placeholder)
 
-        g = QtWidgets.QGridLayout()
-        g.setContentsMargins(0, 0, 0, 0)
-        g.setHorizontalSpacing(8)
-        g.setVerticalSpacing(6)
-        g.setColumnStretch(0, 0)
-        g.setColumnStretch(1, 1)
-        g.setColumnStretch(2, 0)
-        hv.addLayout(g)
-
-        r = 0
-        self.ed_cfgdir = QtWidgets.QLineEdit(self.config_dir)
-        self.b_cfgdir = QtWidgets.QPushButton("Browse Folder…")
-        self.b_cfgdir.setFixedWidth(130)
-        self.b_reload_cfgs = QtWidgets.QPushButton("Refresh")
-        self.b_reload_cfgs.setFixedWidth(90)
-        g.addWidget(QtWidgets.QLabel("Config Folder:"), r, 0)
-        g.addWidget(self.ed_cfgdir, r, 1)
-        g.addWidget(self.b_cfgdir, r, 2)
-        r += 1
-
-        self.cb_cfg = QtWidgets.QComboBox()
-        self.cb_cfg.setMinimumWidth(360)
-        self.cb_cfg.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        discord_placeholder = build_placeholder_view(
+            "Discord integration UI will live here once the backend is ready."
         )
-        self.cb_cfg.setMinimumContentsLength(24)
-        g.addWidget(QtWidgets.QLabel("Config File:"), r, 0)
-        g.addWidget(self.cb_cfg, r, 1)
-        g.addWidget(self.b_reload_cfgs, r, 2)
-        r += 1
+        self._register_view("monitor.discord", discord_placeholder)
 
-        # Shortcuts row (no path editors)
-        short = QtWidgets.QHBoxLayout()
-        hv.addLayout(short)
-        self.btn_logs = QtWidgets.QPushButton("Open Logs")
-        self.btn_rt = QtWidgets.QPushButton("Open Runtime")
-        self.btn_bak = QtWidgets.QPushButton("Open Backups")
-        self.btn_ctl = QtWidgets.QPushButton("Open Controller")
-        self.btn_adv = QtWidgets.QPushButton("Advanced…")
-        short.addWidget(self.btn_logs)
-        short.addWidget(self.btn_rt)
-        short.addWidget(self.btn_bak)
-        short.addWidget(self.btn_ctl)
-        short.addStretch(1)
-        short.addWidget(self.btn_adv)
-
-        # Actions + status lights
-        act = QtWidgets.QHBoxLayout()
-        act.setContentsMargins(0, 0, 0, 0)
-        act.setSpacing(8)
-        hv.addLayout(act)
-        self.dot_srv = QtWidgets.QLabel()
-        self.dot_srv.setStyleSheet(_dot(False))
-        self.dot_srv.setFixedSize(14, 14)
-        self.dot_lm = QtWidgets.QLabel()
-        self.dot_lm.setStyleSheet(_dot(False))
-        self.dot_lm.setFixedSize(14, 14)
-        self.dot_cm = QtWidgets.QLabel()
-        self.dot_cm.setStyleSheet(_dot(False))
-        self.dot_cm.setFixedSize(14, 14)
-        self.b_start = QtWidgets.QPushButton("Start Server")
-        self.b_stop = QtWidgets.QPushButton("Stop Server")
-        self.b_restart = QtWidgets.QPushButton("Restart")
-        self.b_lm_on = QtWidgets.QPushButton("Start Log Monitor")
-        self.b_lm_off = QtWidgets.QPushButton("Stop Log Monitor")
-        self.b_cm_on = QtWidgets.QPushButton("Start Crash Monitor")
-        self.b_cm_off = QtWidgets.QPushButton("Stop Crash Monitor")
-        self.status = QtWidgets.QLabel("Status: Idle")
-
-        def add(label, dotw):
-            act.addWidget(QtWidgets.QLabel(label))
-            act.addWidget(dotw)
-            act.addSpacing(6)
-
-        add("Server", self.dot_srv)
-        act.addWidget(self.b_start)
-        act.addWidget(self.b_stop)
-        act.addWidget(self.b_restart)
-        act.addSpacing(16)
-        add("LogMon", self.dot_lm)
-        act.addWidget(self.b_lm_on)
-        act.addWidget(self.b_lm_off)
-        act.addSpacing(16)
-        add("CrashMon", self.dot_cm)
-        act.addWidget(self.b_cm_on)
-        act.addWidget(self.b_cm_off)
-        act.addStretch(1)
-        act.addWidget(self.status)
-        v.addWidget(header)
-
-        # ---- Main splitter (tabs | json | log) ----
-        main = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        v.addWidget(main, 1)
-
-        # LEFT: TABS
-        # LEFT: TABS
-        left = QtWidgets.QWidget()
-        main.addWidget(left)
-        lv = QtWidgets.QVBoxLayout(left)
-        lv.setContentsMargins(0, 0, 0, 0)
-
-        # top bar (buttons + filter)
-        topbar = QtWidgets.QHBoxLayout()
-        lv.addLayout(topbar)
-
-        self.b_reload = QtWidgets.QPushButton("Reload Config")
-        self.b_validate = QtWidgets.QPushButton("Validate")
-        self.b_save = QtWidgets.QPushButton("Save Config (atomic)")
-        self.filter = QtWidgets.QLineEdit()
-        self.filter.setPlaceholderText("Filter keys…")
-        self.b_clearfilter = QtWidgets.QPushButton("Clear")
-
-        # ... create self.b_reload, self.b_validate, self.b_save, self.filter, self.b_clearfilter
-        topbar.addWidget(self.b_reload)
-        topbar.addWidget(self.b_validate)
-        topbar.addWidget(self.b_save)
-        topbar.addStretch(1)
-        topbar.addWidget(self.filter)
-        topbar.addWidget(self.b_clearfilter)
-
-        # CREATE THE TABS WIDGET
-        self.tabs = QtWidgets.QTabWidget()
-        lv.addWidget(self.tabs, 1)
-
-        self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
-        self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
-        self.tab_widgets: Dict[str, QtWidgets.QWidget] = {}
-        self.tab_layouts: Dict[str, QtWidgets.QVBoxLayout] = {}
-        self._tab_pages: Dict[str, QtWidgets.QWidget] = {}  # <— add this
-
-        def _make_tab_ui():
-            w = QtWidgets.QWidget()
-            frame = QtWidgets.QVBoxLayout(w)
-            frame.setContentsMargins(6, 6, 6, 6)
-            frame.setSpacing(6)
-            scroll = QtWidgets.QScrollArea()
-            scroll.setWidgetResizable(True)
-            container = QtWidgets.QWidget()
-            vbox = QtWidgets.QVBoxLayout(container)
-            vbox.setContentsMargins(0, 0, 0, 0)
-            vbox.setSpacing(6)
-            scroll.setWidget(container)
-            frame.addWidget(scroll, 1)
-            return w, container, vbox
-
-        def _add_tab(name: str):
-            if name in self.tab_widgets:
-                return
-            w, container, vbox = _make_tab_ui()
-            self.tabs.addTab(w, name)
-            self._tab_pages[name] = w
-            self.tab_widgets[name] = container
-            self.tab_layouts[name] = vbox
-
-        self._add_tab = _add_tab  # expose helper for later
-
-        for name in [
-            "Paths",
-            "Server",
-            "Steam/Updates",
-            "Backups",
-            "Monitor (simple)",
-            "Monitor (advanced)",
-            "Features",
-            "Top-level",
-        ]:
-            _add_tab(name)
-
-        # --- Monitors tab ---
-        mon_tab = QtWidgets.QWidget()
-        mon_v = QtWidgets.QVBoxLayout(mon_tab)
-        mon_v.setContentsMargins(8, 8, 8, 8)
-        mon_v.setSpacing(8)
-
-        # Log Monitor card
-        logCard = QtWidgets.QGroupBox("Log Monitor")
-        logLay = QtWidgets.QGridLayout(logCard)
-        self.lblLogDot = QtWidgets.QLabel()
-        self.lblLogDot.setFixedSize(14, 14)
-        self.lblLogDot.setStyleSheet(_dot(False))
-        self.lblLogStatus = QtWidgets.QLabel("stopped")
-        self.lblLogLast = QtWidgets.QLabel("Last update: —")
-        self.lblLogJoin = QtWidgets.QLabel("Joinable: —")
-        self.lblLogPlayers = QtWidgets.QLabel("Players: —")
-        self.lblLogUptime = QtWidgets.QLabel("Uptime: —")
-
-        self.lblLogHttpStatus = QtWidgets.QLabel("HTTP API: disabled")
-
-        self.lblLogHttpPlayers = QtWidgets.QLabel("API Players: —")
-
-        self.lblLogHttpWorld = QtWidgets.QLabel("World Time: —")
-
-        self.lblLogHttpWeather = QtWidgets.QLabel("Weather: —")
-
-        for _lbl in (
-            self.lblLogHttpStatus,
-            self.lblLogHttpPlayers,
-            self.lblLogHttpWorld,
-            self.lblLogHttpWeather,
-        ):
-            _lbl.setWordWrap(True)
-        self.lblAdminList = QtWidgets.QLabel("Admins: �")
-        self.lblAdminList.setWordWrap(True)
-        self.lblPlayerSnapshotTs = QtWidgets.QLabel("Players refreshed: �")
-        self.lblPlayerSnapshotTs.setWordWrap(True)
-        self.lblPlayerErrors = QtWidgets.QLabel("")
-        self.lblPlayerErrors.setWordWrap(True)
-        self.lblPlayerErrors.setStyleSheet("color:#E74C3C;")
-        self.playerTree = QtWidgets.QTreeWidget()
-        self.playerTree.setHeaderLabels(["Player / Character", "ID", "Details"])
-        self.playerTree.setRootIsDecorated(True)
-        self.playerTree.setUniformRowHeights(True)
-        self.playerTree.setColumnWidth(0, 220)
-        self.playerTree.setMinimumHeight(180)
-        self.playerTree.itemDoubleClicked.connect(
-            self._on_player_tree_double_clicked
-        )
-        self.lblPlayerHint = QtWidgets.QLabel(
-            "Double-click a player or character for full details."
-        )
-        self.lblPlayerHint.setStyleSheet("font-style: italic; color:#95A5A6;")
-        self._player_snapshot_raw: Dict[str, Any] = {}
-        self._cached_admin_ids: Optional[List[str]] = None
-        self._player_cache: Dict[str, Dict[str, Any]] = {}
-        self._player_tree_signature: Optional[tuple] = None
-        self._status_icon_cache: Dict[str, QtGui.QIcon] = {}
-        logLay.addWidget(self.lblLogDot, 0, 0)
-        logLay.addWidget(self.lblLogStatus, 0, 1)
-        logLay.addWidget(self.lblLogLast, 1, 0, 1, 2)
-        logLay.addWidget(self.lblLogJoin, 2, 0, 1, 2)
-        logLay.addWidget(self.lblLogPlayers, 3, 0, 1, 2)
-        logLay.addWidget(self.lblLogUptime, 4, 0, 1, 2)
-
-        logLay.addWidget(self.lblLogHttpStatus, 5, 0, 1, 2)
-
-        logLay.addWidget(self.lblLogHttpPlayers, 6, 0, 1, 2)
-
-        logLay.addWidget(self.lblLogHttpWorld, 7, 0, 1, 2)
-
-        logLay.addWidget(self.lblLogHttpWeather, 8, 0, 1, 2)
-        logLay.addWidget(self.lblAdminList, 9, 0, 1, 2)
-        logLay.addWidget(self.lblPlayerSnapshotTs, 10, 0, 1, 2)
-        logLay.addWidget(self.playerTree, 11, 0, 1, 2)
-        logLay.addWidget(self.lblPlayerErrors, 12, 0, 1, 2)
-        logLay.addWidget(self.lblPlayerHint, 13, 0, 1, 2)
-        mon_v.addWidget(logCard)
-
-        # Crash Monitor card
-        crashCard = QtWidgets.QGroupBox("Crash Monitor")
-        cLay = QtWidgets.QGridLayout(crashCard)
-        self.lblCrashDot = QtWidgets.QLabel()
-        self.lblCrashDot.setFixedSize(14, 14)
-        self.lblCrashDot.setStyleSheet(_dot(False))
-        self.lblCrashMode = QtWidgets.QLabel("stopped")
-        self.lblCrashLast = QtWidgets.QLabel("Last heartbeat: —")
-        cLay.addWidget(self.lblCrashDot, 0, 0)
-        cLay.addWidget(self.lblCrashMode, 0, 1)
-        cLay.addWidget(self.lblCrashLast, 1, 0, 1, 2)
-        mon_v.addWidget(crashCard)
-        mon_v.addStretch(1)
-
-        # Backups card
-        bkCard = QtWidgets.QGroupBox("Backups")
-        bkLay = QtWidgets.QGridLayout(bkCard)
-        self.lblBkEnabled = QtWidgets.QLabel("—")
-        self.lblBkLast = QtWidgets.QLabel("—")
-        self.lblBkFile = QtWidgets.QLabel("—")
-        self.lblBkTotal = QtWidgets.QLabel("0")
-        self.lblBkCounts = QtWidgets.QLabel("—")
-        self.lblBkCounts.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        self.lblBkCounts.setStyleSheet(
-            "font-family: Consolas, 'Courier New', monospace;"
-        )
-
-        self.btnBkNow = QtWidgets.QPushButton("Backup Now")
-        self.btnBkOpen = QtWidgets.QPushButton("Open Folder")
-        self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
-        self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
-
-        r = 0
-        bkLay.addWidget(QtWidgets.QLabel("Enabled:"), r, 0, QtCore.Qt.AlignRight)
-        bkLay.addWidget(self.lblBkEnabled, r, 1)
-        r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Last (UTC):"), r, 0, QtCore.Qt.AlignRight)
-        bkLay.addWidget(self.lblBkLast, r, 1)
-        r += 1
-        bkLay.addWidget(QtWidgets.QLabel("File:"), r, 0, QtCore.Qt.AlignRight)
-        bkLay.addWidget(self.lblBkFile, r, 1)
-        r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Total:"), r, 0, QtCore.Qt.AlignRight)
-        bkLay.addWidget(self.lblBkTotal, r, 1)
-        r += 1
-        bkLay.addWidget(QtWidgets.QLabel("Per-reason:"), r, 0, QtCore.Qt.AlignRight)
-        bkLay.addWidget(self.lblBkCounts, r, 1)
-        r += 1
-
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.btnBkNow)
-        row.addWidget(self.btnBkOpen)
-        row.addStretch(1)
-        bkLay.addLayout(row, r, 0, 1, 2)
-
-        mon_v.addWidget(bkCard)
-
-        self.tabs.addTab(mon_tab, "Monitors")
-
-        # store the original tab titles by index for stable lookups/titles
-        self._tab_base_titles = {
-            i: self.tabs.tabText(i) for i in range(self.tabs.count())
-        }
-        # map index <-> base name so we can fetch the correct layout even if titles are decorated with counts
-        self._tab_index_to_name = {
-            i: self._tab_base_titles[i] for i in range(self.tabs.count())
-        }
-
-        # JSON editor
-        self.json = QtWidgets.QPlainTextEdit()
-        self.json.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.json.setFont(QtGui.QFont("Consolas", 10))
+        config_view = build_config_editor(self)
         JsonHL(self.json.document())
-        main.addWidget(self.json)
+        for view_id, tab_name in self._config_nav_map.items():
+            self._register_view(
+                view_id,
+                config_view,
+                lambda tab=tab_name: self._ensure_tab_visible(tab),
+            )
 
-        # RIGHT: Logs with tabs
-        right = QtWidgets.QWidget()
-        main.addWidget(right)
-        rv = QtWidgets.QVBoxLayout(right)
-        rv.setContentsMargins(0, 0, 0, 0)
+        self.nav_panel.viewSelected.connect(self._on_view_selected)
+        self.nav_panel.set_default_selection("monitor.dashboard")
+        self._on_view_selected("monitor.dashboard")
 
-        cbar = QtWidgets.QHBoxLayout()
-        rv.addLayout(cbar)
-        self.chk_live = QtWidgets.QCheckBox("Live (follow)")
-        self.chk_live.setChecked(True)
-        self.b_clearlog = QtWidgets.QPushButton("Clear")
-        cbar.addWidget(self.chk_live)
-        cbar.addStretch(1)
-        cbar.addWidget(self.b_clearlog)
+        bottom = QtWidgets.QWidget()
+        bottom_layout = QtWidgets.QHBoxLayout(bottom)
+        bottom_layout.setContentsMargins(0, 6, 0, 0)
+        bottom_layout.setSpacing(8)
 
-        self.logTabs = QtWidgets.QTabWidget()
-        self.log_game = QtWidgets.QPlainTextEdit()
-        self.log_game.setReadOnly(True)
-        self.log_game.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.log_lm = QtWidgets.QPlainTextEdit()
-        self.log_lm.setReadOnly(True)
-        self.log_lm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.log_cm = QtWidgets.QPlainTextEdit()
-        self.log_cm.setReadOnly(True)
-        self.log_cm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-        self.logTabs.addTab(self.log_game, "Game Log")
-        self.logTabs.addTab(self.log_lm, "Log Monitor")
-        self.logTabs.addTab(self.log_cm, "Crash Monitor")
-        rv.addWidget(self.logTabs, 1)
-
-        # compact state line under everything
         self.state_box = QtWidgets.QTextBrowser()
         self.state_box.setMaximumHeight(120)
-        v.addWidget(self.state_box)
-        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…")
-        v.addWidget(self.lbl_watch)
+        bottom_layout.addWidget(self.state_box, 1)
 
+        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…")
+        self.lbl_watch.setWordWrap(True)
+        bottom_layout.addWidget(self.lbl_watch)
+
+        root.addWidget(bottom)
+
+
+
+
+    def _build_monitor_dashboard(self) -> QtWidgets.QWidget:
+        """Legacy wrapper for GUI.dashboard.build_dashboard."""
+        return build_dashboard(self, _dot)
+
+
+    def _build_config_editor_view(self) -> QtWidgets.QWidget:
+        """Legacy wrapper for GUI.config_editor.build_config_editor."""
+        widget = build_config_editor(self)
+        JsonHL(self.json.document())
+        return widget
+
+    def _register_view(
+        self,
+        view_id: str,
+        widget: QtWidgets.QWidget,
+        on_show: Callable[[], None] | None = None,
+    ) -> None:
+        if self.content_stack.indexOf(widget) < 0:
+            self.content_stack.addWidget(widget)
+        self._view_routes[view_id] = (widget, on_show)
+
+    def _on_view_selected(self, view_id: str):
+        target = getattr(self, "_view_routes", {}).get(view_id)
+        if not target:
+            return
+        widget, callback = target
+        idx = self.content_stack.indexOf(widget)
+        if idx >= 0:
+            self.content_stack.setCurrentIndex(idx)
+        if callback:
+            callback()
+
+    def _ensure_tab_visible(self, tab_name: str):
+        if tab_name == self._search_tab_name:
+            self.config_renderer.ensure_search_tab()
+        idx = self._tab_index(tab_name)
+        if idx >= 0:
+            self.tabs.setCurrentIndex(idx)
     # ----------------------------- Signals ------------------------------------
     def _signals(self):
         self.b_cfgdir.clicked.connect(self.pick_cfg_dir)
@@ -1726,11 +1330,28 @@ class Main(QtWidgets.QMainWindow):
         timer.setSingleShot(True)
         timer.setInterval(120)
         self.filter.textChanged.connect(lambda _: (timer.stop(), timer.start()))
-        timer.timeout.connect(lambda: self._apply_filter(self.filter.text()))
+        timer.timeout.connect(
+            lambda: self.config_renderer.apply_filter(self.filter.text())
+        )
 
         self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
         self.b_clearlog.clicked.connect(self._clear_current_log)
         self.chk_live.toggled.connect(self._retail)
+        self.btn_log_src_refresh.clicked.connect(self._populate_log_sources)
+        self.btn_log_search.clicked.connect(self._run_log_search)
+        self.btn_log_search_clear.clicked.connect(self._clear_log_search)
+        self.cmb_mgmt_log_subsystem.currentIndexChanged.connect(
+            lambda _: self._refresh_mgmt_log_files()
+        )
+        self.btn_mgmt_log_refresh.clicked.connect(self._populate_log_sources)
+        self.btn_mgmt_log_load.clicked.connect(self._load_mgmt_log_file)
+        self.btn_mgmt_log_open.clicked.connect(self._open_selected_mgmt_folder)
+        self.btn_mgmt_archive.clicked.connect(self._archive_logs_now)
+        self.cmb_mgmt_log_file.currentIndexChanged.connect(
+            lambda _: self._load_mgmt_log_file(auto=True)
+        )
+        self.btn_error_refresh.clicked.connect(self._refresh_error_events)
+        self.tbl_error_events.itemDoubleClicked.connect(self._open_error_log_from_table)
 
         self.btn_logs.clicked.connect(
             lambda: self._open_folder(self._resolved_paths()["log_file"].parent)
@@ -1743,6 +1364,8 @@ class Main(QtWidgets.QMainWindow):
         )
         self.btn_ctl.clicked.connect(lambda: self._open_folder(CTRL_DIR))
         self.btn_adv.clicked.connect(self._open_advanced)
+        self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
+        self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -1848,89 +1471,6 @@ class Main(QtWidgets.QMainWindow):
         except Exception:
             self._status("Failed to open backups folder.")
 
-    # --- Search tab helpers -------------------------------------------------
-    def _ensure_search_tab(self) -> str:
-        """Create the Search tab (lazy) and return its name."""
-        name = getattr(self, "_search_tab_name", "Search")
-        if name not in self.tab_layouts:
-            self._add_tab(name)
-        self._search_tab_idx = self._tab_index(name)
-        return name
-
-    def _clear_layout(self, layout: QtWidgets.QLayout):
-        while True:
-            item = layout.takeAt(0)
-            if not item:
-                break
-            w = item.widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
-
-    def _rebuild_search_tab(self, matches: list[KVRow]) -> None:
-        """
-        Rebuild Search tab with nested collapsible groups:
-        Top-level → (optional) section → matching KVRow(s)
-        """
-        tab = self._ensure_search_tab()
-        vbox = self.tab_layouts[tab]
-        self._clear_layout(vbox)
-
-        # Collect matches by their 'top' (path[0]) and 'section' (path[1] when using sections)
-        grouped: dict[str, dict[str | None, list[KVRow]]] = {}
-        for row in matches:
-            path = row.path or ()
-            top = path[0] if path else "_misc"
-            # mirror the same "section" rule used by _add_row_to_tab_or_section
-            section = (
-                path[1]
-                if len(path) >= 2
-                and top.lower() not in ("top-level", "paths", "monitors")
-                else None
-            )
-            grouped.setdefault(top, {}).setdefault(section, []).append(row)
-
-        # Build UI
-        for top_key in sorted(grouped.keys(), key=str):
-            top_box = CollapsibleBox(self._humanize_label(top_key))
-            vbox.addWidget(top_box)
-            inner = top_box.layout_for_rows()
-
-            for section_key in sorted(
-                grouped[top_key].keys(), key=lambda x: (x is not None, str(x))
-            ):
-                rows = grouped[top_key][section_key]
-                if section_key is None:
-                    # no section—just add rows
-                    for r in rows:
-                        # clone a lightweight display row sharing same editor widget type
-                        # but bind to the same Main change path
-                        clone = KVRow(r.label_text, r.path, r.value())
-                        clone.changed.connect(self._row_changed)
-                        inner.addWidget(clone)
-                else:
-                    sub_box = CollapsibleBox(self._humanize_label(section_key))
-                    inner.addWidget(sub_box)
-                    sub = sub_box.layout_for_rows()
-                    for r in rows:
-                        clone = KVRow(r.label_text, r.path, r.value())
-                        clone.changed.connect(self._row_changed)
-                        sub.addWidget(clone)
-
-        vbox.addStretch(1)
-
-    def _remove_search_tab(self):
-        name = getattr(self, "_search_tab_name", "Search")
-        idx = self._tab_index(name)
-        if idx >= 0:
-            self.tabs.removeTab(idx)
-        # cleanup maps (safe even if keys aren’t present)
-        self._tab_pages.pop(name, None)
-        self.tab_widgets.pop(name, None)
-        self.tab_layouts.pop(name, None)
-        self._search_tab_idx = None
-        self._rebuild_base_titles()
-
     def _apply_default_selection(self):
         """Ensure a concrete file is selected and loaded at startup."""
         folder = Path(self.ed_cfgdir.text().strip() or self.config_dir)
@@ -1968,7 +1508,7 @@ class Main(QtWidgets.QMainWindow):
                 else JsonHL(self.json.document())
             )
             self.json.blockSignals(False)
-            self._build_tabs(self._data)
+            self.config_renderer.build_tabs(self._data)
 
             # Show version in status/title (with fallback)
             try:
@@ -1982,7 +1522,7 @@ class Main(QtWidgets.QMainWindow):
                 if ver is not None:
                     self._status(f"Loaded {kind.upper()} (Config v{ver}).")
                     try:
-                        self.setWindowTitle(f"Vein Manager — Config v{ver}")
+                        self.setWindowTitle(f"Vein Server Manager - Config v{ver}")
                     except Exception:
                         pass
                 else:
@@ -1995,297 +1535,6 @@ class Main(QtWidgets.QMainWindow):
             self._data = {}
             self.json.setPlainText("")
             self._status(f"Load error: {e}")
-
-    # --- label helpers used by tab-building ---------------------------------
-    def _humanize_label(self, s: str) -> str:
-        import re
-
-        s = (s or "").replace("_", " ").replace(".", "•")
-        s = re.sub(r"\s+", " ", s).strip()
-        return s.title()
-
-    def _pretty_label(self, tab: str, full_label: str) -> str:
-        """Trim the tab's key prefix from a dotted label and title-case it."""
-        base = tab.lower().replace(" ", "_")
-        if base in (
-            "top-level",
-            "paths",
-            "monitors",
-            getattr(self, "_search_tab_name", "search").lower(),
-        ):
-            return self._humanize_label(full_label)
-        low = full_label.lower()
-        pref = base + "."
-        trimmed = full_label[len(pref) :] if low.startswith(pref) else full_label
-        return self._humanize_label(trimmed)
-
-    def _add_row_to_tab_or_section(
-        self, tab: str, full_label: str, path: tuple[str, ...], val
-    ):
-        self._add_tab(tab)
-
-        # Only sectionize if the tab corresponds to path[0] AND the second-level key is a dict.
-        def _snake(s: str) -> str:
-            return (s or "").strip().lower().replace(" ", "_")
-
-        tab_base_snake = _snake(tab)
-        path0_snake = _snake(path[0]) if path else ""
-        # candidates determined earlier in _build_tabs:
-        section_keys = self._section_keys_by_tab.get(tab, set())
-
-        section_key = None
-        if tab_base_snake == path0_snake and len(path) >= 2:
-            k2 = str(path[1])
-            if k2 in section_keys:
-                section_key = k2
-
-        # Choose layout: section container or tab root
-        if section_key is None:
-            layout = self.tab_layouts[tab]
-        else:
-            if section_key not in self._sections_by_tab[tab]:
-                box = CollapsibleBox(self._humanize_label(section_key))
-                self._sections_by_tab[tab][section_key] = box
-                self.tab_layouts[tab].addWidget(box)
-            layout = self._sections_by_tab[tab][section_key].layout_for_rows()
-
-        # Pretty label: trim 'Tab.' or 'Tab.Section.' prefix, then title-case
-        base = tab.lower().replace(" ", "_")
-        low = full_label.lower()
-        trimmed = full_label
-        if section_key is not None:
-            pref = f"{base}.{section_key.lower()}."
-            if low.startswith(pref):
-                trimmed = full_label[len(pref) :]
-        else:
-            pref = base + "."
-            if low.startswith(pref):
-                trimmed = full_label[len(pref) :]
-
-        label = self._humanize_label(trimmed)
-        row = KVRow(label, path, val)
-        row.changed.connect(self._row_changed)
-
-        indent = max(0, len(path) - (2 if section_key else 1))
-        if indent and hasattr(row, "layout"):
-            row.layout().setContentsMargins(12 * indent, 0, 0, 0)
-
-        layout.addWidget(row)
-
-        self.rows[path] = row
-        self._rows_by_tab[tab].append(row)
-        if section_key is not None:
-            self._rows_in_section[(tab, section_key)].append(row)
-        self._index_row(tab, row)
-
-    # --- search normalization / indexing ------------------------------------
-    def _norm(self, s: str) -> str:
-        """
-        Normalize for fuzzy compare: lowercase and strip non [a-z0-9].
-        'Monitor.Recheck_Newest_Every_Seconds' -> 'monitorrechecknewesteveryseconds'
-        """
-        import re
-
-        return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
-
-    def _index_row(self, tab_name: str, row: "KVRow"):
-        if not hasattr(self, "_search_index"):
-            self._search_index = {}
-
-        label = row.label_text or ""
-        path = row.path or ()
-        dotted = ".".join(path)
-        snake = "_".join(path)
-        spaced = " ".join(path)
-
-        # Find the section this row belongs to (now a tuple full-path)
-        section = None
-        for (t, s), rows in self._rows_in_section.items():
-            if t == tab_name and row in rows:
-                section = s
-                break
-
-        # 🔧 NEW: normalize section to a dotted string
-        if isinstance(section, (tuple, list)):
-            section_str = ".".join(section)
-        else:
-            section_str = section  # None or str
-
-        tab_path = ".".join([p for p in (tab_name, section_str) if p])
-
-        raw_candidates = {
-            label,
-            dotted,
-            snake,
-            spaced,
-            f"{tab_path}.{label}" if tab_path else label,
-            f"{tab_path}.{dotted}" if tab_path else dotted,
-        }
-        toks = set()
-        for r in raw_candidates:
-            if r:
-                toks.add(r.lower())
-                toks.add(self._norm(r))
-        self._search_index[row] = toks
-
-    def _add_scalar_row(
-        self,
-        tab_name: str,
-        layout: QtWidgets.QVBoxLayout,
-        path: tuple[str, ...],
-        value,
-        depth: int,
-    ):
-        """
-        Add a single KVRow into the current layout (no legacy sectionizer).
-        Indents visually based on depth; indexes for search; tracks section membership.
-        """
-        # Label = last segment only (humanized); search still gets full path
-        label = self._humanize_label(path[-1] if path else "")
-        row = KVRow(label, path, value)
-        row.changed.connect(self._row_changed)
-
-        # visual indent relative to tab root (depth 0 = tab root dict)
-        if hasattr(row, "layout"):
-            row.layout().setContentsMargins(12 * max(depth, 0), 0, 0, 0)
-
-        layout.addWidget(row)
-
-        # book-keeping for search/filter
-        self.rows[path] = row
-        self._rows_by_tab[tab_name].append(row)
-
-        # also attach it to the closest section box (if any)
-        # we store sections by full-path tuples
-        parent_section = tuple(path[:-1])  # the dict that owns this scalar
-        if (
-            hasattr(self, "_section_boxes")
-            and (tab_name, parent_section) in self._section_boxes
-        ):
-            self._rows_in_section.setdefault((tab_name, parent_section), []).append(row)
-
-        # build search tokens
-        self._index_row(tab_name, row)
-
-    def _build_tabs(self, data: dict):
-        """Build tabs with unlimited nested collapsible sections, preserving YAML order."""
-        # reset structures
-        self._sections_by_tab.clear()
-        self._rows_in_section.clear()
-        self._rows_by_tab.clear()
-        self.rows.clear()
-        self._search_index = {}
-        self._section_boxes = {}  # (tab, full_path_tuple) -> CollapsibleBox
-
-        # remove all tabs except fixed ones
-        fixed = {"Monitors", getattr(self, "_search_tab_name", "Search")}
-        for i in reversed(range(self.tabs.count())):
-            base = self._strip_cnt(self.tabs.tabText(i))
-            if base not in fixed:
-                self.tabs.removeTab(i)
-
-        # clear layouts of kept tabs (Monitors/Search rebuilt on demand)
-        for name in list(self.tab_layouts.keys()):
-            vbox = self.tab_layouts[name]
-            while vbox.count():
-                w = vbox.takeAt(0).widget()
-                if w:
-                    w.deleteLater()
-        self.tab_widgets.clear()
-        self.tab_layouts.clear()
-
-        # ensure Top-level tab for stray scalars
-        self._add_tab("Top-level")
-
-        # capture version, hide from editor
-        setattr(self, "_cfg_version", None)
-        if isinstance(data, dict) and "version" in data:
-            self._cfg_version = data.get("version")
-
-        # top-level: dicts become tabs (original order), scalars → Top-level
-        dict_tabs: list[tuple[str, dict]] = []
-        for k in _iter_keys_preserve(data):
-            if k == "version":
-                continue
-            v = data[k]
-            if isinstance(v, dict):
-                dict_tabs.append((k, v))
-            else:
-                self._add_scalar_row(
-                    "Top-level", self.tab_layouts["Top-level"], (str(k),), v, depth=0
-                )
-
-        # recursive renderer
-        def render_into(
-            tab_name: str,
-            layout: QtWidgets.QVBoxLayout,
-            prefix: tuple[str, ...],
-            node,
-            depth: int,
-        ):
-            if isinstance(node, dict):
-                inner_layout = layout
-                if depth > 0:  # every dict below the tab root gets a box
-                    title = _human_title(prefix[-1])
-                    # title = _human_title(" / ".join(prefix[1:]))
-                    box = CollapsibleBox(title)
-                    layout.addWidget(box)
-                    inner_layout = box.layout_for_rows()
-                    self._sections_by_tab.setdefault(tab_name, {})[prefix] = box
-                    self._section_boxes[(tab_name, prefix)] = box
-
-                for ck in _iter_keys_preserve(node):
-                    render_into(
-                        tab_name, inner_layout, prefix + (str(ck),), node[ck], depth + 1
-                    )
-            else:
-                val = (
-                    node
-                    if not isinstance(node, list)
-                    else ", ".join(str(x) for x in node)
-                )
-                self._add_scalar_row(
-                    tab_name, layout, prefix, val, depth=max(depth - 1, 0)
-                )
-
-        # build each tab
-        for k, node in dict_tabs:
-            tab_name = _human_title(str(k))
-            self._add_tab(tab_name)
-            render_into(tab_name, self.tab_layouts[tab_name], (str(k),), node, depth=0)
-            self.tab_layouts[tab_name].addStretch(1)
-
-        # finish Top-level with a stretch
-        self.tab_layouts["Top-level"].addStretch(1)
-
-        # apply current filter so counts/visibility are correct
-        self._apply_filter(self.filter.text())
-
-    def _make_proxy_row(self, src_row: "KVRow") -> "KVRow":
-        """
-        Create an editable proxy KVRow for the Search tab that stays in sync with the
-        source row in its original tab. Editing either one updates the other and the
-        backing JSON/YAML via _row_changed.
-        """
-        path = tuple(src_row.path)
-        # capture the current value from the source editor
-        try:
-            cur_val = src_row.value()
-        except Exception:
-            cur_val = None
-
-        proxy = KVRow(src_row.label_text, path, cur_val)
-        # 1) when proxy changes → commit to data and push into the source row
-        proxy.changed.connect(self._row_changed)
-        proxy.changed.connect(
-            lambda p, v: (self.rows.get(p) and self.rows[p].set_value(v))
-        )
-
-        # 2) when source changes → mirror into the proxy row
-        src_row.changed.connect(
-            lambda p, v: (proxy.set_value(v) if p == path else None)
-        )
-        return proxy
 
     def _row_changed(self, path: Tuple[str, ...], val: Any):
         # 1) update the in-memory dict (used to rebuild tabs/filter/etc.)
@@ -2511,20 +1760,407 @@ class Main(QtWidgets.QMainWindow):
         else:
             self._status(f"Game log not found: {gp}")
 
-        # Management logs (stdout files) – unchanged
-        cfg = _load_cfg_for_runtime(self.config_path)
-        mgmt_log_dir = Path(cfg.get("mgmt_log_dir", ROOT / "Logs"))
-        lm_file = mgmt_log_dir / "monitor_log.stdout.log"
-        cm_file = mgmt_log_dir / "crash_monitor.stdout.log"
+        # Management logs (stdout files) - follow newest per-subsystem log
+        lm_provider = lambda: mgmt_logs.latest_log_path("monitor_log", "stdout")
+        cm_provider = lambda: mgmt_logs.latest_log_path("crash_monitor", "stdout")
 
-        if lm_file.exists():
-            self.tail_lm = FileTail(lambda: lm_file)
-            self.tail_lm.chunk.connect(self._on_lm_line)
-            self.tail_lm.start()
-        if cm_file.exists():
-            self.tail_cm = FileTail(lambda: cm_file)
-            self.tail_cm.chunk.connect(self._on_cm_line)
-            self.tail_cm.start()
+        self.tail_lm = FileTail(lm_provider)
+        self.tail_lm.chunk.connect(self._on_lm_line)
+        self.tail_lm.start()
+
+        self.tail_cm = FileTail(cm_provider)
+        self.tail_cm.chunk.connect(self._on_cm_line)
+        self.tail_cm.start()
+
+    def _populate_log_sources(self):
+        subsystems = mgmt_logs.available_subsystems(include_empty=True)
+        self._set_subsystem_combo(self.cmb_log_sources, subsystems, include_all=True)
+        self._set_subsystem_combo(
+            self.cmb_mgmt_log_subsystem, subsystems, include_all=False
+        )
+        self._set_subsystem_combo(
+            self.cmb_error_subsystem, subsystems, include_all=True
+        )
+        self._refresh_mgmt_log_files()
+
+    def _set_subsystem_combo(self, combo, subsystems, include_all: bool):
+        if combo is None:
+            return
+        current = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        if combo is self.cmb_mgmt_log_subsystem:
+            combo.addItem("Select subsystem", "__none__")
+        elif include_all:
+            combo.addItem("All subsystems", "__all__")
+        for name in subsystems:
+            combo.addItem(name, name)
+        combo.addItem("Archive (all subsystems)", "__archive__")
+        if current:
+            idx = combo.findData(current)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+
+    def _run_log_search(self):
+        if self._log_search_running:
+            return
+        query = self.ed_log_search.text().strip()
+        if not query:
+            self.log_search_status.setText("Enter a search query to begin.")
+            return
+        subs_data = self.cmb_log_sources.currentData()
+        subsystems = None
+        archive_only: set[str] = set()
+        include_archive = self.chk_log_include_archive.isChecked()
+        if subs_data == "__archive__":
+            subsystems = mgmt_logs.available_subsystems(include_empty=True)
+            include_archive = True
+            archive_only = set(subsystems)
+        elif isinstance(subs_data, str) and subs_data not in (None, "__all__", ""):
+            subsystems = [subs_data]
+        limit = int(self.spin_log_limit.value())
+        since_expr = self.cmb_log_since.currentData()
+        case_sensitive = self.chk_log_case.isChecked()
+        self._log_search_running = True
+        self.btn_log_search.setEnabled(False)
+        self.log_search_status.setText("Searching…")
+        worker = LogSearchWorker(
+            subsystems=subsystems,
+            pattern=query,
+            since=since_expr,
+            limit=limit,
+            case_sensitive=case_sensitive,
+            include_archive=include_archive,
+            archive_only=archive_only,
+        )
+        worker.signals.ready.connect(self._log_search_ready)
+        worker.signals.error.connect(self._log_search_error)
+        self._pool.start(worker)
+        self._log_search_worker = worker  # keep reference
+
+    def _log_search_ready(self, payload: list[dict]):
+        lines = [
+            f"[{hit['subsystem']}] {hit['file']}:{hit['line']} {hit['text']}"
+            for hit in payload
+        ]
+        text = "\n".join(lines) if lines else "No matches."
+        self.log_search_results.setPlainText(text)
+        self.log_search_status.setText(f"{len(payload)} match(es)")
+        self.btn_log_search.setEnabled(True)
+        self._log_search_running = False
+
+        # allow repeated GC once done
+        self._log_search_worker = None
+
+    def _log_search_error(self, message: str):
+        self.log_search_status.setText(f"Search failed: {message}")
+        self.btn_log_search.setEnabled(True)
+        self._log_search_running = False
+        self._log_search_worker = None
+
+    def _clear_log_search(self):
+        self.log_search_results.clear()
+        self.log_search_status.setText("Idle")
+
+    def _refresh_mgmt_log_files(self):
+        combo = getattr(self, "cmb_mgmt_log_file", None)
+        subs_combo = getattr(self, "cmb_mgmt_log_subsystem", None)
+        if not combo or not subs_combo:
+            return
+        subsystem_value = subs_combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        files: list[tuple[Path, str]] = []
+        if subsystem_value == "__archive__":
+            files = self._collect_archive_files()
+        elif subsystem_value in (None, "__none__"):
+            combo.blockSignals(False)
+            self.txt_mgmt_log.setPlainText("Select a subsystem to load logs.")
+            return
+        else:
+            files = self._collect_subsystem_files(subsystem_value)
+        combo.blockSignals(False)
+        if files:
+            combo.setCurrentIndex(0)
+            self._load_mgmt_log_file(auto=True)
+        else:
+            self.txt_mgmt_log.setPlainText("No logs found for this selection.")
+
+    def _collect_subsystem_files(self, subsystem: str) -> list[tuple[Path, str]]:
+        entries: list[tuple[Path, str]] = []
+        for path in mgmt_logs.iter_log_files(subsystem, include_archive=False):
+            if len(entries) >= 20:
+                break
+            try:
+                ts = path.stat().st_mtime
+            except Exception:
+                ts = 0.0
+            label = f"{path.name} ({self._format_timestamp(ts)})"
+            entries.append((path, label))
+        return entries
+
+    def _collect_archive_files(self) -> list[tuple[Path, str]]:
+        records: list[tuple[Path, float, str]] = []
+        subsystems = mgmt_logs.available_subsystems(include_empty=True)
+        for subsystem in subsystems:
+            for path in mgmt_logs.iter_log_files(subsystem, include_archive=True):
+                if not mgmt_logs.is_archived_path(path):
+                    continue
+                try:
+                    ts = path.stat().st_mtime
+                except Exception:
+                    ts = 0.0
+                label = f"[Archive/{subsystem}] {path.name} ({self._format_timestamp(ts)})"
+                records.append((path, ts, label))
+        records.sort(key=lambda item: item[1], reverse=True)
+        return [(path, label) for path, _, label in records[:20]]
+
+    def _infer_subsystem_from_path(self, path: Path) -> str:
+        root = mgmt_logs.management_log_root()
+        try:
+            rel = path.relative_to(root)
+            parts = list(rel.parts)
+            if parts and parts[0].lower() == "archive":
+                return parts[1] if len(parts) > 1 else ""
+            return parts[0] if parts else ""
+        except Exception:
+            return ""
+
+    def _archive_logs_now(self):
+        if self._archiving_logs:
+            return
+        self._archiving_logs = True
+        self.btn_mgmt_archive.setEnabled(False)
+        self._status("Archiving logs…")
+        worker = ArchiveLogsWorker()
+        worker.signals.ready.connect(self._archive_logs_done)
+        worker.signals.error.connect(self._archive_logs_error)
+        self._pool.start(worker)
+        self._archive_worker = worker
+
+    def _archive_logs_done(self, moved: list[tuple[Path, Path]]):
+        self._archiving_logs = False
+        self.btn_mgmt_archive.setEnabled(True)
+        self._populate_log_sources()
+        count = len(moved)
+        self._status(f"Archived {count} log(s).")
+        self._archive_worker = None
+
+    def _archive_logs_error(self, message: str):
+        self._archiving_logs = False
+        self.btn_mgmt_archive.setEnabled(True)
+        self._status(f"Archive failed: {message}")
+        self._archive_worker = None
+
+    def _current_mgmt_log_file(self) -> Optional[Path]:
+        combo = getattr(self, "cmb_mgmt_log_file", None)
+        if not combo:
+            return None
+        data = combo.currentData()
+        if not data:
+            return None
+        return Path(data)
+
+    def _load_mgmt_log_file(
+        self,
+        auto: bool = False,
+        *,
+        highlight_line: Optional[int] = None,
+        highlight_level: Optional[str] = None,
+    ):
+        path = self._current_mgmt_log_file()
+        if not path:
+            if not auto:
+                self.txt_mgmt_log.setPlainText("No log file selected.")
+            return
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            self.txt_mgmt_log.setPlainText(text)
+            if highlight_line:
+                self._highlight_log_line(highlight_line, highlight_level)
+            else:
+                self.txt_mgmt_log.setExtraSelections([])
+        except Exception as exc:
+            if not auto:
+                self.txt_mgmt_log.setPlainText(f"Failed to load log: {exc}")
+
+    def _open_selected_mgmt_folder(self):
+        path = self._current_mgmt_log_file()
+        if path:
+            self._open_folder(path.parent)
+
+    def _format_timestamp(self, ts: float) -> str:
+        if not ts:
+            return "unknown"
+        try:
+            dt = datetime.fromtimestamp(ts)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return "unknown"
+
+    def _refresh_error_events(self):
+        if self._error_refresh_running:
+            return
+        subs_data = self.cmb_error_subsystem.currentData()
+        subsystems = None
+        archive_only = False
+        include_archive = self.chk_error_include_archive.isChecked()
+        if subs_data == "__archive__":
+            subsystems = mgmt_logs.available_subsystems(include_empty=True)
+            include_archive = True
+            archive_only = True
+        elif subs_data not in (None, "__all__", ""):
+            subsystems = [subs_data]
+        since_expr = self.cmb_error_since.currentData()
+        limit = int(self.spin_error_limit.value())
+        self._error_refresh_running = True
+        self.btn_error_refresh.setEnabled(False)
+        self.lbl_error_status.setText("Scanning errors.")
+        worker = LogErrorWorker(
+            subsystems=subsystems,
+            since=since_expr,
+            limit=limit,
+            include_archive=include_archive,
+            archive_only=archive_only,
+        )
+        worker.signals.ready.connect(self._error_ready)
+        worker.signals.error.connect(self._error_error)
+        self._pool.start(worker)
+        self._error_worker = worker
+
+    def _error_ready(self, payload: list[dict]):
+        table = self.tbl_error_events
+        table.setRowCount(len(payload))
+        latest_ts = 0.0
+        for row, evt in enumerate(payload):
+            ts = evt.get("timestamp", 0.0) or 0.0
+            latest_ts = max(latest_ts, ts)
+            table.setItem(row, 0, QtWidgets.QTableWidgetItem(evt["subsystem"]))
+            ts_item = QtWidgets.QTableWidgetItem(self._format_timestamp(ts))
+            ts_item.setData(QtCore.Qt.UserRole, ts)
+            table.setItem(row, 1, ts_item)
+            file_text = f"{evt['file']}:{evt['line']}"
+            item_file = QtWidgets.QTableWidgetItem(file_text)
+            item_file.setData(QtCore.Qt.UserRole, evt)
+            table.setItem(row, 2, item_file)
+            table.setItem(row, 3, QtWidgets.QTableWidgetItem(evt["level"]))
+            table.setItem(row, 4, QtWidgets.QTableWidgetItem(evt["message"]))
+        status = f"{len(payload)} event(s)"
+        if latest_ts:
+            status += f" • newest {self._format_timestamp(latest_ts)}"
+        self.lbl_error_status.setText(status)
+        self.btn_error_refresh.setEnabled(True)
+        self._error_refresh_running = False
+        self._error_worker = None
+
+    def _error_error(self, message: str):
+        self.lbl_error_status.setText(f"Error summary failed: {message}")
+        self.btn_error_refresh.setEnabled(True)
+        self._error_refresh_running = False
+        self._error_worker = None
+
+    def _open_error_log_from_table(self, item):
+        row = item.row()
+        data_item = self.tbl_error_events.item(row, 2)
+        if not data_item:
+            return
+        evt = data_item.data(QtCore.Qt.UserRole)
+        if not isinstance(evt, dict):
+            return
+        rel_path = evt.get("file")
+        line = int(evt.get("line", 1))
+        subsystem = evt.get("subsystem", "")
+        level = evt.get("level")
+        self._load_log_into_subsystem_tab(
+            rel_path, line, subsystem=subsystem, level=level
+        )
+
+    def _ensure_subsystem_selected(self, subsystem: str, archived: bool = False) -> None:
+        combo = self.cmb_mgmt_log_subsystem
+        if not combo or not subsystem:
+            return
+        value = f"archive::{subsystem}" if archived else subsystem
+        display = f"Archive: {subsystem}" if archived else subsystem
+        idx = combo.findData(value)
+        if idx < 0:
+            combo.addItem(display, value)
+            idx = combo.count() - 1
+        combo.setCurrentIndex(idx)
+
+    def _select_mgmt_log_file(self, path: Path) -> None:
+        combo = self.cmb_mgmt_log_file
+        if not combo:
+            return
+        data = str(path)
+        idx = combo.findData(data)
+        if idx < 0:
+            label = path.name
+            if mgmt_logs.is_archived_path(path):
+                subsystem = self._infer_subsystem_from_path(path)
+                label = f"[Archive/{subsystem}] {label}"
+            combo.addItem(label, data)
+            idx = combo.count() - 1
+        combo.setCurrentIndex(idx)
+
+    def _load_log_into_subsystem_tab(
+        self,
+        rel_path: str,
+        line: int,
+        *,
+        subsystem: str | None = None,
+        level: str | None = None,
+    ):
+        if not rel_path:
+            return
+        root = mgmt_logs.management_log_root()
+        path = root / rel_path
+        archived = mgmt_logs.is_archived_path(path)
+        if subsystem is None:
+            subsystem = self._infer_subsystem_from_path(path)
+        if subsystem:
+            self._ensure_subsystem_selected(subsystem, archived=archived)
+        if not path.exists():
+            self.txt_mgmt_log.setPlainText(f"Log not found: {path}")
+            self.logTabs.setCurrentWidget(self.mgmt_log_tab)
+            return
+        self._select_mgmt_log_file(path)
+        self._load_mgmt_log_file(
+            auto=True, highlight_line=line, highlight_level=level
+        )
+        self.logTabs.setCurrentWidget(self.mgmt_log_tab)
+
+    def _highlight_log_line(self, line: int, level: Optional[str]):
+        cursor = self.txt_mgmt_log.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.Start)
+        for _ in range(max(0, line - 1)):
+            if not cursor.movePosition(QtGui.QTextCursor.Down):
+                break
+        selection_cursor = QtGui.QTextCursor(cursor)
+        selection_cursor.movePosition(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
+        selection = QtWidgets.QTextEdit.ExtraSelection()
+        selection.cursor = selection_cursor
+        fmt = QtGui.QTextCharFormat()
+        color = self._highlight_color_for_level(level)
+        fmt.setBackground(QtGui.QColor(color))
+        fmt.setForeground(QtGui.QColor("#000000"))
+        selection.format = fmt
+        self.txt_mgmt_log.setExtraSelections([selection])
+        cursor.setPosition(selection_cursor.anchor())
+        self.txt_mgmt_log.setTextCursor(cursor)
+        self.txt_mgmt_log.ensureCursorVisible()
+
+    def _highlight_color_for_level(self, level: Optional[str]) -> str:
+        if not level:
+            return "#d0f0fd"
+        lvl = level.upper()
+        if lvl == "CRITICAL":
+            return "#ffb3b3"
+        if lvl == "ERROR":
+            return "#ffd5b3"
+        if lvl == "WARNING":
+            return "#fffac0"
+        return "#d0f0fd"
 
     @QtCore.Slot(str)
     def _on_game_line(self, s: str):
@@ -2576,7 +2212,12 @@ class Main(QtWidgets.QMainWindow):
             return
         env = os.environ.copy()
         env["VEIN_CONFIG"] = self.config_path
-        srv_stdout = LOGS_DIR / "server.stdout.log"
+        srv_stdout = mgmt_logs.allocate_log_file(
+            "vein_manager",
+            label="start_server",
+            record_latest=False,
+            metadata={"action": "start_server", "config": self.config_path},
+        )
         try:
             spawn_logged(f'{_pyexe()} "{py}"', srv_stdout, py.parent, env=env)
             self._status("Server starting…")
@@ -2592,13 +2233,9 @@ class Main(QtWidgets.QMainWindow):
         try:
             code, out, err = run_once(f'{_pyexe()} "{py}"', cwd=py.parent, timeout=180)
             if out:
-                (LOGS_DIR / "vein_manager.subproc.out.log").write_text(
-                    out, encoding="utf-8"
-                )
+                self._write_action_log("stop_server", "stdout", out)
             if err:
-                (LOGS_DIR / "vein_manager.subproc.err.log").write_text(
-                    err, encoding="utf-8"
-                )
+                self._write_action_log("stop_server", "stderr", err)
             self._status(
                 "Server stop requested."
                 if code == 0
@@ -2624,7 +2261,11 @@ class Main(QtWidgets.QMainWindow):
         env["VEIN_CONFIG"] = self.config_path
 
         # Write monitor stdout/stderr here:
-        lm_stdout = LOGS_DIR / "monitor_log.stdout.log"
+        lm_stdout = mgmt_logs.allocate_log_file(
+            "monitor_log",
+            label="monitor_log",
+            metadata={"action": "start_monitor_log"},
+        )
         try:
             spawn_logged(
                 f'{_pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env
@@ -2676,7 +2317,11 @@ class Main(QtWidgets.QMainWindow):
         env = os.environ.copy()
         env["VEIN_CONFIG"] = self.config_path
 
-        cm_stdout = LOGS_DIR / "crash_monitor.stdout.log"
+        cm_stdout = mgmt_logs.allocate_log_file(
+            "crash_monitor",
+            label="crash_monitor",
+            metadata={"action": "start_crash_monitor"},
+        )
         try:
             spawn_logged(f'{_pyexe()} "{cm_py}"', cm_stdout, cm_py.parent, env=env)
             self._status("Crash monitor starting…")
@@ -2731,7 +2376,7 @@ class Main(QtWidgets.QMainWindow):
         self.b_cm_on.setToolTip(f"Crash monitor mode: {cmode}")
         self.b_cm_off.setToolTip(f"Crash monitor mode: {cmode}")
 
-        # Monitors tab detail (read server_state only once here)
+        # Dashboard detail (read server_state only once here)
         rp = _runtime_paths(self.config_path)
         rt = _rt_paths(self.config_path)
         st = self._safe_json(rp["server_state"])
@@ -3070,68 +2715,6 @@ class Main(QtWidgets.QMainWindow):
         self._status_icon_cache[cache_key] = icon
         return icon
 
-    def _on_player_tree_double_clicked(self, item, column):
-        payload = item.data(0, QtCore.Qt.UserRole)
-        if not isinstance(payload, dict):
-            return
-        kind = payload.get("type")
-        raw = payload.get("data") or {}
-        if kind == "player":
-            title = f"Player {raw.get('name') or raw.get('steam_id')}"
-        elif kind == "character":
-            title = f"Character {raw.get('name') or raw.get('character_id')}"
-        else:
-            title = "Details"
-        self._show_json_dialog(title, raw)
-
-    def _show_json_dialog(self, title: str, payload: Any) -> None:
-        dlg = QtWidgets.QDialog(self)
-        dlg.setWindowTitle(title or "Details")
-        layout = QtWidgets.QVBoxLayout(dlg)
-
-        tabs = QtWidgets.QTabWidget()
-        tree = QtWidgets.QTreeWidget()
-        tree.setHeaderLabels(["Key", "Value"])
-        tree.setUniformRowHeights(True)
-        self._populate_json_tree(tree.invisibleRootItem(), payload)
-        tree.expandToDepth(1)
-        tabs.addTab(tree, "Tree")
-
-        raw_view = QtWidgets.QPlainTextEdit()
-        try:
-            json_text = json.dumps(payload, indent=2, sort_keys=True)
-        except Exception:
-            json_text = str(payload)
-        raw_view.setPlainText(json_text)
-        raw_view.setReadOnly(True)
-        tabs.addTab(raw_view, "Raw JSON")
-
-        layout.addWidget(tabs)
-
-        btn_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
-        copy_btn = btn_box.addButton("Copy JSON", QtWidgets.QDialogButtonBox.ActionRole)
-        copy_btn.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(json_text))
-        btn_box.accepted.connect(dlg.accept)
-        btn_box.rejected.connect(dlg.reject)
-        layout.addWidget(btn_box)
-
-        dlg.resize(750, 550)
-        dlg.exec()
-
-    def _populate_json_tree(self, parent_item: QtWidgets.QTreeWidgetItem, value: Any, key: str = "") -> None:
-        if isinstance(value, dict):
-            node = QtWidgets.QTreeWidgetItem(parent_item, [key or "object", ""])
-            for sub_key, sub_val in value.items():
-                self._populate_json_tree(node, sub_val, str(sub_key))
-        elif isinstance(value, list):
-            label = f"{key} [{len(value)}]" if key else f"array[{len(value)}]"
-            node = QtWidgets.QTreeWidgetItem(parent_item, [label, ""])
-            for idx, item in enumerate(value):
-                self._populate_json_tree(node, item, f"[{idx}]")
-        else:
-            display = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-            QtWidgets.QTreeWidgetItem(parent_item, [key or "value", display])
-
     def _format_http_api_players(self, http_state: dict) -> str:
         status_payload = http_state.get("status") or {}
         players_payload = http_state.get("players") or {}
@@ -3340,7 +2923,7 @@ class Main(QtWidgets.QMainWindow):
         return f"{seconds//3600:02d}:{(seconds%3600)//60:02d}:{seconds%60:02d}"
 
     def _kick_status_poll(self):
-        worker = StatusPoller(self.config_path)
+        worker = StatusPoller(self.config_path, _load_any_config)
         worker.signals.ready.connect(self._apply_status_snapshot)
         self._pool.start(worker)
 
@@ -3355,103 +2938,6 @@ class Main(QtWidgets.QMainWindow):
     def _row_matched(self, r: "KVRow") -> bool:
         return bool(getattr(r, "_match", False))
 
-    def _apply_filter(self, t: str):
-        t = (t or "").strip()
-        active = bool(t)
-
-        import re
-
-        def norm(s: str) -> str:
-            s = s or ""
-            s = s.replace("•", ".").replace("_", ".")
-            s = re.sub(r"\s+", ".", s)
-            return s.lower()
-
-        def base_of_tabtext(txt: str) -> str:
-            return re.sub(r"\s+\(\d+\)$", "", txt or "")
-
-        def set_tab_badge(tab_name: str, count: int, show_zero: bool) -> None:
-            idx = self._tab_index(tab_name)
-            if idx >= 0:
-                base = base_of_tabtext(self.tabs.tabText(idx))
-                self.tabs.setTabText(
-                    idx, base if (count <= 0 and not show_zero) else f"{base} ({count})"
-                )
-
-        if not active:
-            # show everything + clear badges + remove Search tab
-            for rows in self._rows_by_tab.values():
-                for r in rows:
-                    r._match = True  # reset match state
-                    r.setVisible(True)
-            for i in range(self.tabs.count()):
-                base = base_of_tabtext(self.tabs.tabText(i))
-                self.tabs.setTabText(i, base)
-                try:
-                    self.tabs.setTabVisible(i, True)
-                except Exception:
-                    pass
-            self._remove_search_tab()
-            return
-
-        # ----- Active filter -----
-        nt = norm(t)
-        matches: list[KVRow] = []
-
-        # 1) Row visibility + record match state
-        for tab_name, rows in self._rows_by_tab.items():
-            for r in rows:
-                raw = ".".join(r.path)
-                human = r.label_text or ""
-                hay = " ".join([human, raw])
-
-                ok = nt in norm(hay)
-                if not ok:
-                    try:
-                        val_s = str(r.value())
-                        ok = nt in norm(val_s)
-                    except Exception:
-                        ok = False
-
-                r._match = bool(ok)  # <- store match state for counting
-                r.setVisible(ok)
-                if ok:
-                    matches.append(r)
-
-        # 2) Sections: show/hide by match, and set section counts by match flag
-        for key, rows in self._rows_in_section.items():
-            if not isinstance(key, tuple) or len(key) != 2:
-                continue
-            tab, section = key
-            mcount = sum(1 for r in rows if self._row_matched(r))
-            box = self._sections_by_tab.get(tab, {}).get(section)
-            if box:
-                box.setVisible(mcount > 0)
-                box.set_count(mcount, True)
-
-        # 3) Per-tab badges based on match flag (not .isVisible())
-        for tab_name, rows in self._rows_by_tab.items():
-            mcount = sum(1 for r in rows if self._row_matched(r))
-            set_tab_badge(tab_name, mcount, show_zero=True)
-
-        # 4) Keep all tabs visible during search
-        for i in range(self.tabs.count()):
-            try:
-                self.tabs.setTabVisible(i, True)
-            except Exception:
-                pass
-
-        # 5) Build/refresh the Search tab and badge it
-        search_tab = self._ensure_search_tab()
-        self._rebuild_search_tab(matches)
-        set_tab_badge(search_tab, len(matches), show_zero=True)
-
-        # 6) Autofocus Search
-        if self._search_tab_idx is None:
-            self._search_tab_idx = self._tab_index(search_tab)
-        if self._search_tab_idx is not None and self._search_tab_idx >= 0:
-            self.tabs.setCurrentIndex(self._search_tab_idx)
-
     def _status(self, s: str):
         self.status.setText(f"Status: {s}")
 
@@ -3463,8 +2949,19 @@ class Main(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+    def _write_action_log(self, action: str, stream: str, payload: str) -> None:
+        """Persist ad-hoc command output without clobbering main GUI logs."""
+        try:
+            actions_dir = mgmt_logs.subsystem_dir("vein_manager") / "actions"
+            actions_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            path = actions_dir / f"{action}.{ts}.{stream}.log"
+            path.write_text(payload, encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     def _open_advanced(self):
-        dlg = AdvancedDialog(self.config_path, self)
+        dlg = AdvancedDialog(self.config_path, parent=self)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             vals = dlg.get_values()
             self.use_defaults = bool(vals.get("use_defaults", True))
@@ -3504,3 +3001,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+

@@ -367,13 +367,19 @@ def _with_defaults(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     return cfg
 
 
-def _normalize_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_paths(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     """Normalize key filesystem paths to absolute paths (prevents CWD surprises)."""
+
+    base = Path(mgmt_root)
 
     def _abs(p: str | None) -> str | None:
         if not p or not isinstance(p, str):
             return p
-        return os.path.abspath(os.path.normpath(p))
+        expanded = os.path.expandvars(os.path.expanduser(p))
+        path = Path(expanded)
+        if path.is_absolute():
+            return str(path.resolve())
+        return str((base / path).resolve())
 
     path_keys = [
         "server_dir",
@@ -417,6 +423,16 @@ def _normalize_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
         if p.get("absolute_log_file"):
             p["absolute_log_file"] = _abs(p["absolute_log_file"])
         cfg["paths"] = p
+
+    lm = cfg.get("log_monitor")
+    if isinstance(lm, dict) and lm.get("state_file"):
+        lm["state_file"] = _abs(lm["state_file"])
+        cfg["log_monitor"] = lm
+
+    cm = cfg.get("crash_monitor")
+    if isinstance(cm, dict) and cm.get("state_file"):
+        cm["state_file"] = _abs(cm["state_file"])
+        cfg["crash_monitor"] = cm
 
     return cfg
 
@@ -563,7 +579,7 @@ def load_config() -> Dict[str, Any]:
         raise ValueError(f"{cfg_path}: 'server_dir' is required")
 
     cfg = _with_defaults(cfg, mgmt)
-    cfg = _normalize_paths(cfg)
+    cfg = _normalize_paths(cfg, mgmt)
     _resolve_discord_webhook(cfg)
     _validate(cfg)
 

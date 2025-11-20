@@ -1,7 +1,7 @@
 # 📘 Vein Server Management Suite — Documentation Index
 
 > **Version:** v2.1  
-> **Maintainers:** Red Head Garage  
+> **Maintainers:** Red Head Software  
 > **Purpose:** Central index for all project documentation files.  
 > Start here if you’re exploring or extending the Vein Server Management system.
 
@@ -112,4 +112,4 @@ Each summary file uses consistent section headers so you can quickly find:
 
 ---
 
-_Last updated: November 2025 — Red Head Garage / Vein Server Management Project_
+_Last updated: November 2025 — Red Head Software / Vein Server Management Project_

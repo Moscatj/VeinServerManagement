@@ -1,6 +1,8 @@
-# Vein Server Management — config.json Reference
+﻿# Vein Server Management — config.json Reference
 
 This document explains every key in `Config/config.json`, the source of truth for paths, feature toggles, ports, monitors, backups, and Discord. Values shown below reflect your current file.
+
+Note: Any path value may now be expressed relative to the management root (the folder that contains `Controller/` and `Config/`). Relative entries are resolved during config load, so packaged builds work no matter which drive or directory the suite is installed on.
 
 ---
 
@@ -33,10 +35,34 @@ This document explains every key in `Config/config.json`, the source of truth fo
 - absolute_log_file  
   • If set, the log monitor tails this specific file instead of auto-picking the newest log.  
   • Current: G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log
+- mgmt_log_dir  
+  • Root folder for management-suite stdout/stderr logs (VeinManager, monitors, helpers).  
+  • Current: G:/Servers/VeinServer/VeinServerManagement/Logs
+
 
 - backup_root  
   • Root folder for all backup categories.  
   • Current: G:/Servers/VeinServer/VeinServerManagement/Backups
+
+---
+
+## Management Logs
+
+- management_logs.root  
+  • Overrides `paths.mgmt_log_dir` for grouping stdout/stderr per subsystem.  
+  • Current: G:/Servers/VeinServer/VeinServerManagement/Logs
+
+- management_logs.layout  
+  • Maps subsystem names (vein_manager, monitor_log, crash_monitor, etc.) to folders under the root.  
+  • Current: {"vein_manager": "gui", "start_server": "controller/start_server", "monitor_log": "monitors/log_monitor", "crash_monitor": "monitors/crash_monitor", "http_api": "monitors/http_api"}
+
+- management_logs.retention  
+  • Controls how many live log files are kept before moving the rest to Archive/.  
+  • Current: {"max_files": 6, "max_age_days": 14}
+
+- management_logs.archive  
+  • Destination and retention window for archived management logs.  
+  • Current: {"enabled": true, "root": "G:/Servers/VeinServer/VeinServerManagement/Logs/Archive", "max_files": 150, "max_age_days": 90}
 
 ---
 
