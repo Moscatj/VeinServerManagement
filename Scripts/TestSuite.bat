@@ -19,10 +19,11 @@ pushd "%~dp0\.." >nul 2>&1
 set "MGMT=%CD%"
 set "SCRIPTS=%MGMT%\Scripts"
 set "CONTROLLER=%MGMT%\Controller"
-set "CONFIG1=%MGMT%\Config\config.json"
-set "CONFIG2=%CONTROLLER%\config.json"
+set "CONFIG1=%MGMT%\Config\config.yaml"
+set "CONFIG2=%MGMT%\Config\config.json"
+set "CONFIG3=%CONTROLLER%\config.json"
 set "PYEXE=py -3"
-if exist "%CONFIG1%" (set "VEIN_CONFIG=%CONFIG1%") else if exist "%CONFIG2%" (set "VEIN_CONFIG=%CONFIG2%")
+if exist "%CONFIG1%" (set "VEIN_CONFIG=%CONFIG1%") else if exist "%CONFIG2%" (set "VEIN_CONFIG=%CONFIG2%") else if exist "%CONFIG3%" (set "VEIN_CONFIG=%CONFIG3%")
 
 set "SUITE_FAIL=0"
 set "SUITE_WARN=0"
@@ -36,6 +37,7 @@ echo [env] SCRIPTS=%SCRIPTS%
 echo [env] CONTROLLER=%CONTROLLER%
 echo [env] CONFIG1=%CONFIG1%
 echo [env] CONFIG2=%CONFIG2%
+echo [env] CONFIG3=%CONFIG3%
 echo [env] PYEXE=%PYEXE%
 echo [env] VEIN_CONFIG=%VEIN_CONFIG%
 echo.
@@ -58,6 +60,17 @@ echo [INFO] Checking Python...
 if errorlevel 1 (
   echo [FAIL] Python not available via "%PYEXE%".
   set /a SUITE_FAIL+=1
+)
+echo.
+
+rem ---------------- unit tests -------------------------------
+echo [INFO] Running unit tests...
+%PYEXE% -m unittest discover -s Tests
+if errorlevel 1 (
+  echo [FAIL] Unit tests failed.
+  set /a SUITE_FAIL+=1
+) else (
+  echo [PASS] Unit tests passed.
 )
 echo.
 
