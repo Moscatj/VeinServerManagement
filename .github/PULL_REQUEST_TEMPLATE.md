@@ -12,6 +12,15 @@
 
 Describe tests added or updated. If tests were not added, explain why they are not practical.
 
+## Release Impact
+
+- [ ] none
+- [ ] patch
+- [ ] minor
+- [ ] major
+
+Briefly explain the choice:
+
 ## Risk Checklist
 
 - [ ] No secrets, webhooks, `.env` files, local config overrides, logs, backups, save files, or user-account files are included.

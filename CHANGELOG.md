@@ -6,12 +6,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added release process documentation and AI-assisted versioning rules.
 - Added GitHub Actions CI for tests, coverage, diagnostics, and secret/local marker scanning.
 - Added testing policy requiring unit tests for new behavior when practical.
 - Sanitized public documentation, config defaults, metadata, and ignored local-sensitive files.
 - Expanded unit coverage for config loading, runtime state, process helpers, management logs, backups, and API helpers.
 
-## 2.2 - 2026-06-25
+## 2.2.0 - 2026-06-25
 
 - Established public source release readiness baseline.
 - Retired tracked local artifacts and config backups.

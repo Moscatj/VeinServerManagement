@@ -1,6 +1,6 @@
 # 📘 Vein Server Management Suite — Documentation Index
 
-> **Version:** v2.1
+> **Version:** v2.2.0
 > **Maintainers:** Project contributors
 > **Purpose:** Central index for all project documentation files.
 > Start here if you’re exploring or extending the Vein Server Management system.
@@ -55,6 +55,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Config Structure | [config_reference.md](config_reference.md) |
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
 | Testing and CI | [testing.md](testing.md) |
+| Release Process | [../RELEASING.md](../RELEASING.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |
 | Backup System | [nightly_backup_summary.md](nightly_backup_summary.md) + [utils_summary.md](utils_summary.md) |
 
@@ -72,6 +73,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 | Version | Date | Summary |
 |----------|------|----------|
+| **v2.2.0** | 2026 | Public source hardening baseline, CI, tests, source hygiene, and release process |
 | **v2.1** | 2025 | Documentation refresh, modular split, and GUI integration |
 | **v2.0** | 2024 | Initial stable server + monitor release |
 | **v1.x** | 2023 | Pre-release prototypes and manual backups |

@@ -88,10 +88,13 @@ Use a focused branch and include:
 - Which tests were added or updated, or why tests were not appropriate.
 - Any risk to shutdown, backups, crash monitoring, process control, or game-file safety.
 - Any config or migration notes.
+- Release impact: `none`, `patch`, `minor`, or `major`.
 
 Pull requests should not be merged while CI is failing.
 
 For user-facing changes, add a short note to `CHANGELOG.md` under `Unreleased`.
+
+See [RELEASING.md](RELEASING.md) for versioning and release tag rules.
 
 ## Issues
 
@@ -120,3 +123,10 @@ This project supports AI-assisted development. If using an AI coding assistant:
 5. Confirm that the actual Vein game install is outside the repo and must not be modified.
 
 Review AI-generated changes carefully, especially around filesystem access, shutdown, backups, crash monitoring, and process control.
+
+AI-assisted changes should also classify release impact before finalizing:
+
+- `none`: no release impact.
+- `patch`: bug fix, docs, tests, CI, hardening, or non-breaking cleanup.
+- `minor`: user-facing feature or meaningful new capability.
+- `major`: breaking behavior or large architecture/config change.

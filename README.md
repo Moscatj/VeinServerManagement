@@ -133,10 +133,13 @@ Start here:
 - [Docs/config_reference.md](Docs/config_reference.md)
 - [Docs/testing.md](Docs/testing.md)
 - [CHANGELOG.md](CHANGELOG.md)
+- [RELEASING.md](RELEASING.md)
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests should describe the change, testing performed, tests added or updated, and any risk to shutdown, backups, crash monitoring, process control, or game-file safety.
+
+Release tags follow the lightweight semantic versioning policy in [RELEASING.md](RELEASING.md). Normal commits are not automatically tagged; tags mark tested checkpoints on `main`.
 
 ## License
 

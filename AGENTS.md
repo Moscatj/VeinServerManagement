@@ -337,4 +337,29 @@ If tests are not practical, the final response must explain why.
 
 ---
 
+# 14. VERSIONING & RELEASE RULES
+
+This project uses lightweight semantic versioning for public release tags:
+
+```text
+vMAJOR.MINOR.PATCH
+```
+
+AI agents must classify every committed change as one of:
+
+- `none` — no release impact.
+- `patch` — bug fixes, docs, tests, CI, hardening, non-breaking cleanup.
+- `minor` — user-facing features or meaningful new capabilities.
+- `major` — breaking config, CLI/script, runtime-contract, or architecture changes.
+
+Rules:
+
+- Do not create a release tag for every commit.
+- Do not create or push release tags unless the user explicitly asks for a release or tag.
+- Update `CHANGELOG.md` under `Unreleased` for user-facing changes.
+- Follow `RELEASING.md` when preparing a release.
+- In final responses for committed work, state the release impact and whether a version tag is recommended.
+
+---
+
 # End of AGENTS.md (Agent Mode Safe Edition)
