@@ -1,9 +1,7 @@
 # AGENTS.md — Rules for AI Assistants (Codex Agent Mode, ChatGPT, Copilot, etc.)
 
 This document defines **strict rules and safeguards** for AI agents operating on the  
-**Vein Server Management Suite**, located at:
-
-G:\Servers\VeinServer\VeinServerManagement
+**Vein Server Management Suite**, located at the repository root.
 
 yaml
 Copy code
@@ -17,9 +15,8 @@ makes safe, reviewable changes.
 # 1. ABSOLUTE FILESYSTEM BOUNDARIES (CRITICAL)
 
 ### ✅ Allowed Write / Edit Area (repo root)
-The **only location where the agent may modify, add, or delete files** is:
-
-G:\Servers\VeinServer\VeinServerManagement\
+The **only location where the agent may modify, add, or delete files** is the
+repository root and its child paths.
 
 markdown
 Copy code
@@ -40,11 +37,11 @@ This includes:
 ### ❌ Forbidden Areas (read-only)
 The following paths are **strictly read-only**:
 
-G:\Servers\VeinServer\Vein
-G:\Servers\VeinServer\Vein\Saved
-G:\Servers\VeinServer\Vein\Logs
-G:\Servers\VeinServer\Vein\Content
-G:\Servers\VeinServer\Vein\Binaries\
+<VEIN_INSTALL>
+<VEIN_INSTALL>\Saved
+<VEIN_INSTALL>\Logs
+<VEIN_INSTALL>\Content
+<VEIN_INSTALL>\Binaries\
 
 markdown
 Copy code
@@ -95,7 +92,7 @@ If an AI ever believes an external write is required, the AI must respond:
 
 ### Requires explicit permission from the user:
 - Creating files **in any parent directory**
-- Creating files in **G:\Servers\VeinServer**
+- Creating files in the parent directory outside the repository
 - Creating temporary files outside the repo
 - Writing anywhere inside `Vein/`
 
@@ -277,7 +274,7 @@ These rules apply to Codex **Agent Mode**.
 ### Agent Mode MUST NOT:
 - Execute commands outside the repo  
   (e.g., no `cd ..`, no writing to parent directories)
-- Touch any file in `G:\Servers\VeinServer\Vein\`
+- Touch any file in `<VEIN_INSTALL>\`
 - Modify OS-level configuration
 - Install software without permission
 - Kill processes outside the Vein server

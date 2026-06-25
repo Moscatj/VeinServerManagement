@@ -48,7 +48,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 
 All launch scripts rely on variables defined in **Scripts/env_setup.bat**:
 
-set VEIN_MGMT_ROOT=G:\Servers\VeinServer\VeinServerManagement
+set VEIN_MGMT_ROOT=<VEIN_MGMT_ROOT>
 set VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller
 set VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json
 set PYEXE=py -3

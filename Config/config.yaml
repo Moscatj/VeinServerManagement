@@ -87,7 +87,7 @@ lifecycle:
 
 # ============================== STEAM (TAB) =================================
 steam:                      # SteamCMD update policy
-  steamcmd_path: "C:/SteamCMD/steamcmd.exe"
+  steamcmd_path: "ENV:STEAMCMD_PATH"
   app_id: 2131400
   auto_update_on_start: true
   steam_update_validate: true
@@ -200,7 +200,7 @@ discord:
     channel: status               # which webhook key to use by default
     include_timestamp: true
     include_server_name: true
-    server_name: "RHG Vein"
+    server_name: "Vein Server"
     emoji: true
 
   # default templates for each message type

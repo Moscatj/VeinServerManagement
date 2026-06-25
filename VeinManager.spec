@@ -12,8 +12,8 @@ hiddenimports += collect_submodules('ruamel.yaml')
 
 
 a = Analysis(
-    ['G:\\Servers\\VeinServer\\VeinServerManagement\\Controller\\vein_manager.py'],
-    pathex=['G:\\Servers\\VeinServer\\VeinServerManagement\\Controller'],
+    ['Controller/vein_manager.py'],
+    pathex=['Controller'],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
@@ -42,7 +42,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['G:\\Servers\\VeinServer\\VeinServerManagement\\Installer\\assets\\VeinServerManager.ico'],
+    icon=['Installer/assets/VeinServerManager.ico'],
 )
 coll = COLLECT(
     exe,

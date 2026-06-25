@@ -367,6 +367,27 @@ def _with_defaults(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     return cfg
 
 
+def _resolve_env_value(value: Any) -> Any:
+    """Resolve config values written as ENV:VAR_NAME without leaking local values."""
+    if not isinstance(value, str) or not value.startswith("ENV:"):
+        return value
+    env_name = value.split(":", 1)[1].strip()
+    return os.getenv(env_name, "").strip()
+
+
+def _resolve_env_values(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    for key in ("steamcmd_path",):
+        if key in cfg:
+            cfg[key] = _resolve_env_value(cfg[key])
+
+    steam = cfg.get("steam")
+    if isinstance(steam, dict) and "steamcmd_path" in steam:
+        steam["steamcmd_path"] = _resolve_env_value(steam["steamcmd_path"])
+        cfg["steam"] = steam
+
+    return cfg
+
+
 def _normalize_paths(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
     """Normalize key filesystem paths to absolute paths (prevents CWD surprises)."""
 
@@ -582,6 +603,7 @@ def load_config() -> Dict[str, Any]:
         raise ValueError(f"{cfg_path}: 'server_dir' is required")
 
     cfg = _with_defaults(cfg, mgmt)
+    cfg = _resolve_env_values(cfg)
     cfg = _normalize_paths(cfg, mgmt)
     _resolve_discord_webhook(cfg)
     _validate(cfg)

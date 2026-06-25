@@ -97,7 +97,7 @@ Key folders and files:
      - Delete save files or backups.
 
 3. **External Vein directory is off-limits**
-   - The actual game install (e.g. `G:\Servers\Vein\`) is outside this repo.
+   - The actual game install (for example `<VEIN_INSTALL>\`) is outside this repo.
    - Do **not** write to game binaries or Steam files.
    - Only touch game dirs/saves/logs in ways already supported by config + backup logic.
 

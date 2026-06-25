@@ -14,8 +14,8 @@ It is a management layer that lives alongside your Steam-installed Vein server a
 
 Typical layout on disk:
 
-G:\Servers\Vein\                  # Game server install (NOT part of this repo)
-G:\Servers\VeinServerManagement\  # This repository
+<VEIN_INSTALL>\                    # Game server install (NOT part of this repo)
+<VEIN_MGMT_ROOT>\                  # This repository
 📂 Repository Layout
 Root (this repo):
 
@@ -71,7 +71,7 @@ BuildInstaller.bat
 │   └── … (other helpers, health checks, web admin, git hooks, etc.)
 └── .git, .gitignore, .gitattributes, etc.
 Important:
-The Vein game server itself lives elsewhere (e.g. G:\Servers\Vein\) and is treated as read-only by this project, aside from reading logs and saves as configured in Config/config.yaml.
+The Vein game server itself lives elsewhere (for example `<VEIN_INSTALL>\`) and is treated as read-only by this project, aside from reading logs and saves as configured in `Config/config.yaml`.
 
 🧩 Core Components
 Controller layer (Controller/)

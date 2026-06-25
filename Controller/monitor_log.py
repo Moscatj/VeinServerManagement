@@ -225,7 +225,7 @@ def _resolve_active_log() -> Path | None:
     server_dir = Path(config.get("server_dir") or "").expanduser()
     candidates: list[str] = []
 
-    # e.g. G:/Servers/VeinServer/Vein/Saved/Logs/*.log
+    # e.g. <VEIN_INSTALL>/Saved/Logs/*.log
     if server_dir:
         candidates += glob(str(server_dir / "Vein" / "Saved" / "Logs" / "*.log"))
         candidates += glob(str(server_dir / "Saved" / "Logs" / "*.log"))

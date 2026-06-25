@@ -39,8 +39,8 @@ Every script (`StartServer.bat`, `StartCrashMonitor.bat`, `StartLogMonitor.bat`,
 When any start/stop script is run, the following occurs:
 1. `call env_setup.bat`
 2. Batch logic sets environment variables and echoes them to the console:
-       [env] VEIN_MGMT_ROOT=G:\Servers\VeinServer\VeinServerManagement
-       [env] VEIN_CONFIG=G:\Servers\VeinServer\VeinServerManagement\Config\config.json
+       [env] VEIN_MGMT_ROOT=<VEIN_MGMT_ROOT>
+       [env] VEIN_CONFIG=<VEIN_MGMT_ROOT>\Config\config.yaml
        [env] PYEXE=py -3
 3. Control returns to the calling script (e.g., `StartServer.bat`).
 4. That script then calls the relevant Python entrypoint under `Controller/`.

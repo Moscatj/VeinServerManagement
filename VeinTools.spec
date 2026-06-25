@@ -2,8 +2,8 @@
 
 
 a = Analysis(
-    ['G:\\Servers\\VeinServer\\VeinServerManagement\\Controller\\vein_tools.py'],
-    pathex=['G:\\Servers\\VeinServer\\VeinServerManagement\\Controller'],
+    ['Controller/vein_tools.py'],
+    pathex=['Controller'],
     binaries=[],
     datas=[],
     hiddenimports=[],

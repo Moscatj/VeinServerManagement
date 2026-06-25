@@ -67,5 +67,7 @@ htmlcov/
 
 # Local config backups and legacy runtime credentials
 Config/Backup/
+Config/*.local.yaml
+Config/*.local.json
 Controller/Legacy/WebAdmin/user_accounts.json
 Controller/Legacy/WebAdmin/server_state.json

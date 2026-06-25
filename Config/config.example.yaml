@@ -80,7 +80,7 @@ lifecycle:
       after: []
 
 steam:
-  steamcmd_path: "C:/SteamCMD/steamcmd.exe"
+  steamcmd_path: "ENV:STEAMCMD_PATH"
   app_id: 2131400
   auto_update_on_start: true
   steam_update_validate: true

@@ -13,15 +13,17 @@ import json
 import sys
 
 from datetime import datetime
+from pathlib import Path
 
 # === CONFIGURATION ===
-SERVER_DIR = "G:\\Servers\\VeinServer"
-TOOLS_DIR = os.path.join(SERVER_DIR, "Tools")
-WEBADMIN_DIR = os.path.join(TOOLS_DIR, "WebAdmin")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SERVER_DIR = os.getenv("VEIN_SERVER_ROOT", str(PROJECT_ROOT.parent))
+TOOLS_DIR = os.getenv("VEIN_TOOLS_DIR", str(PROJECT_ROOT / "Controller"))
+WEBADMIN_DIR = os.getenv("VEIN_WEBADMIN_DIR", str(Path(__file__).resolve().parent))
 USERS_FILE = os.path.join(WEBADMIN_DIR, "user_accounts.json")
 STATE_FILE = os.path.join(WEBADMIN_DIR, "server_state.json")
-BACKUP_ROOT = os.path.join(SERVER_DIR, "Vein", "Backups")
-PORT = 5000
+BACKUP_ROOT = os.getenv("VEIN_BACKUP_ROOT", str(PROJECT_ROOT / "Backups"))
+PORT = int(os.getenv("VEIN_WEBADMIN_PORT", "5000"))
 
 sys.path.append(TOOLS_DIR)
 from Tools.process import is_server_running
@@ -29,7 +31,7 @@ from Tools.discord import send_discord_message
 from Tools.backups_api import make_backup as backup_save_file
 
 app = Flask(__name__, template_folder=os.path.join(WEBADMIN_DIR, "templates"))
-app.secret_key = "REPLACE_WITH_STRONG_SECRET_KEY"
+app.secret_key = os.getenv("VEIN_WEBADMIN_SECRET", os.urandom(32).hex())
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
@@ -166,4 +168,5 @@ def logout():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+    debug = os.getenv("VEIN_WEBADMIN_DEBUG", "").lower() in {"1", "true", "yes"}
+    app.run(host=os.getenv("VEIN_WEBADMIN_HOST", "127.0.0.1"), port=PORT, debug=debug)

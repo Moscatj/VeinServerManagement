@@ -192,7 +192,7 @@ begin
     ReplaceConfigValue(Content, '  saves_dir: "../Vein/Saved/SaveGames"', '  saves_dir: "' + SavesPath + '"');
     ReplaceConfigValue(Content, '  logs_dir: "../Vein/Saved/Logs"', '  logs_dir: "' + LogsPath + '"');
     ReplaceConfigValue(Content, '  absolute_log_file: "../Vein/Saved/Logs/Vein.log"', '  absolute_log_file: "' + LogFile + '"');
-    ReplaceConfigValue(Content, '  steamcmd_path: "C:/SteamCMD/steamcmd.exe"', '  steamcmd_path: "' + SteamCmdPath + '"');
+    ReplaceConfigValue(Content, '  steamcmd_path: "ENV:STEAMCMD_PATH"', '  steamcmd_path: "' + SteamCmdPath + '"');
     SaveStringToFile(ConfigPath, Content, False);
   end;
 end;

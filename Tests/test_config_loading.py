@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 CTRL = ROOT / "Controller"
@@ -86,6 +87,20 @@ class ConfigLoadingTests(unittest.TestCase):
                 normalized["backups"]["root"],
                 str((mgmt_root / "Backups" / "Nightly").resolve()),
             )
+
+    def test_env_path_values_resolve_before_normalization(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            steamcmd = Path(tmp) / "steamcmd.exe"
+            with mock.patch.dict("os.environ", {"STEAMCMD_PATH": str(steamcmd)}, clear=False):
+                cfg = config_module._resolve_env_values(
+                    {
+                        "steamcmd_path": "ENV:STEAMCMD_PATH",
+                        "steam": {"steamcmd_path": "ENV:STEAMCMD_PATH"},
+                    }
+                )
+
+        self.assertEqual(cfg["steamcmd_path"], str(steamcmd))
+        self.assertEqual(cfg["steam"]["steamcmd_path"], str(steamcmd))
 
 
 if __name__ == "__main__":

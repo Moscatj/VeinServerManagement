@@ -10,7 +10,7 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - server_dir  
   • Folder that contains the Vein server executables.  
-  • Current: G:/Servers/VeinServer
+  • Current: ..
 
 - server_executables (list)  
   • Executable names to try in order when starting the server.  
@@ -18,11 +18,11 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - runtime_dir  
   • Where runtime flags, PIDs, and state JSONs are written.  
-  • Current: G:/Servers/VeinServer/VeinServerManagement/Runtime
+  • Current: Runtime
 
 - save_dir  
   • Game save directory used for backup/restore.  
-  • Current: G:/Servers/VeinServer/Vein/Saved/SaveGames
+  • Current: ../Vein/Saved/SaveGames
 
 - save_filenames (list)  
   • Candidate save file names in `save_dir`.  
@@ -30,19 +30,19 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - logs_dir  
   • Directory where Vein writes rolling logs.  
-  • Current: G:/Servers/VeinServer/Vein/Saved/Logs
+  • Current: ../Vein/Saved/Logs
 
 - absolute_log_file  
   • If set, the log monitor tails this specific file instead of auto-picking the newest log.  
-  • Current: G:/Servers/VeinServer/Vein/Saved/Logs/Vein.log
+  • Current: ../Vein/Saved/Logs/Vein.log
 - mgmt_log_dir  
   • Root folder for management-suite stdout/stderr logs (VeinManager, monitors, helpers).  
-  • Current: G:/Servers/VeinServer/VeinServerManagement/Logs
+  • Current: Logs
 
 
 - backup_root  
   • Root folder for all backup categories.  
-  • Current: G:/Servers/VeinServer/VeinServerManagement/Backups
+  • Current: Backups
 
 ---
 
@@ -50,7 +50,7 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - management_logs.root  
   • Overrides `paths.mgmt_log_dir` for grouping stdout/stderr per subsystem.  
-  • Current: G:/Servers/VeinServer/VeinServerManagement/Logs
+  • Current: Logs
 
 - management_logs.layout  
   • Maps subsystem names (vein_manager, monitor_log, crash_monitor, etc.) to folders under the root.  
@@ -62,7 +62,7 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - management_logs.archive  
   • Destination and retention window for archived management logs.  
-  • Current: {"enabled": true, "root": "G:/Servers/VeinServer/VeinServerManagement/Logs/Archive", "max_files": 150, "max_age_days": 90}
+  • Current: {"enabled": true, "root": "Logs/Archive", "max_files": 150, "max_age_days": 90}
 
 ---
 
@@ -110,7 +110,7 @@ Note: Any path value may now be expressed relative to the management root (the f
 
 - steamcmd_path  
   • Path to SteamCMD executable.  
-  • Current: C:/SteamCMD/steamcmd.exe
+  • Current: ENV:STEAMCMD_PATH
 
 - app_id  
   • Steam App ID for Vein server.  
@@ -151,10 +151,10 @@ Note: Any path value may now be expressed relative to the management root (the f
 - backup_folders (object)  
   • Explicit subfolders for categories under `backup_root`.  
   • Current:  
-    - Manual  → G:/Servers/VeinServer/VeinServerManagement/Backups/Manual  
-    - Startup → G:/Servers/VeinServer/VeinServerManagement/Backups/Startup  
-    - Autosave → G:/Servers/VeinServer/VeinServerManagement/Backups/Autosave  
-    - Crash   → G:/Servers/VeinServer/VeinServerManagement/Backups/Crash
+    - Manual  → Backups/Manual
+    - Startup → Backups/Startup
+    - Autosave → Backups/Autosave
+    - Crash   → Backups/Crash
 
 - nightly_backup (object)  
   • Scheduled backup policy for an external job/cron.  
@@ -257,7 +257,7 @@ These drive which subsystems run, and which categories are allowed to post to Di
 
 - monitor.enable → true  
 - monitor.heartbeat_interval_seconds → 300  
-- monitor.state_file → G:/Servers/VeinServer/VeinServerManagement/Runtime/server_state.json  
+- monitor.state_file → Runtime/server_state.json
 - monitor.wait_for_server_start_seconds → 600  
 - monitor.wait_for_log_appearance_seconds → 120  
 - monitor.tail_poll_interval_ms → 500
