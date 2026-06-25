@@ -1,0 +1,81 @@
+# Vein Server Config for Continue
+# Tip: Do NOT commit real API keys. Use env vars like ${OPENAI_API_KEY}.
+
+name: Vein Server Config
+version: 1.0.0
+schema: v1
+
+models:
+  # Local default (fast, cheap, good for iterative edits)
+  - name: local-deepseek
+    provider: ollama
+    model: deepseek-coder:6.7b-instruct
+    default: true
+    maxInputTokens: 12000   # keep prompts modest for local models
+    maxOutputTokens: 1024
+    temperature: 0.2
+
+  # Cloud review pass (switch to this when you want a deeper refactor review)
+  # If you have access to GPT-5, set model: gpt-5-thinking
+  - name: gpt5-review
+    provider: openai
+    model: gpt-4o
+    apiKey: ${OPENAI_API_KEY}  # <-- set in your environment, not here
+    maxInputTokens: 48000
+    maxOutputTokens: 2000
+    temperature: 0.2
+
+# Default models for chat and code edits inside Continue
+defaultChatModel: local-deepseek
+defaultEditModel: local-deepseek
+
+# Global workspace guardrails — these show up as “Workspace Rules” in Continue
+rules:
+  - "You are the assistant for the Vein Server Management suite (Windows)."
+  - "Never hardcode paths; resolve all paths via Config/config.json using config_helper.py."
+  - "Backups/ and Logs/ are only written by utils.py APIs. Controllers should not write directly to those folders."
+  - "GUI (vein_manager.py) triggers controllers and reads Runtime state; do not duplicate controller logic in the GUI."
+  - "All Discord messages flow through utils.send_discord_message() and respect features.* gates."
+  - "Preserve existing logging style and runtime flag semantics (server_running.flag, crash/log monitor state JSONs)."
+  - "Favor minimal diffs and design-preserving refactors. Avoid breaking CLI args or config keys."
+
+# What files Continue can pull into context automatically
+context_providers:
+  workspace:
+    enabled: true
+    # Retrieval limits tuned for local models (increase when using gpt5-review)
+    num_relevant_files: 12
+    num_tokens: 3500
+
+    include:
+      # Core code
+      - "Controller/**/*.py"
+      - "Config/**/*.json"
+      - "Scripts/**/*.{bat,ps1}"
+
+      # Docs first (these give the model high-signal summaries)
+      - "Docs/_index.md"
+      - "Docs/control_layer_overview.md"
+      - "Docs/Developer_Guide.md"
+      - "Docs/config_reference.md"
+      - "Docs/*.md"
+
+      # Top-level readme
+      - "README.md"
+
+    exclude:
+      - "Backups/**"
+      - "Logs/**"
+      - "Runtime/**"
+      - ".venv/**"
+      - ".git/**"
+      - "**/*.zip"
+
+# Optional retrieval tuning (some Continue builds support these keys)
+# If your Continue version ignores them, it's fine to leave in as comments.
+# retrieval:
+#   topK: 6
+#   maxFiles: 12
+#   maxCharsPerFile: 60000
+#   chunkChars: 2000
+
