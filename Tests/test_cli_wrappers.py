@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+CTRL = ROOT / "Controller"
+if str(CTRL) not in sys.path:
+    sys.path.insert(0, str(CTRL))
+
+import logcat  # noqa: E402
+import log_summary  # noqa: E402
+import migrate_mgmt_logs  # noqa: E402
+import vein_tools  # noqa: E402
+
+
+class CliWrapperTests(unittest.TestCase):
+    def test_logcat_list_and_search_paths(self) -> None:
+        with mock.patch("sys.argv", ["logcat", "--list"]), mock.patch.object(
+            logcat.mgmt_logs,
+            "available_subsystems",
+            return_value=["gui"],
+        ), mock.patch("builtins.print") as printed:
+            self.assertEqual(logcat.main(), 0)
+        printed.assert_called_with("gui")
+
+        hit = mock.Mock()
+        with mock.patch("sys.argv", ["logcat", "--search", "error"]), mock.patch.object(
+            logcat.log_search,
+            "search_logs",
+            return_value=[hit],
+        ), mock.patch.object(
+            logcat.log_search,
+            "format_hits",
+            return_value="formatted",
+        ), mock.patch("builtins.print") as printed:
+            self.assertEqual(logcat.main(), 0)
+        printed.assert_called_with("formatted")
+
+    def test_log_summary_serializes_events_and_writes_summary(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            log_file = root / "gui" / "app.log"
+            log_file.parent.mkdir()
+            event = log_summary.log_events.LogEvent(
+                file=log_file,
+                line_no=2,
+                level="ERROR",
+                message="failed",
+                timestamp=1.0,
+            )
+            with mock.patch.object(log_summary.mgmt_logs, "management_log_root", return_value=root), mock.patch.object(
+                log_summary.mgmt_logs,
+                "subsystem_dir",
+                return_value=root / "gui",
+            ), mock.patch.object(
+                log_summary.log_events,
+                "collect_recent_events",
+                return_value=[event],
+            ):
+                payload = log_summary.summarize_subsystem("gui", limit=10, per_file=5)
+
+        self.assertEqual(payload["events"][0]["file"], str(Path("gui") / "app.log"))
+        self.assertEqual(payload["events"][0]["level"], "ERROR")
+
+    def test_migrate_mgmt_logs_reports_no_moves(self) -> None:
+        with mock.patch("sys.argv", ["migrate_mgmt_logs", "--dry-run"]), mock.patch.object(
+            migrate_mgmt_logs.mgmt_logs,
+            "migrate_legacy_logs",
+            return_value=[],
+        ), mock.patch("builtins.print") as printed:
+            self.assertEqual(migrate_mgmt_logs.main(), 0)
+        printed.assert_called_with("No legacy logs found in Logs/.")
+
+    def test_vein_tools_restart_runs_stop_then_start(self) -> None:
+        stop = mock.Mock()
+        start = mock.Mock()
+        stop.run.return_value = 0
+        start.run.return_value = 0
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            cfg = Path(tmp) / "config.yaml"
+            cfg.write_text("version: 2\n", encoding="utf-8")
+            commands = dict(vein_tools.COMMANDS)
+            commands["stop-server"] = stop
+            commands["start-server"] = start
+            with mock.patch.object(vein_tools, "COMMANDS", commands), mock.patch.object(
+                vein_tools.time if hasattr(vein_tools, "time") else __import__("time"),
+                "sleep",
+            ):
+                code = vein_tools.main(["restart-server", "--config", str(cfg), "--restart-delay", "0"])
+
+        self.assertEqual(code, 0)
+        stop.run.assert_called_once()
+        start.run.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

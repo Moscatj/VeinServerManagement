@@ -11,7 +11,7 @@ single focused API instead of reaching into utils.py.
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -95,7 +95,7 @@ def write_flag(pid: int, exe: str, map_url: str) -> None:
         "pid": pid,
         "exe": exe,
         "map": map_url,
-        "started_at": datetime.utcnow().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
         STATE_FLAG.write_text(json.dumps(data, indent=2), encoding="utf-8")
