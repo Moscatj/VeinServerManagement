@@ -1,7 +1,7 @@
 # Vein Server Management Suite
 
 [![CI](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Non-Commercial Source Available](https://img.shields.io/badge/License-Non--Commercial%20Source%20Available-blue.svg)](LICENSE)
 
 A Python and PySide6 toolkit for hosting and supervising a Vein dedicated server on Windows.
 
@@ -9,7 +9,7 @@ This repository does not contain the game server. It is a management layer that 
 
 ## Project Status
 
-This is a personal open-source portfolio project. It is suitable for experimentation and local use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
+This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
 ## Features
 
@@ -140,9 +140,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests should describe the change
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is free for personal, educational, hobby, community, and other non-commercial use under the [Vein Server Management Non-Commercial Source Available License](LICENSE).
 
-## Security And Open-Source Hygiene
+Commercial use is not permitted without a separate written commercial license from the project maintainer. This includes selling the software, bundling it with a paid product or service, offering it as a paid hosted service, or using it primarily to generate revenue.
+
+## Security And Source Hygiene
 
 Tracked files are scanned for high-confidence secret patterns and local markers in CI. The repository ignores common local-sensitive files including:
 

@@ -1,21 +1,66 @@
-MIT License
+Vein Server Management Non-Commercial Source Available License
 
 Copyright (c) 2026 Vein Server Management contributors
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This license applies to the Vein Server Management Suite source code and
+associated documentation files in this repository.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Permission
+
+Permission is granted, free of charge, to use, copy, modify, and distribute
+this software for personal, educational, research, hobby, portfolio,
+community, or other non-commercial purposes, subject to the conditions below.
+
+2. Commercial Use
+
+Commercial use is not permitted without a separate written commercial license
+from the copyright holder.
+
+Commercial use includes, but is not limited to:
+
+- Selling, licensing, sublicensing, renting, or leasing the software.
+- Offering the software, modified versions, hosted instances, or management
+  services as part of a paid product, paid service, SaaS offering, or paid
+  support arrangement.
+- Bundling the software with a commercial product or service.
+- Using the software primarily to generate revenue, commercial advantage, or
+  monetary compensation.
+
+To request commercial permission or a commercial license, contact the project
+maintainer through the repository.
+
+3. Redistribution
+
+Redistribution for non-commercial purposes is allowed only if:
+
+- This license file is included.
+- Copyright notices are preserved.
+- Any modifications are clearly identified.
+- The redistributed work remains under these same non-commercial terms unless
+  the copyright holder grants separate written permission.
+
+4. No Trademark Rights
+
+This license does not grant permission to use project names, logos, trademarks,
+or branding except as needed to identify the software.
+
+5. Third-Party Components
+
+Third-party dependencies, libraries, tools, and assets remain governed by their
+own licenses. This license applies only to this project's original code and
+documentation.
+
+6. No Warranty
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+7. Reservation of Rights
+
+All rights not expressly granted by this license are reserved by the copyright
+holder.

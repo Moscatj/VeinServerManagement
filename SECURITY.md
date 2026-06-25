@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-This is a personal open-source project. Security fixes are made on the current `main` branch.
+This is a personal source-available project. Security fixes are made on the current `main` branch.
 
 ## Reporting A Vulnerability
 

@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented here.
 
-This project uses a lightweight versioning approach suitable for a personal open-source project. Dates use `YYYY-MM-DD`.
+This project uses a lightweight versioning approach suitable for a personal source-available project. Dates use `YYYY-MM-DD`.
 
 ## Unreleased
 
@@ -13,7 +13,7 @@ This project uses a lightweight versioning approach suitable for a personal open
 
 ## 2.2 - 2026-06-25
 
-- Established open-source readiness baseline.
+- Established public source release readiness baseline.
 - Retired tracked local artifacts and config backups.
 - Moved local API credentials to ignored environment files.
 - Added coverage reporting through `Scripts/RunCoverage.bat`.
