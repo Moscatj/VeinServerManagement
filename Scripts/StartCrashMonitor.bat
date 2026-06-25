@@ -9,7 +9,8 @@ rem --- Resolve ROOT = parent of Scripts (absolute path) ---
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 
 set "CONTROLLER=%ROOT%\Controller"
-set "CONFIG=%ROOT%\Config\config.json"
+set "CONFIG=%ROOT%\Config\config.yaml"
+if not exist "%CONFIG%" set "CONFIG=%ROOT%\Config\config.json"
 
 rem --- Try env_setup (optional) ---
 set "ENV_SETUP1=%~dp0env_setup.bat"

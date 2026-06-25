@@ -113,7 +113,7 @@ extend those focused helpers instead of reviving `Controller/utils.py`.
 
 config.py / config_helper.py
 
-config.py: Robust loader that searches for Config/config.yaml, config.yml, then config.json (or an override via VEIN_CONFIG).
+config.py: Robust loader that searches for Config/config.yaml, config.yml, then legacy config.json (or an override via VEIN_CONFIG).
 
 config_helper.py: Higher-level accessors and convenience functions for reading the config and feature gates.
 
@@ -163,9 +163,9 @@ Config/config.yaml
 
 Config/config.yml
 
-Config/config.json (legacy)
+Config/config.yaml (legacy)
 
-Controller-local config.json (legacy fallback)
+Controller-local config.yaml (legacy fallback)
 
 So you can keep using JSON if you like, but YAML (Config/config.yaml) is the current primary format.
 

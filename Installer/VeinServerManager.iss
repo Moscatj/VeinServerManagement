@@ -1,6 +1,6 @@
 #define MyAppName "Vein Server Management Suite"
 #define MyAppVersion "2.1.0"
-#define MyAppPublisher "Red Head Software"
+#define MyAppPublisher "Vein Server Management Contributors"
 #define MyAppExeName "VeinManager.exe"
 #define MyStageDir "..\\dist\\VeinServerManager"
 #define MyAppIcon "assets\\VeinServerManager.ico"

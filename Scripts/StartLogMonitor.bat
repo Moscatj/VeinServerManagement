@@ -8,6 +8,7 @@ cd /d "%~dp0"
 rem -- Resolve ROOT = parent of Scripts
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "CONTROLLER=%ROOT%\Controller"
+set "CONFIG_YAML=%ROOT%\Config\config.yaml"
 set "CONFIG_JSON=%ROOT%\Config\config.json"
 
 rem -- Try env_setup (optional) — use CALL and don’t rely on ELSE in IF lines
@@ -15,6 +16,7 @@ if exist "%~dp0env_setup.bat" call "%~dp0env_setup.bat"
 if exist "%ROOT%\env_setup.bat"  call "%ROOT%\env_setup.bat"
 
 rem -- Ensure VEIN_CONFIG is set
+if not defined VEIN_CONFIG if exist "%CONFIG_YAML%" set "VEIN_CONFIG=%CONFIG_YAML%"
 if not defined VEIN_CONFIG if exist "%CONFIG_JSON%" set "VEIN_CONFIG=%CONFIG_JSON%"
 
 rem -- Python launcher (from env_setup or default)

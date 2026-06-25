@@ -14,6 +14,7 @@ if exist "%ROOT%\env_setup.bat" call "%ROOT%\env_setup.bat"
 rem --- Fallbacks if env_setup didn’t define them
 if not defined VEIN_MGMT_ROOT set "VEIN_MGMT_ROOT=%ROOT%"
 if not defined VEIN_MGMT_CONTROLLER set "VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
+if not defined VEIN_CONFIG if exist "%VEIN_MGMT_ROOT%\Config\config.yaml" set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.yaml"
 if not defined VEIN_CONFIG set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
 
 echo [INFO] Using ROOT=%VEIN_MGMT_ROOT%

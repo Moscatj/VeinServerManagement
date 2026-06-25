@@ -6,7 +6,8 @@ rem Resolve repo root (this file is in ...\Scripts\)
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..") do set "VEIN_MGMT_ROOT=%%~fI"
 set "VEIN_CONTROLLER=%VEIN_MGMT_ROOT%\Controller"
-set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
+set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.yaml"
+if not exist "%VEIN_CONFIG%" set "VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json"
 
 rem Prefer venv\pythonw.exe; else try pyw -3 (windowless launcher); else pythonw.exe on PATH
 if exist "%VEIN_MGMT_ROOT%\venv\Scripts\pythonw.exe" (

@@ -1,14 +1,14 @@
 # Vein Server Management Suite — Developer Guide (v2.1)
 
-> **Purpose:**  
-> This document serves as the **comprehensive technical reference** for developers and contributors working on the Vein Server Management Suite.  
+> **Purpose:**
+> This document serves as the **comprehensive technical reference** for developers and contributors working on the Vein Server Management Suite.
 > It expands upon the root [README.md](../README.md) by detailing system architecture, environment setup, configuration structure, and internal behavior across all modules.
 
 ---
 
 ## ⚙️ Overview
 
-The Vein Server Management Suite is a modular control framework for running a **dedicated Vein server** on Windows.  
+The Vein Server Management Suite is a modular control framework for running a **dedicated Vein server** on Windows.
 It provides automated startup, crash recovery, scheduled backups, and Discord notifications — all driven by a single configuration file.
 
 This guide explains the internal design of the v2.1 system, covering environment setup, configuration schema, startup and shutdown sequences, monitoring behavior, and backup automation.
@@ -27,7 +27,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 | **Controller/nightly_backup.py** | Creates scheduled Nightly backups and prunes by count/age. |
 | **Controller/vein_manager.py** | PySide6 GUI for controlling the server, viewing logs, and editing config. |
 | **Controller/utils.py** | Shared logic for process management, backups, Steam updates, and Discord messaging. |
-| **Controller/config.py** | Loads, validates, and normalizes `Config/config.json`. Handles defaults and environment overrides. |
+| **Controller/config.py** | Loads, validates, and normalizes `Config/config.yaml`. Handles defaults and environment overrides. |
 | **Controller/config_helper.py** | Provides typed getters and feature gate logic (`is_feature_enabled`, etc.). |
 | **Scripts/env_setup.bat** | Initializes all environment variables required by the suite. |
 | **Scripts/StartServer.bat** | Calls `env_setup.bat` then launches the Python startup controller. |
@@ -36,7 +36,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 ### Supporting Folders
 | Folder | Purpose |
 |---------|----------|
-| **Config/** | Stores `config.json`, the master configuration file. |
+| **Config/** | Stores `config.yaml`, the primary configuration file. |
 | **Runtime/** | Contains transient files (PIDs, state JSONs, flags) written by controllers. |
 | **Backups/** | Categorized backup directories: Manual, Startup, Autosave, Crash, and Nightly. |
 | **Logs/** | Game log outputs read by the log monitor. |
@@ -50,15 +50,15 @@ All launch scripts rely on variables defined in **Scripts/env_setup.bat**:
 
 set VEIN_MGMT_ROOT=<VEIN_MGMT_ROOT>
 set VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller
-set VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.json
+set VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.yaml
 set PYEXE=py -3
 
 yaml
 Copy code
 
-- These variables define paths for all Python controllers.  
-- The environment is session-scoped — no registry modifications.  
-- Adjust `VEIN_MGMT_ROOT` if the suite is relocated.  
+- These variables define paths for all Python controllers.
+- The environment is session-scoped — no registry modifications.
+- Adjust `VEIN_MGMT_ROOT` if the suite is relocated.
 
 For details, see [Docs/env_setup_summary.md](env_setup_summary.md).
 
@@ -66,7 +66,7 @@ For details, see [Docs/env_setup_summary.md](env_setup_summary.md).
 
 ## ⚙️ Configuration System
 
-All runtime behavior is controlled by **Config/config.json**.  
+All runtime behavior is controlled by **Config/config.yaml**.
 See [Docs/config_reference.md](config_reference.md) for detailed key descriptions and defaults.
 
 ### Highlights
@@ -107,20 +107,20 @@ The file is loaded once via `config.py`, cached in memory, and accessed through 
 
 ## 🛑 Shutdown Sequence (`shutdown_server.py`)
 
-1. Mark intentional shutdown (prevents crash monitor restart).  
-2. Stop log and crash monitors gracefully.  
-3. Send pre-shutdown warning to Discord.  
-4. Terminate the server process cleanly (timeout then force).  
-5. Create “Shutdown” backup.  
-6. Clear runtime flags and locks.  
+1. Mark intentional shutdown (prevents crash monitor restart).
+2. Stop log and crash monitors gracefully.
+3. Send pre-shutdown warning to Discord.
+4. Terminate the server process cleanly (timeout then force).
+5. Create “Shutdown” backup.
+6. Clear runtime flags and locks.
 7. Post completion message to Discord.
 
 ---
 
 ## 🧩 Crash Recovery (`crash_monitor.py`)
 
-- Runs in a loop (default interval: 60s).  
-- Monitors `Runtime/server_running.flag` and checks process health.  
+- Runs in a loop (default interval: 60s).
+- Monitors `Runtime/server_running.flag` and checks process health.
 - If missing, confirms quiet window has expired, then:
   - Logs and posts Discord crash alert.
   - Creates a crash backup.
@@ -131,7 +131,7 @@ The file is loaded once via `config.py`, cached in memory, and accessed through 
 
 ## 📜 Log Monitoring (`monitor_log.py`)
 
-- Tails the current `Vein.log` (or specified file).  
+- Tails the current `Vein.log` (or specified file).
 - Detects:
   - Startup and “joinable” events.
   - Player auth, join, character selection, and disconnects.
@@ -164,11 +164,11 @@ The file is loaded once via `config.py`, cached in memory, and accessed through 
 
 Built with **PySide6**, this interface provides:
 
-- **Config Editor**: Tabbed editor with type-aware input fields.  
-- **Live Log Viewer**: Streams Vein logs in real time.  
-- **Status Indicators**: Color-coded lights for server and monitors.  
-- **Start/Stop Controls**: Buttons to manage the server and background scripts.  
-- **Runtime State Display**: Reads heartbeat JSONs to show uptime and activity.  
+- **Config Editor**: Tabbed editor with type-aware input fields.
+- **Live Log Viewer**: Streams Vein logs in real time.
+- **Status Indicators**: Color-coded lights for server and monitors.
+- **Start/Stop Controls**: Buttons to manage the server and background scripts.
+- **Runtime State Display**: Reads heartbeat JSONs to show uptime and activity.
 
 Persistent settings (window layout, overrides) stored via `QSettings`.
 
@@ -176,8 +176,8 @@ Persistent settings (window layout, overrides) stored via `QSettings`.
 
 ## 💬 Discord Integration
 
-All Discord messages flow through `utils.send_discord_message()`  
-and are controlled by feature flags and channel gates in `config.json`.
+All Discord messages flow through `utils.send_discord_message()`
+and are controlled by feature flags and channel gates in `config.yaml`.
 
 | Channel | Events |
 |----------|--------|
@@ -193,10 +193,10 @@ and are controlled by feature flags and channel gates in `config.json`.
 
 ## 🕓 Nightly Backup (`nightly_backup.py`)
 
-- Executes a single Nightly backup cycle.  
-- Reads Nightly-specific retention (`nightly_backup.*` keys).  
-- Calls `utils.backup_save_file()` with reason `"Nightly"`.  
-- Prunes old Nightly backups and optionally posts Discord status.  
+- Executes a single Nightly backup cycle.
+- Reads Nightly-specific retention (`nightly_backup.*` keys).
+- Calls `utils.backup_save_file()` with reason `"Nightly"`.
+- Prunes old Nightly backups and optionally posts Discord status.
 
 To schedule:
 py -3 Controller\nightly_backup.py
@@ -210,13 +210,13 @@ Add to Windows Task Scheduler for automated nightly runs.
 ## 🔧 Utilities (`utils.py`)
 
 Core shared logic for all controllers:
-- Process detection and PID management  
-- Runtime flag file creation/removal  
-- Backup and cleanup functions  
-- SteamCMD execution  
-- Discord webhook messaging  
-- Log rotation  
-- Exception-safe filesystem operations  
+- Process detection and PID management
+- Runtime flag file creation/removal
+- Backup and cleanup functions
+- SteamCMD execution
+- Discord webhook messaging
+- Log rotation
+- Exception-safe filesystem operations
 
 Every controller imports this module for consistent, reusable functionality.
 
@@ -251,7 +251,7 @@ Every controller imports this module for consistent, reusable functionality.
 ## 🗂 Folder Summary
 
 VeinServerManagement/
-├── Config/config.json
+├── Config/config.yaml
 ├── Controller/
 │ ├── *.py
 ├── Scripts/
@@ -279,12 +279,12 @@ Copy code
 
 ## 📘 Documentation Links
 
-- [Root README.md](../README.md) — Quick-start overview  
-- [Docs/control_layer_overview.md](control_layer_overview.md) — Architecture overview  
-- [Docs/config_reference.md](config_reference.md) — All config keys explained  
-- [Docs/start_server_summary.md](start_server_summary.md) — Startup controller details  
-- [Docs/vein_manager_summary.md](vein_manager_summary.md) — GUI documentation  
-- [Docs/utils_summary.md](utils_summary.md) — Utility function reference  
+- [Root README.md](../README.md) — Quick-start overview
+- [Docs/control_layer_overview.md](control_layer_overview.md) — Architecture overview
+- [Docs/config_reference.md](config_reference.md) — All config keys explained
+- [Docs/start_server_summary.md](start_server_summary.md) — Startup controller details
+- [Docs/vein_manager_summary.md](vein_manager_summary.md) — GUI documentation
+- [Docs/utils_summary.md](utils_summary.md) — Utility function reference
 
 ---
 

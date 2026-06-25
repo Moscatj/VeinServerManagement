@@ -48,7 +48,7 @@ CONFIG_DIR = ROOT / "Config"
 CTRL_DIR = ROOT / "Controller"
 RUNTIME_FALLBACK = ROOT / "Runtime"
 PYEXE_ENV = ENV.get("PYEXE", "")
-APP_ORG = "RHG"
+APP_ORG = "VeinServerManagement"
 APP_NAME = "VeinManager"
 # Ensure we can import Tools/* even if PYTHONPATH wasn't set by the .bat
 if str(CTRL_DIR) not in sys.path:

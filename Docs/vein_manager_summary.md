@@ -1,22 +1,22 @@
-# vein_manager.py — Summary  
-**Vein Server Management Suite (GUI Controller)**  
+# vein_manager.py — Summary
+**Vein Server Management Suite (GUI Controller)**
 
 ---
 
-## Purpose  
-`vein_manager.py` provides the **graphical user interface (GUI)** for the Vein Server Management Suite.  
-It allows local administrators to start, stop, and monitor the dedicated Vein game server and its subsystems (log monitor and crash monitor) through an interactive PySide6 interface.  
+## Purpose
+`vein_manager.py` provides the **graphical user interface (GUI)** for the Vein Server Management Suite.
+It allows local administrators to start, stop, and monitor the dedicated Vein game server and its subsystems (log monitor and crash monitor) through an interactive PySide6 interface.
 
 Core goals:
-- Provide a visual dashboard for server state (running, offline, or crashed).  
-- View live game logs directly within the app.  
-- Edit and validate the server’s JSON configuration files.  
-- Manage backups, runtime folders, and advanced overrides.  
-- Launch or stop monitors and server instances with one click.  
+- Provide a visual dashboard for server state (running, offline, or crashed).
+- View live game logs directly within the app.
+- Edit and validate the server’s YAML configuration files.
+- Manage backups, runtime folders, and advanced overrides.
+- Launch or stop monitors and server instances with one click.
 
 ---
 
-## Architecture Overview  
+## Architecture Overview
 | Layer | Description |
 |-------|--------------|
 | **UI Components** | Built with PySide6 (`QtWidgets`, `QtCore`, `QtGui`). Tabs, dialogs, and status lights visualize configuration and monitor data. |
@@ -46,7 +46,7 @@ The configuration editor itself still relies on the generated tabs listed above;
 ---
 
 ### 2. **Subprocess Management**
-Handles launching and stopping of server and monitors.  
+Handles launching and stopping of server and monitors.
 
 | Function | Purpose |
 |-----------|----------|
@@ -63,10 +63,10 @@ Monitors are identified and stopped by PID file, stop flag, or PowerShell proces
 ---
 
 ### 3. **Advanced Overrides (`AdvancedDialog`)**
-Dialog for customizing script paths and log file overrides without editing the main config.  
-- Stored in `QSettings` under organization `"RHG"`, app `"VeinManager"`.  
-- Fields include paths to each core controller script and optional log file override.  
-- “Reset to Defaults” reverts to config.json paths.
+Dialog for customizing script paths and log file overrides without editing the main config.
+- Stored in `QSettings` under organization `"VeinServerManagement"`, app `"VeinManager"`.
+- Fields include paths to each core controller script and optional log file override.
+- “Reset to Defaults” reverts to config.yaml paths.
 
 ---
 
@@ -134,18 +134,18 @@ Watches the selected log file and streams content into the GUI in real time:
 ---
 
 ### 10. **Design Notes**
-- Fully Windows-oriented (uses `tasklist`, `os.startfile`, PowerShell).  
-- Atomic JSON writes prevent corruption on save.  
-- GUI never blocks during heavy operations (threads + timers).  
-- Safe fallbacks ensure partial function even if some runtime files are missing.  
-- Status updates run every 2 seconds and never freeze UI threads.  
+- Fully Windows-oriented (uses `tasklist`, `os.startfile`, PowerShell).
+- Atomic JSON writes prevent corruption on save.
+- GUI never blocks during heavy operations (threads + timers).
+- Safe fallbacks ensure partial function even if some runtime files are missing.
+- Status updates run every 2 seconds and never freeze UI threads.
 - Monitor gumballs turn **yellow** when stale but alive, improving visibility.
 
 ---
 
 ## Example Interaction Flow
 1. User opens `Vein Manager`.
-2. Manager loads the latest `config.json` and runtime states.
+2. Manager loads the latest `config.yaml` and runtime states.
 3. The user can:
    - Click “Start Server” → runs `start_server.py`
    - Toggle monitors (start/stop)

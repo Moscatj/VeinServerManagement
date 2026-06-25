@@ -4,7 +4,7 @@
 ---
 
 ## Purpose
-Creates a **Nightly** backup of the active Vein server save and prunes old Nightly backups by **count** and **age** using settings from `config.json`. It uses shared utilities for the actual zip creation, pruning, and Discord notifications—no hardcoded paths.
+Creates a **Nightly** backup of the active Vein server save and prunes old Nightly backups by **count** and **age** using settings from `config.yaml`. It uses shared utilities for the actual zip creation, pruning, and Discord notifications—no hardcoded paths.
 
 ---
 
@@ -35,7 +35,7 @@ Creates a **Nightly** backup of the active Vein server save and prunes old Night
 
 ---
 
-## Configuration Keys (from `config.json`)
+## Configuration Keys (from `config.yaml`)
 - `backup_root` (string)
 - `backup_folders.Nightly` (string; default `"Nightly"` if missing)
 - `nightly_backup.enable` (bool; default `True`)
@@ -90,7 +90,7 @@ Creates a **Nightly** backup of the active Vein server save and prunes old Night
 ---
 
 ## Troubleshooting
-- **“Save file missing”**: Verify `utils.SAVE_FILE` points to an existing file and that `save_dir`/`save_filenames` are set correctly in `config.json`.
+- **“Save file missing”**: Verify `utils.SAVE_FILE` points to an existing file and that `save_dir`/`save_filenames` are set correctly in `config.yaml`.
 - **No zips created**: Check write permissions for `backup_root` and Nightly folder.
 - **No Discord messages**: Verify global Discord enable, backups channel gating, and webhook environment/URL resolution.
 

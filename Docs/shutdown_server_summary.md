@@ -13,8 +13,8 @@ It marks the shutdown as **intentional** (so the crash monitor won’t auto-rest
 - Resolves `Controller/`, `MGMT_ROOT`, and `Config/` based on the script’s path.
 - Looks up `VEIN_CONFIG` deterministically from:
   1) `os.environ["VEIN_CONFIG"]`
-  2) `Config/config.json`
-  3) a last-resort `Controller/config.json`
+  2) `Config/config.yaml`
+  3) a last-resort `Controller/config.yaml`
 - Exports `VEIN_MGMT_ROOT` and `VEIN_CONFIG` to the environment so helpers can read them.
 - Prints which config is being used for visibility in the console.
 
@@ -76,7 +76,7 @@ Kills monitors by keyword and taskkills likely server executables:
 - `VeinServer-Win64-Test.exe`
 - `VeinServer-Win64-Development.exe`
 - `VeinServer.exe`  
-Then clears locks and prints guidance to fix `config.json`.
+Then clears locks and prints guidance to fix `config.yaml`.
 
 ### `main()`
 - Attempts `_normal_shutdown()` if config was loaded; otherwise runs `_emergency_shutdown()`.
@@ -102,7 +102,7 @@ Then clears locks and prints guidance to fix `config.json`.
 ## Quick Customization
 | Goal | Where |
 |------|------|
-| Add/adjust pre-shutdown countdown | `pre_shutdown_warning_seconds` in `config.json` |
+| Add/adjust pre-shutdown countdown | `pre_shutdown_warning_seconds` in `config.yaml` |
 | Change quiet/throttle window after shutdown | `begin_intentional_shutdown(window_sec=…)` (config-driven) |
 | Add more server executable names | `_emergency_shutdown()` exe list |
 | Reduce Discord chatter | Wrap or gate `send_discord_message(...)` calls |

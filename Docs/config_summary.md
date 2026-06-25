@@ -1,14 +1,14 @@
-# config.py — Summary  
+# config.py — Summary
 **Vein Server Management Suite**
 
 ---
 
 ## Purpose
-`config.py` is the **resilient loader** and validator for `config.json`.  
+`config.py` is the **resilient loader** and validator for `config.yaml`.
 It provides a consistent entry point for all controllers and utilities that need access to configuration data.
 
 This module:
-- Finds the correct `config.json` using multiple fallbacks.
+- Finds the correct `config.yaml` using multiple fallbacks.
 - Normalizes and validates paths and settings.
 - Applies sensible defaults for missing fields.
 - Resolves Discord webhook overrides.
@@ -17,14 +17,14 @@ This module:
 
 ---
 
-## Search Order for config.json
-1. Environment variable **`VEIN_CONFIG`** — absolute path to JSON file.  
-2. `<VEIN_MGMT_ROOT>\Config\config.json` — preferred default location.  
-3. `<ServerManagment\Controller\config.json` — legacy fallback.  
+## Search Order for config.yaml
+1. Environment variable **`VEIN_CONFIG`** — absolute path to YAML or JSON file.
+2. `<VEIN_MGMT_ROOT>\Config\config.yaml` — preferred default location.
+3. `<VEIN_MGMT_ROOT>\Controller\config.json` — legacy fallback.
 
 Also respects environment variables:
-- `VEIN_MGMT_ROOT` → defines the Server Management root.  
-- `DISCORD_WEBHOOK_URL` → global webhook override.  
+- `VEIN_MGMT_ROOT` → defines the Server Management root.
+- `DISCORD_WEBHOOK_URL` → global webhook override.
 
 ---
 
@@ -48,20 +48,20 @@ Builds the list of possible config paths to try in priority order.
 
 ### `_with_defaults(cfg, mgmt_root)`
 Injects sane defaults for missing or empty values, such as:
-- `monitor_heartbeat_interval_seconds` = 300  
-- `show_monitor_window` = False  
-- `max_backups` = 10  
-- `backup_max_age_days` = 7  
-- `max_players` = 8  
-- `game_port` = 7777  
-- `query_port` = 27015  
-- `multi_home_ip` = "0.0.0.0"  
-- `preboot_shutdown` = True  
-- `backup_on_detect` = True  
-- `shutdown_timeout_sec` = 60  
-- `restart_throttle_seconds` = 120  
-- `server_executables` = ["VeinServer.exe", "VeinServer-Win64-Test.exe"]  
-- `backup_root` = `<ServerManagment>\Backups` (if missing)
+- `monitor_heartbeat_interval_seconds` = 300
+- `show_monitor_window` = False
+- `max_backups` = 10
+- `backup_max_age_days` = 7
+- `max_players` = 8
+- `game_port` = 7777
+- `query_port` = 27015
+- `multi_home_ip` = "0.0.0.0"
+- `preboot_shutdown` = True
+- `backup_on_detect` = True
+- `shutdown_timeout_sec` = 60
+- `restart_throttle_seconds` = 120
+- `server_executables` = ["VeinServer.exe", "VeinServer-Win64-Test.exe"]
+- `backup_root` = `<VEIN_MGMT_ROOT>\Backups` (if missing)
 
 Also applies `DISCORD_WEBHOOK_URL` from the environment if present.
 
@@ -79,8 +79,8 @@ Prevents issues with relative CWD or mixed slash/backslash usage.
 
 ### `_resolve_discord_webhook(cfg)`
 Determines which Discord webhook URL to use:
-1. If `cfg["discord_webhook"]` starts with `"ENV:NAME"`, reads that environment variable.  
-2. Else if `DISCORD_WEBHOOK_URL` is set, uses it.  
+1. If `cfg["discord_webhook"]` starts with `"ENV:NAME"`, reads that environment variable.
+2. Else if `DISCORD_WEBHOOK_URL` is set, uses it.
 3. Else keeps the JSON value or leaves empty.
 
 If Discord is enabled but no usable webhook exists, automatically disables Discord with a warning.
@@ -98,7 +98,7 @@ Performs full validation and auto-correction:
 ---
 
 ### `_load_first_existing(paths)`
-Attempts to load the first valid JSON file in the candidate list.
+Attempts to load the first valid YAML or JSON file in the candidate list.
 Raises a `FileNotFoundError` if none exist.
 
 ---

@@ -10,7 +10,8 @@ set "CTRL=%ROOT%\Controller"
 
 rem Optional: prefer existing VEIN_CONFIG if you already export it
 if not defined VEIN_CONFIG (
-  if exist "%ROOT%\Config\config.json" set "VEIN_CONFIG=%ROOT%\Config\config.json"
+  if exist "%ROOT%\Config\config.yaml" set "VEIN_CONFIG=%ROOT%\Config\config.yaml"
+  if not defined VEIN_CONFIG if exist "%ROOT%\Config\config.json" set "VEIN_CONFIG=%ROOT%\Config\config.json"
 )
 
 echo [INFO] ROOT=%ROOT%

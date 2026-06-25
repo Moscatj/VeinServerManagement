@@ -20,14 +20,14 @@ This document ties together the main control scripts and their shared dependenci
 | Module | Purpose |
 |---------|----------|
 | **Controller/Tools/** | Shared helper modules (process, runtime, restart, backups, Discord, Steam updates). |
-| **config.py** | Loads and validates `config.json`, applies defaults, and handles environment overrides. |
+| **config.py** | Loads and validates `config.yaml`, applies defaults, and handles environment overrides. |
 | **config_helper.py** | Simplified API for retrieving typed config values and feature flags. |
 
 ### Support Layers
 | Layer | Role |
 |--------|------|
 | **vein_manager.py** | PySide6 GUI that provides visual control, config editing, live log display, and monitor status indicators. |
-| **config.json** | Central configuration file defining all paths, features, and behavior. |
+| **config.yaml** | Central configuration file defining all paths, features, and behavior. |
 | **env_setup.bat** | Initializes environment variables (`VEIN_MGMT_ROOT`, `VEIN_CONFIG`, etc.) for all scripts. |
 | **Runtime/** | Folder for live flag/state/heartbeat files used by monitors and the GUI. |
 | **Backups/** | Categorized folders for Manual, Startup, Autosave, Crash, and Nightly backups. |
@@ -131,14 +131,14 @@ Copy code
 
 ## 🔧 Key Design Notes
 
-- Everything is **config-driven** — no hardcoded paths or constants.  
-- Controllers communicate **only through runtime files** and **Discord posts** (no sockets).  
-- All scripts are safe to run independently for testing.  
-- **GUI** (`vein_manager.py`) never directly controls the game process — it triggers scripts and reads runtime state.  
-- **Discord integration** lives in `Controller/Tools/discord.py` and is gated by `features.*` in `config.json`.  
-- **Crash prevention** uses restart throttling + startup quiet periods to avoid infinite restart loops.  
-- All backups and logs are organized by timestamp under `Backups/` and `Runtime/`.  
+- Everything is **config-driven** — no hardcoded paths or constants.
+- Controllers communicate **only through runtime files** and **Discord posts** (no sockets).
+- All scripts are safe to run independently for testing.
+- **GUI** (`vein_manager.py`) never directly controls the game process — it triggers scripts and reads runtime state.
+- **Discord integration** lives in `Controller/Tools/discord.py` and is gated by `features.*` in `config.yaml`.
+- **Crash prevention** uses restart throttling + startup quiet periods to avoid infinite restart loops.
+- All backups and logs are organized by timestamp under `Backups/` and `Runtime/`.
 
 ---
 
-_Last updated: 2025 — Red Head Software / Vein Server Management Suite v2.1_
+_Last updated: 2025 — Vein Server Management contributors_

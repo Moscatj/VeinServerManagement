@@ -8,7 +8,7 @@
 It handles environment setup, configuration loading, process management, monitoring, and Discord startup messaging.
 
 **Core responsibilities:**
-- Initialize the runtime environment and resolve `config.json`.
+- Initialize the runtime environment and resolve `config.yaml`.
 - Validate the server executable and print a preflight summary.
 - Handle pre-existing server instances (restart, skip, or backup).
 - Optionally run SteamCMD updates and restore saves.
@@ -18,7 +18,7 @@ It handles environment setup, configuration loading, process management, monitor
 ---
 
 ## Dependencies
-- **config_helper** → loads `config.json` and feature toggles.
+- **config_helper** → loads `config.yaml` and feature toggles.
 - **utils.py** → provides:
   - Server discovery and launch (`find_running_server`, `start_vein_server`)
   - Flag and lock helpers (`create_startup_lock`, `clear_flag`, `end_intentional_shutdown`)

@@ -1,6 +1,6 @@
-﻿# Vein Server Management — config.json Reference
+# Vein Server Management — config.yaml Reference
 
-This document explains every key in `Config/config.json`, the source of truth for paths, feature toggles, ports, monitors, backups, and Discord. Values shown below reflect your current file.
+This document explains every key in `Config/config.yaml`, the source of truth for paths, feature toggles, ports, monitors, backups, and Discord. Values shown below reflect your current file.
 
 Note: Any path value may now be expressed relative to the management root (the folder that contains `Controller/` and `Config/`). Relative entries are resolved during config load, so packaged builds work no matter which drive or directory the suite is installed on.
 

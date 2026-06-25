@@ -4,9 +4,9 @@
 ---
 
 ## Purpose
-`config_helper.py` provides ergonomic, centralized access to the loaded `config.json` file.  
+`config_helper.py` provides ergonomic, centralized access to the loaded `config.yaml` file.
 It ensures all controllers read configuration values consistently and safely, with correct types and
-feature-gating logic.  
+feature-gating logic.
 
 This module loads configuration **once on import** and exposes helper functions for:
 - Typed key retrieval (`bool`, `int`, `list`, `dict`, `path`)
