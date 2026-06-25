@@ -40,6 +40,48 @@ class CliWrapperTests(unittest.TestCase):
             self.assertEqual(logcat.main(), 0)
         printed.assert_called_with("formatted")
 
+    def test_logcat_reports_no_matches_and_passes_search_options(self) -> None:
+        with mock.patch(
+            "sys.argv",
+            [
+                "logcat",
+                "--subsystem",
+                " monitor_log ",
+                "--subsystem",
+                "",
+                "--search",
+                "timeout",
+                "--since",
+                "2h",
+                "--limit",
+                "7",
+                "--case-sensitive",
+                "--include-archive",
+            ],
+        ), mock.patch.object(
+            logcat.log_search,
+            "parse_since",
+            return_value=123.0,
+        ) as parse_since, mock.patch.object(
+            logcat.log_search,
+            "search_logs",
+            return_value=[],
+        ) as search, mock.patch(
+            "builtins.print"
+        ) as printed:
+            self.assertEqual(logcat.main(), 0)
+
+        parse_since.assert_called_once_with("2h")
+        search.assert_called_once_with(
+            subsystems=["monitor_log"],
+            pattern="timeout",
+            case_sensitive=True,
+            since_ts=123.0,
+            max_hits=7,
+            include_archive=True,
+        )
+        printed.assert_called_once_with("No matches.")
+
     def test_log_summary_serializes_events_and_writes_summary(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             root = Path(tmp)
@@ -74,6 +116,33 @@ class CliWrapperTests(unittest.TestCase):
         ), mock.patch("builtins.print") as printed:
             self.assertEqual(migrate_mgmt_logs.main(), 0)
         printed.assert_called_with("No legacy logs found in Logs/.")
+
+    def test_migrate_mgmt_logs_reports_dry_run_and_real_moves(self) -> None:
+        moves = [(Path("Logs/server.stdout.log"), Path("Logs/start_server/server.stdout.log"))]
+
+        with mock.patch("sys.argv", ["migrate_mgmt_logs", "--dry-run"]), mock.patch.object(
+            migrate_mgmt_logs.mgmt_logs,
+            "migrate_legacy_logs",
+            return_value=moves,
+        ) as migrate, mock.patch("builtins.print") as printed:
+            self.assertEqual(migrate_mgmt_logs.main(), 0)
+
+        migrate.assert_called_once_with(dry_run=True)
+        printed.assert_any_call(
+            f"Would move: {moves[0][0]} -> {moves[0][1]}"
+        )
+        printed.assert_any_call("Would move 1 file(s).")
+
+        with mock.patch("sys.argv", ["migrate_mgmt_logs"]), mock.patch.object(
+            migrate_mgmt_logs.mgmt_logs,
+            "migrate_legacy_logs",
+            return_value=moves,
+        ) as migrate, mock.patch("builtins.print") as printed:
+            self.assertEqual(migrate_mgmt_logs.main(), 0)
+
+        migrate.assert_called_once_with(dry_run=False)
+        printed.assert_any_call(f"Moved: {moves[0][0]} -> {moves[0][1]}")
+        printed.assert_any_call("Moved 1 file(s).")
 
     def test_vein_tools_restart_runs_stop_then_start(self) -> None:
         stop = mock.Mock()
