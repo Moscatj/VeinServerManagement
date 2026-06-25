@@ -64,3 +64,6 @@ htmlcov/
 # Continue local config/secrets
 .continue/.env
 .continue/**/*.env
+
+.continue/.env
+.env
