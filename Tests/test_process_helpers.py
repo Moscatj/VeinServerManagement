@@ -104,6 +104,14 @@ class ProcessHelperTests(unittest.TestCase):
 
         self.assertEqual(found, [match])
 
+    def test_list_all_servers_ignores_inaccessible_processes(self) -> None:
+        bad = mock.Mock()
+        type(bad).info = mock.PropertyMock(side_effect=process.psutil.AccessDenied(pid=5))
+        match = FakeProcess(6, {"name": "VeinServer.exe", "cmdline": []})
+
+        with mock.patch.object(process.psutil, "process_iter", return_value=[bad, match]):
+            self.assertEqual(process.list_all_servers(), [match])
+
     def test_find_running_server_prefers_matching_cwd_and_known_name(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             server_dir = Path(tmp).resolve()
@@ -147,6 +155,27 @@ class ProcessHelperTests(unittest.TestCase):
         ):
             self.assertIs(process.find_running_server(["Other.exe"], ROOT), pattern_match)
 
+    def test_find_running_server_ignores_access_denied_candidates(self) -> None:
+        denied = FakeProcess(1, {"name": "VeinServer.exe", "cmdline": []})
+        with mock.patch.object(process, "_cwd_matches", side_effect=[process.psutil.AccessDenied(pid=1), False]), mock.patch.object(
+            process,
+            "_matches_known_executables",
+            return_value=True,
+        ), mock.patch.object(
+            process.psutil,
+            "process_iter",
+            side_effect=[[denied], [denied], []],
+        ):
+            self.assertIs(process.find_running_server(["VeinServer.exe"], ROOT), denied)
+
+    def test_is_vein_server_process_returns_false_for_inaccessible_info(self) -> None:
+        denied = mock.Mock()
+        type(denied).info = mock.PropertyMock(side_effect=process.psutil.AccessDenied(pid=1))
+        match = FakeProcess(22, {"name": "VeinServer.exe", "cmdline": []})
+
+        self.assertFalse(process._is_vein_server_process(denied))
+        self.assertTrue(process._is_vein_server_process(match))
+
     def test_kill_process_tree_terminates_then_kills_remaining_processes(self) -> None:
         parent = FakeProcess(100)
         child = FakeProcess(101)
@@ -162,6 +191,32 @@ class ProcessHelperTests(unittest.TestCase):
         self.assertTrue(child.terminated)
         self.assertTrue(parent.killed)
         self.assertTrue(child.killed)
+
+    def test_kill_process_tree_returns_when_parent_unavailable(self) -> None:
+        with mock.patch.object(
+            process.psutil,
+            "Process",
+            side_effect=process.psutil.NoSuchProcess(pid=999),
+        ), mock.patch.object(process.psutil, "wait_procs") as wait_procs:
+            process.kill_process_tree(999)
+
+        wait_procs.assert_not_called()
+
+    def test_kill_process_tree_tolerates_terminate_and_kill_errors(self) -> None:
+        parent = FakeProcess(100)
+        child = FakeProcess(101)
+        parent._children = [child]
+        parent.terminate = mock.Mock(side_effect=RuntimeError("terminate failed"))
+        child.kill = mock.Mock(side_effect=RuntimeError("kill failed"))
+
+        with mock.patch.object(process.psutil, "Process", return_value=parent), mock.patch.object(
+            process.psutil,
+            "wait_procs",
+        ):
+            process.kill_process_tree(100, timeout=1)
+
+        parent.terminate.assert_called_once()
+        child.kill.assert_called_once()
 
     def test_stop_server_clears_markers_when_no_process_is_running(self) -> None:
         with mock.patch.object(process, "find_running_server", return_value=None), mock.patch.object(
@@ -213,6 +268,20 @@ class ProcessHelperTests(unittest.TestCase):
         clear_markers.assert_called_once()
         set_state.assert_called_once_with(False, pid=0, last_exit_code=-1)
 
+    def test_stop_server_returns_false_when_force_taskkill_fails(self) -> None:
+        proc = FakeProcess(334)
+        proc.wait = mock.Mock(side_effect=TimeoutError("still running"))
+
+        with mock.patch.object(process, "find_running_server", return_value=proc), mock.patch.object(
+            process,
+            "send_discord_message",
+        ), mock.patch.object(
+            process.subprocess,
+            "run",
+            side_effect=OSError("taskkill missing"),
+        ):
+            self.assertFalse(process.stop_server(timeout=1))
+
     def test_stop_all_servers_aggressive_returns_acted_pids_and_clears_state(self) -> None:
         proc = FakeProcess(444, {"name": "VeinServer.exe", "cmdline": ["VeinServer.exe"]})
 
@@ -236,6 +305,76 @@ class ProcessHelperTests(unittest.TestCase):
         kill_tree.assert_called_once_with(444, timeout=mock.ANY)
         clear_markers.assert_called_once()
         set_state.assert_called_once_with(False, pid=0, last_exit_code=-1)
+
+    def test_stop_all_servers_aggressive_returns_empty_when_no_processes(self) -> None:
+        with mock.patch.object(process, "list_all_servers", return_value=[]), mock.patch.object(
+            process,
+            "send_discord_message",
+        ) as discord:
+            self.assertEqual(process.stop_all_servers_aggressive(), [])
+
+        discord.assert_not_called()
+
+    def test_stop_all_servers_aggressive_uses_taskkill_fallback_and_leftover_paths(self) -> None:
+        proc = FakeProcess(445, {"name": "VeinServer.exe", "cmdline": ["VeinServer.exe"]})
+        leftover = FakeProcess(
+            446,
+            {
+                "name": "VeinServer.exe",
+                "cmdline": [str(ROOT / "VeinServer.exe")],
+            },
+        )
+
+        with mock.patch.object(process, "list_all_servers", side_effect=[[proc], [leftover]]), mock.patch.object(
+            process,
+            "send_discord_message",
+        ), mock.patch.object(
+            process,
+            "kill_process_tree",
+            side_effect=RuntimeError("kill tree failed"),
+        ), mock.patch.object(
+            process.subprocess,
+            "run",
+        ) as run, mock.patch.object(
+            process,
+            "_powershell_kill_by_fullpaths",
+        ) as powershell, mock.patch.object(
+            process,
+            "clear_runtime_markers",
+        ), mock.patch.object(
+            process,
+            "set_server_state",
+        ):
+            acted = process.stop_all_servers_aggressive()
+
+        self.assertEqual(acted, [445])
+        self.assertGreaterEqual(run.call_count, 1)
+        powershell.assert_called_once()
+        self.assertIn(str((ROOT / "VeinServer.exe").resolve()), powershell.call_args.args[0])
+
+    def test_powershell_kill_by_fullpaths_skips_empty_and_swallows_errors(self) -> None:
+        with mock.patch.object(process.subprocess, "run") as run:
+            process._powershell_kill_by_fullpaths([])
+        run.assert_not_called()
+
+        with mock.patch.object(process.subprocess, "run", side_effect=OSError("no powershell")):
+            process._powershell_kill_by_fullpaths([r"C:\Game\VeinServer.exe"])
+
+    def test_runtime_and_headless_helpers_cover_error_paths(self) -> None:
+        flags = process.win_creationflags_for_headless()
+        self.assertIsInstance(flags, int)
+        self.assertGreaterEqual(flags, 0)
+
+        bad_config = mock.Mock()
+        bad_config.get.side_effect = RuntimeError("bad config")
+        with mock.patch.object(process, "config", bad_config):
+            self.assertFalse(process.headless_enabled())
+            self.assertFalse(process.current_headless_flag())
+
+        with mock.patch.object(process, "find_running_server", return_value=object()):
+            self.assertTrue(process.is_server_running())
+        with mock.patch.object(process, "find_running_server", return_value=None):
+            self.assertFalse(process.is_server_running())
 
     def test_merged_launch_args_preserves_base_order_and_adds_new_values(self) -> None:
         with mock.patch.object(process, "EXTRA_LAUNCH_ARGS", ["-A", "-B"]):
@@ -318,6 +457,68 @@ class ProcessHelperTests(unittest.TestCase):
             self.assertEqual(pid_file.read_text(encoding="utf-8"), "1234")
             set_state.assert_called_once()
 
+    def test_start_server_supports_explicit_executable_cwd_abslog_and_runtime_write_failure(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            exe = base / "CustomServer.exe"
+            exe.write_text("", encoding="utf-8")
+            cwd = base / "Work"
+            cwd.mkdir()
+            proc = mock.Mock(pid=9876)
+            proc.poll.return_value = None
+
+            with mock.patch.object(process, "MAP_URL", ""), mock.patch.object(
+                process,
+                "GAME_PORT",
+                0,
+            ), mock.patch.object(
+                process,
+                "QUERY_PORT",
+                27015,
+            ), mock.patch.object(
+                process,
+                "ENABLE_QUERY_PORT",
+                False,
+            ), mock.patch.object(
+                process,
+                "ABSOLUTE_LOG_FILE",
+                str(base / "Vein.log"),
+            ), mock.patch.object(
+                process,
+                "headless_enabled",
+                return_value=False,
+            ), mock.patch.object(
+                process.subprocess,
+                "Popen",
+                return_value=proc,
+            ) as popen, mock.patch.object(
+                process.time,
+                "sleep",
+            ), mock.patch.object(
+                process,
+                "write_flag",
+                side_effect=OSError("state write failed"),
+            ), mock.patch(
+                "builtins.print"
+            ) as printed:
+                result = process.start_server(
+                    max_players=0,
+                    ip="0.0.0.0",
+                    executable=str(exe),
+                    cwd=cwd,
+                )
+
+            self.assertIs(result, proc)
+            args = popen.call_args.args[0]
+            self.assertEqual(args[0], str(exe))
+            self.assertNotIn("-MaxPlayers=0", args)
+            self.assertNotIn("-MultiHome=0.0.0.0", args)
+            self.assertNotIn("-port=0", args)
+            self.assertNotIn("-QueryPort=27015", args)
+            self.assertIn(f"-Abslog={base / 'Vein.log'}", args)
+            self.assertEqual(popen.call_args.kwargs["cwd"], str(cwd))
+            self.assertTrue(any("failed to persist runtime state" in str(call) for call in printed.call_args_list))
+
     def test_start_server_returns_none_when_no_executable_exists(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp, mock.patch.object(
             process,
@@ -380,6 +581,21 @@ class ProcessHelperTests(unittest.TestCase):
             second_args = popen.call_args_list[1].args[0]
             self.assertNotIn("-log", first_args)
             self.assertIn("-log", second_args)
+
+    def test_start_vein_server_and_resolve_executable_aliases(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            server_dir = Path(tmp)
+            exe = server_dir / "VeinServer.exe"
+            exe.write_text("", encoding="utf-8")
+
+            with mock.patch.object(process, "start_server", return_value="started") as start:
+                self.assertEqual(process.start_vein_server(max_players=2), "started")
+
+            start.assert_called_once_with(max_players=2)
+            self.assertEqual(
+                process.resolve_server_executable(server_dir, ["VeinServer.exe"]),
+                exe,
+            )
 
 
 if __name__ == "__main__":
