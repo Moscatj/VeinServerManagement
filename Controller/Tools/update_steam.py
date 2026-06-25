@@ -71,7 +71,7 @@ def check_for_steam_update() -> bool:
         "+quit",
     ]
 
-    print("[Update] Running SteamCMD update…")
+    print("[Update] Running SteamCMD update...")
     for attempt in range(1, retries + 2):
         try:
             proc = subprocess.run(
@@ -91,18 +91,18 @@ def check_for_steam_update() -> bool:
             )
             if ok:
                 print("[Update] SteamCMD update completed successfully.")
-                send_discord_message("✅ SteamCMD update completed.", channel="startup")
+                send_discord_message("SteamCMD update completed.", channel="startup")
                 return True
             else:
-                print(f"[Update] Attempt {attempt} failed — retrying…")
+                print(f"[Update] Attempt {attempt} failed; retrying...")
                 print(out[-400:])
         except subprocess.TimeoutExpired:
-            print("[Update] SteamCMD timed out; retrying…")
+            print("[Update] SteamCMD timed out; retrying...")
         except Exception as e:
-            print(f"[Update] SteamCMD error: {e}; retrying…")
+            print(f"[Update] SteamCMD error: {e}; retrying...")
         time.sleep(5)
 
-    send_discord_message("⚠️ SteamCMD update failed after retries.", channel="startup")
+    send_discord_message("SteamCMD update failed after retries.", channel="startup")
     print("[Update] SteamCMD update failed after retries.")
     return False
 

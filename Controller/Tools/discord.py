@@ -54,7 +54,7 @@ def send_discord_message(message: str, channel: str = "startup") -> None:
         return
 
     max_len = 1800
-    content = (message[:max_len] + "…") if len(message) > max_len else message
+    content = (message[:max_len] + "...") if len(message) > max_len else message
 
     try:
         requests.post(url, json={"content": content}, timeout=10)

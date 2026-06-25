@@ -48,7 +48,7 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
         creationflags = win_creationflags_for_headless()
 
         send_discord_message(
-            f"🔄 Crash monitor initiated controlled restart (reason={reason}).",
+            f"Crash monitor initiated controlled restart (reason={reason}).",
             channel="startup",
         )
 
