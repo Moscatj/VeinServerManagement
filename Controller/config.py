@@ -1,4 +1,4 @@
-"""
+r"""
 config.py  — resilient loader for config.yaml (and legacy config.json)
 
 Search order for config files:

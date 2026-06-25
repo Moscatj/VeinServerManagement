@@ -53,3 +53,5 @@ Desktop.ini
 *.exe
 *.bat~
 *.old
+.coverage
+htmlcov/
