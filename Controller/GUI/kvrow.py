@@ -64,7 +64,7 @@ class KVRow(QtWidgets.QWidget):
 
             if looks_path_key(key):
                 btn = QtWidgets.QToolButton()
-                btn.setText("…")
+                btn.setText("...")
                 btn.setToolTip("Browse")
 
                 def pick():
@@ -121,4 +121,3 @@ class KVRow(QtWidgets.QWidget):
                 e.blockSignals(True)
                 e.setText("" if value is None else str(value))
                 e.blockSignals(False)
-
