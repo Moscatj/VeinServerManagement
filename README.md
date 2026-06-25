@@ -1,6 +1,6 @@
 # Vein Server Management Suite
 
-[![CI](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml)
+[![CI](https://github.com/Moscatj/VeinServerManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/Moscatj/VeinServerManagement/actions/workflows/ci.yml)
 [![License: Non-Commercial Source Available](https://img.shields.io/badge/License-Non--Commercial%20Source%20Available-blue.svg)](LICENSE)
 
 A Python and PySide6 toolkit for hosting and supervising a Vein dedicated server on Windows.
@@ -134,6 +134,7 @@ Start here:
 - [Docs/testing.md](Docs/testing.md)
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASING.md](RELEASING.md)
+- [ROADMAP.md](ROADMAP.md)
 
 ## Contributing
 

@@ -6,6 +6,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a project roadmap and fixed the README CI badge repository URL.
 - Added release process documentation and AI-assisted versioning rules.
 - Added GitHub Actions CI for tests, coverage, diagnostics, and secret/local marker scanning.
 - Added testing policy requiring unit tests for new behavior when practical.
