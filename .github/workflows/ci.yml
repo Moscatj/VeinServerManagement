@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Unit Tests And Safety Checks
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: py -3 -m pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: py -3 -m unittest discover -s Tests
+
+      - name: Run diagnostic suite
+        shell: cmd
+        env:
+          CI: "true"
+        run: Scripts\TestSuite.bat __RUN__
+
+      - name: Run coverage
+        shell: cmd
+        run: Scripts\RunCoverage.bat
+
+      - name: Secret and local marker scan
+        shell: pwsh
+        run: |
+          $patterns = @(
+            'sk-[A-Za-z0-9_-]{20,}',
+            '(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}',
+            'https://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/[^\s"'']+',
+            '-----BEGIN [A-Z ]*PRIVATE KEY-----',
+            'G:[\\/]',
+            'REPLACE_WITH_STRONG_SECRET_KEY',
+            '\bRHG\b',
+            'Red Head Software'
+          )
+          $ignored = @(
+            '.github/workflows/ci.yml',
+            'Config/Backup/',
+            'Controller/Legacy/WebAdmin/user_accounts.json'
+          )
+          $findings = @()
+          foreach ($file in git ls-files) {
+            $normalized = $file -replace '\\', '/'
+            if ($ignored | Where-Object { $normalized.StartsWith($_) }) { continue }
+            if ($normalized -match '\.(ico|png|jpg|jpeg|gif|pdf|exe|dll|pyd|pyc)$') { continue }
+            $content = Get-Content -LiteralPath $file -Raw -ErrorAction SilentlyContinue
+            if ($null -eq $content) { continue }
+            foreach ($pattern in $patterns) {
+              if ($content -match $pattern) {
+                $findings += "$file matched $pattern"
+              }
+            }
+          }
+          if ($findings.Count -gt 0) {
+            $findings | ForEach-Object { Write-Error $_ }
+            exit 1
+          }

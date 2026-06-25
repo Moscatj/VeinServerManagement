@@ -101,8 +101,12 @@ if %SUITE_FAIL% EQU 0 (
   echo ==========================================
 )
 echo.
-echo [INFO] Diagnostics complete. Press any key to close...
-pause >nul
+if /i not "%CI%"=="true" (
+  echo [INFO] Diagnostics complete. Press any key to close...
+  pause >nul
+) else (
+  echo [INFO] Diagnostics complete.
+)
 popd >nul 2>&1
-endlocal
-exit /b 0
+set "EXIT_CODE=%SUITE_FAIL%"
+endlocal & exit /b %EXIT_CODE%

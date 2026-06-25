@@ -258,6 +258,8 @@ Rules:
 - Prefer small, focused modules under `Controller/Tools/`
 - Avoid circular imports
 - Update docs when behavior changes
+- Add or update unit tests for new behavior when practical
+- Run unit tests before finalizing code changes
 
 ---
 
@@ -314,6 +316,24 @@ Codex must ask for explicit confirmation before:
 - Writing into `Vein/`
 - Running shell commands that alter system state
 - Changing shutdown or backup behavior
+
+---
+
+# 13. TESTING REQUIREMENTS
+
+Code changes are not considered complete until relevant tests have been run.
+
+Required local checks for normal code changes:
+
+```bat
+python -m unittest discover -s Tests
+Scripts\TestSuite.bat __RUN__
+Scripts\RunCoverage.bat
+```
+
+AI agents must add or update focused unit tests when changing behavior that can
+be exercised without starting the Vein server or writing to the game install.
+If tests are not practical, the final response must explain why.
 
 ---
 

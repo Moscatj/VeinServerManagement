@@ -73,9 +73,11 @@ Run the unit suite before opening a pull request:
 
 ```powershell
 python -m unittest discover -s Tests
-Scripts\TestSuite.bat
+Scripts\TestSuite.bat __RUN__
 Scripts\RunCoverage.bat
 ```
+
+New behavior should include unit tests when the behavior is practical to test without starting the Vein server. Bug fixes should include a regression test when practical. If a change is intentionally not unit-tested, explain why in the pull request.
 
 ## Pull Requests
 
@@ -83,8 +85,11 @@ Use a focused branch and include:
 
 - What changed.
 - How it was tested.
+- Which tests were added or updated, or why tests were not appropriate.
 - Any risk to shutdown, backups, crash monitoring, process control, or game-file safety.
 - Any config or migration notes.
+
+Pull requests should not be merged while CI is failing.
 
 ## Secret Hygiene
 

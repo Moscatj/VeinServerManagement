@@ -26,6 +26,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [config_reference.md](config_reference.md) — Complete `config.yaml` key reference
 - [config_summary.md](config_summary.md) — Configuration loader (`config.py`)
 - [config_helper_summary.md](config_helper_summary.md) — Helper API for accessing config safely
+- [testing.md](testing.md) — Unit test, coverage, and CI expectations
 
 ---
 
@@ -53,7 +54,7 @@ This folder contains all **developer** and **system-level** documentation.
 |-------|------|
 | Config Structure | [config_reference.md](config_reference.md) |
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
-| Testing | [testing.md](testing.md) |
+| Testing and CI | [testing.md](testing.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |
 | Backup System | [nightly_backup_summary.md](nightly_backup_summary.md) + [utils_summary.md](utils_summary.md) |
 
