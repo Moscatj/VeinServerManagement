@@ -260,7 +260,7 @@ def _pick_existing_save() -> Optional[Path]:
     print(f"[Backup] No save found. Checked: {msg}")
     if is_discord_channel_enabled("backups"):
         send_discord_message(
-            f"⚠️ Backup skipped: save file not found. Checked: `{msg}`",
+            f"Backup skipped: save file not found. Checked: `{msg}`",
             channel="backups",
         )
     return None
@@ -310,7 +310,7 @@ def _log_retention() -> dict:
 
 def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
     """
-    Copy+zip a log snapshot to Backups\Logs with a timestamped name.
+    Copy+zip a log snapshot to Backups\\Logs with a timestamped name.
     Does NOT touch or truncate the live log file.
     """
     try:
@@ -333,7 +333,7 @@ def export_log_snapshot(src: Path, *, label: str | None = None) -> Path | None:
         try:
             if is_discord_channel_enabled("monitor"):
                 send_discord_message(
-                    f"🧾 Log snapshot archived: `{zip_p.name}`", channel="monitor"
+                    f"Log snapshot archived: `{zip_p.name}`", channel="monitor"
                 )
         except Exception:
             pass
@@ -395,7 +395,7 @@ def make_backup(
         msg = "Backups are disabled (backups.enable=false)."
         print(f"[Backup] {msg}")
         if is_discord_channel_enabled("backups"):
-            send_discord_message(f"⚠️ {msg}", channel="backups")
+            send_discord_message(msg, channel="backups")
         raise BackupSkip(msg)
 
     # 1) pick source
@@ -405,7 +405,7 @@ def make_backup(
     else:
         src = _pick_existing_save()
     if not src:
-        # _pick_existing_save already printed a detailed “Checked: …” list
+        # _pick_existing_save already printed a detailed "Checked: ..." list
         msg = f"No save file found in {_save_dir()}."
         raise BackupSkip(msg)
 
@@ -417,7 +417,7 @@ def make_backup(
         msg = f"Unable to create backups folder: {dest_dir} ({e})"
         print(f"[Backup] {msg}")
         if is_discord_channel_enabled("backups"):
-            send_discord_message(f"❌ {msg}", channel="backups")
+            send_discord_message(msg, channel="backups")
         raise BackupError(msg)
 
     # 3) build name
@@ -446,7 +446,7 @@ def make_backup(
 
         if _discord_flags()["on_create"] and is_discord_channel_enabled("backups"):
             send_discord_message(
-                f"💾 Backup created: `{zip_path.name}`", channel="backups"
+                f"Backup created: `{zip_path.name}`", channel="backups"
             )
 
         prune_backups(reason)
@@ -463,7 +463,7 @@ def make_backup(
         msg = f"Failed to write archive {zip_path} ({e})"
         print(f"[Backup] {msg}")
         if is_discord_channel_enabled("backups"):
-            send_discord_message(f"❌ {msg}", channel="backups")
+            send_discord_message(msg, channel="backups")
         raise BackupError(msg)
     finally:
         try:
@@ -506,7 +506,7 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
         and is_discord_channel_enabled("backups")
     ):
         send_discord_message(
-            f"🧹 Pruned {deleted} old backups in `{folder.name}`.", channel="backups"
+            f"Pruned {deleted} old backups in `{folder.name}`.", channel="backups"
         )
         # Update state after pruning (even if 0 deletions) so counts stay fresh
     try:
@@ -542,7 +542,7 @@ def restore_from_latest(target_name: str) -> bool:
         print("[Restore] No backup archives found.")
         return False
 
-    target = _save_dir() / target_name  # <— FIX: use YAML-resolved save_dir
+    target = _save_dir() / target_name  # use YAML-resolved save_dir
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         with zipfile.ZipFile(z, "r") as zf:

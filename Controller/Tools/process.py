@@ -6,7 +6,7 @@ import os
 import shlex
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
@@ -241,7 +241,7 @@ def stop_server(timeout: int | None = None) -> bool:
         return True
     try:
         send_discord_message(
-            "🛑 stop_vein_server(): requesting graceful shutdown of server process.",
+            "stop_vein_server(): requesting graceful shutdown of server process.",
             channel="startup",
         )
         proc.terminate()
@@ -305,7 +305,7 @@ def stop_all_servers_aggressive() -> list[int]:
     timeout = int(config.get("shutdown_timeout_sec", 60))
 
     send_discord_message(
-        "🛑 stop_all_vein_processes_aggressive(): killing all VeinServer processes.",
+        "stop_all_vein_processes_aggressive(): killing all VeinServer processes.",
         channel="startup",
     )
 
@@ -524,7 +524,7 @@ def start_server(
             set_server_state(
                 True,
                 pid=proc.pid,
-                last_start_utc=datetime.utcnow().isoformat() + "Z",
+                last_start_utc=datetime.now(timezone.utc).isoformat(),
                 exe=os.path.basename(str(exe)),
                 cwd=str(workdir),
             )
