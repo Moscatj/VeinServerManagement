@@ -387,6 +387,7 @@ def _normalize_paths(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
         "steamcmd_path",
         "save_dir",
         "logs_dir",
+        "mgmt_log_dir",
         "absolute_log_file",
         "runtime_dir",
     ]
@@ -418,6 +419,8 @@ def _normalize_paths(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
             p["saves_dir"] = _abs(p["saves_dir"])
         if p.get("logs_dir"):
             p["logs_dir"] = _abs(p["logs_dir"])
+        if p.get("mgmt_log_dir"):
+            p["mgmt_log_dir"] = _abs(p["mgmt_log_dir"])
         if p.get("runtime_dir"):
             p["runtime_dir"] = _abs(p["runtime_dir"])
         if p.get("absolute_log_file"):

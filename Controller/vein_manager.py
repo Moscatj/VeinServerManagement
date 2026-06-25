@@ -1,4 +1,4 @@
-﻿# vein_manager.py — Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
+# vein_manager.py - Vein Server Manager (clean header + Monitors tab + Advanced Overrides)
 from __future__ import annotations
 
 # --- stdlib imports first
@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Tuple, List, Optional, Callable
 from datetime import datetime, timezone
 import collections
+import atexit
 
 # --- Qt
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -56,7 +57,7 @@ if str(CTRL_DIR) not in sys.path:
 # Now it is safe to import Tools modules
 try:
     from Tools.config_io import load_and_validate_config
-    from Tools import mgmt_logs, log_search, log_events
+    from Tools import mgmt_logs
 except Exception as e:
     print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
     sys.exit(1)
@@ -70,14 +71,19 @@ try:
         build_command_bar,
         build_left_panel,
         build_log_panel,
-    build_placeholder_view,
-    CollapsibleBox,
-    KVRow,
-    handle_player_tree_double_click,
-    StatusBus,
-    StatusPoller,
-    ConfigRenderer,
-) 
+        build_placeholder_view,
+        CollapsibleBox,
+        KVRow,
+        handle_player_tree_double_click,
+        StatusBus,
+        StatusPoller,
+        ConfigRenderer,
+        LogPanelController,
+        ProcessController,
+        NavigationController,
+        ConfigController,
+        StatusRenderer,
+    )
 except Exception as e:
     print(f"[FATAL] Could not import Controller.GUI components: {e}")
     sys.exit(1)
@@ -94,10 +100,16 @@ def _is_yaml_path(p: str) -> bool:
 
 
 def _list_config_files(folder: Path) -> list[str]:
-    files = [p.name for p in folder.glob("*.json")]
-    files += [p.name for p in folder.glob("*.yaml")]
-    files += [p.name for p in folder.glob("*.yml")]
-    return sorted(files)
+    def _is_example(path: Path) -> bool:
+        name = path.name.lower()
+        return "example" in name or ".sample" in name
+
+    non_examples = []
+    examples = []
+    for pattern in ("*.json", "*.yaml", "*.yml"):
+        for p in folder.glob(pattern):
+            (examples if _is_example(p) else non_examples).append(p.name)
+    return sorted(non_examples) + sorted(examples)
 
 
 def first_cfg_in(folder: Path):
@@ -106,9 +118,26 @@ def first_cfg_in(folder: Path):
 
 
 # compute DEFAULT_CONFIG only after helpers exist
-DEFAULT_CONFIG = Path(
-    ENV.get("VEIN_CONFIG") or (first_cfg_in(CONFIG_DIR) or (CONFIG_DIR / "config.yaml"))
-)
+def _default_config_path() -> Path:
+    """Prefer real configs; keep example files last."""
+    env = ENV.get("VEIN_CONFIG")
+    if env:
+        return Path(env)
+    primary = CONFIG_DIR / "config.yaml"
+    if primary.exists():
+        return primary
+    yml = CONFIG_DIR / "config.yml"
+    if yml.exists():
+        return yml
+    # Avoid auto-selecting example templates unless nothing else exists.
+    cands = _list_config_files(CONFIG_DIR)
+    for name in cands:
+        if "example" not in name.lower():
+            return CONFIG_DIR / name
+    return CONFIG_DIR / (cands[0] if cands else "config.yaml")
+
+
+DEFAULT_CONFIG = Path(_default_config_path())
 
 # ----------------- config IO (YAML+JSON) --------------------------------------
 from typing import Tuple as _Tuple
@@ -129,7 +158,7 @@ def _setup_process_logging():
         sys.stdout = open(out, "w", buffering=1, encoding="utf-8", errors="replace")
         sys.stderr = open(err, "w", buffering=1, encoding="utf-8", errors="replace")
 
-        # Python unhandled exceptions → stderr file
+        # Python unhandled exceptions to stderr file
         def _excepthook(tp, val, tb):
             import traceback
 
@@ -138,7 +167,27 @@ def _setup_process_logging():
 
         sys.excepthook = _excepthook
 
-        # Qt messages → stderr file
+        # Capture unraisable exceptions (background callbacks/weakrefs)
+        def _unraisablehook(unraisable):
+            import traceback
+
+            try:
+                sys.stderr.write("[Unraisable] ")
+                if unraisable.object:
+                    sys.stderr.write(f"{unraisable.object!r}: ")
+                traceback.print_exception(
+                    unraisable.exc_type,
+                    unraisable.exc_value,
+                    unraisable.exc_traceback,
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+        sys.unraisablehook = _unraisablehook
+
+        # Qt messages to stderr file
         def _qt_msg_handler(mode, context, message):
             try:
                 sys.stderr.write(f"[Qt] {message}\n")
@@ -156,6 +205,15 @@ def _setup_process_logging():
             import faulthandler
 
             faulthandler.enable(sys.stderr)
+            # Attempt to catch hard crashes as well
+            import signal
+
+            for sig in (getattr(signal, "SIGABRT", None), getattr(signal, "SIGSEGV", None)):
+                if sig is not None:
+                    try:
+                        faulthandler.register(sig, file=sys.stderr, all_threads=True)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -163,8 +221,10 @@ def _setup_process_logging():
         print(f"[VeinManager] stdout: {out}")
         print(f"[VeinManager] stderr: {err}")
         sys.stdout.flush()
+        sys.stderr.flush()
+        atexit.register(lambda: (sys.stdout.flush(), sys.stderr.flush()))
     except Exception as e:
-        # Last-ditch: don’t crash if logging setup fails
+        # Last-ditch: don't crash if logging setup fails
         print(f"[WARN] Failed to initialize process logging: {e}")
 
 
@@ -185,13 +245,31 @@ def _load_any_config(path: str | Path):
     txt = p.read_text(encoding="utf-8")
     suf = p.suffix.lower()
     if suf in (".yaml", ".yml"):
-        if not _HAVE_RUAMEL:
-            raise RuntimeError("YAML config selected but ruamel.yaml is not installed")
-        y = YAML()
-        y.preserve_quotes = True
-        doc = y.load(txt)
-        data = dict(doc) if isinstance(doc, dict) else {}
-        return data, "yaml", doc
+        # Try ruamel in pure-Python mode first.
+        try:
+            from ruamel.yaml import YAML
+
+            y = YAML(typ="safe", pure=True)
+            doc = y.load(txt) or {}
+            data = dict(doc) if isinstance(doc, dict) else {}
+            return data, "yaml", None
+        except Exception:
+            pass
+
+        # Fallback: force PyYAML pure-Python loader (avoid libyaml C extension).
+        try:
+            import os
+            os.environ.setdefault("YAML_CYAML", "0")
+            import yaml as _pyyaml
+            from yaml import loader as _py_loader
+
+            doc = _pyyaml.load(txt, Loader=_py_loader.BaseLoader) or {}
+            data = dict(doc) if isinstance(doc, dict) else {}
+            return data, "yaml", None
+        except Exception as inner:
+            sys.stderr.write(f"[Config] Failed to load YAML {p}: {inner}\n")
+            sys.stderr.flush()
+            return {}, "yaml", None
     else:
         import json as _json
 
@@ -205,7 +283,7 @@ def _dump_any_config(obj, kind: str, ydoc=None) -> str:
     if kind == "yaml":
         if not _HAVE_RUAMEL:
             raise RuntimeError("Cannot write YAML without ruamel.yaml.")
-        y = YAML()
+        y = YAML(typ="rt", pure=True)
         y.preserve_quotes = True
         y.width = 4096
         # When editing via KV rows we mutate ydoc (comment-preserving).
@@ -505,7 +583,7 @@ def _dot(on: bool, warn: bool = False) -> str:
 
 def _age_str(iso_ts: str | None) -> str:
     if not iso_ts:
-        return "—"
+        return "-"
     try:
         from datetime import datetime, timezone
 
@@ -519,7 +597,7 @@ def _age_str(iso_ts: str | None) -> str:
             return f"{sec//60}m {sec%60}s"
         return f"{sec//3600}h {(sec%3600)//60}m"
     except Exception:
-        return "—"
+        return "-"
 
 
 
@@ -611,7 +689,7 @@ def _age_str(iso_ts: str | None) -> str:
             lu = (data.get("last_updated") or "").strip()
             if not lu:
                 return False
-            # Make timezone-aware; ISO with 'Z' → '+00:00'
+            # Make timezone-aware; ISO with 'Z' as '+00:00'
             from datetime import datetime, timezone
 
             lu_norm = lu.replace("Z", "+00:00")
@@ -641,7 +719,7 @@ def _age_str(iso_ts: str | None) -> str:
             ss = self._read_json(rp["server_state"])
             pid_txt = str(ss.get("pid", "") or "").strip()
             if not pid_txt:
-                # Fallback to shutdown/intent flag’s PID if present
+                # Fallback to shutdown/intent flag's PID if present
                 flag = self._read_json(rp["state_flag"])
                 pid_txt = str(flag.get("pid", "") or "").strip()
             srv_on = self._pid_alive(pid_txt)
@@ -701,225 +779,6 @@ def _age_str(iso_ts: str | None) -> str:
         except Exception:
             # never crash the GUI thread if the poller hiccups
             pass
-
-
-# --------------------------- Log tail (throttled) -----------------------------
-class FileTail(QtCore.QObject):
-    chunk = QtCore.Signal(str)
-
-    def __init__(self, path_provider: callable, parent=None):
-        """
-        path_provider() -> Path
-        Returns the *current* file to follow. May change over time.
-        """
-        super().__init__(parent)
-        self._path_provider = path_provider
-        self._file: Path | None = None
-        self._pos = 0
-        self._last_sig = (0, 0.0)  # (size, mtime)
-        self.t = QtCore.QTimer(self)
-        self.t.timeout.connect(self.poll)
-        self.t.setInterval(300)
-
-    def start(self):
-        self._pos = 0
-        self._open_current(end=True)
-        self.t.start()
-
-    def stop(self):
-        self.t.stop()
-
-    def _open_current(self, end: bool):
-        p = self._path_provider()
-        self._file = p if p and p.exists() else None
-        self._pos = 0
-        self._last_sig = (0, 0.0)
-        if not self._file:
-            return
-        try:
-            with self._file.open("rb") as f:
-                if end:
-                    f.seek(0, 2)
-                self._pos = f.tell()
-                st = self._file.stat()
-                self._last_sig = (st.st_size, st.st_mtime)
-        except FileNotFoundError:
-            self._file = None
-
-    def _signature_changed(self) -> bool:
-        if not self._file or not self._file.exists():
-            return True
-        try:
-            st = self._file.stat()
-            size, mt = st.st_size, st.st_mtime
-            old_size, old_mt = self._last_sig
-            # rotation/truncate: size dropped or mtime went backwards/changed with smaller size
-            return (
-                (size < old_size)
-                or (size == 0 and old_size > 0)
-                or (mt != old_mt and size < old_size)
-            )
-        except Exception:
-            return True
-
-    def poll(self):
-        # If provider says the path changed, reopen.
-        p = self._path_provider()
-        if not p or not p.exists() or (self._file and str(p) != str(self._file)):
-            self._open_current(end=False)
-
-        if not self._file:
-            return
-
-        # Detect rotation/truncation
-        if self._signature_changed():
-            self._open_current(end=False)
-            if not self._file:
-                return
-
-        try:
-            with self._file.open("rb") as f:
-                f.seek(self._pos)
-                b = f.read(262144)
-                if b:
-                    self._pos = f.tell()
-                    st = self._file.stat()
-                    self._last_sig = (st.st_size, st.st_mtime)
-                    self.chunk.emit(b.decode("utf-8", "replace"))
-        except FileNotFoundError:
-            self._open_current(end=False)
-
-
-# ------------------------ Log search worker ---------------------------------
-class LogSearchWorker(QtCore.QRunnable):
-    class Signals(QtCore.QObject):
-        ready = QtCore.Signal(list)
-        error = QtCore.Signal(str)
-
-    def __init__(
-        self,
-        *,
-        subsystems: Optional[List[str]],
-        pattern: str,
-        since: Optional[str],
-        limit: int,
-        case_sensitive: bool,
-        include_archive: bool,
-        archive_only: Optional[set[str]] = None,
-    ):
-        super().__init__()
-        self.subsystems = subsystems
-        self.pattern = pattern
-        self.since = since
-        self.limit = limit
-        self.case_sensitive = case_sensitive
-        self.include_archive = include_archive
-        self.archive_only = archive_only or set()
-        self.signals = self.Signals()
-
-    def run(self) -> None:
-        try:
-            since_ts = log_search.parse_since(self.since)
-            hits = log_search.search_logs(
-                subsystems=self.subsystems,
-                pattern=self.pattern,
-                case_sensitive=self.case_sensitive,
-                since_ts=since_ts,
-                max_hits=self.limit,
-                include_archive=self.include_archive,
-                archive_only=self.archive_only,
-            )
-            payload = [
-                {
-                    "subsystem": hit.subsystem,
-                    "file": str(hit.file),
-                    "line": hit.line_no,
-                    "text": hit.text,
-                }
-                for hit in hits
-            ]
-            self.signals.ready.emit(payload)
-        except Exception as exc:  # pragma: no cover - best-effort logging
-            self.signals.error.emit(str(exc))
-
-
-class LogErrorWorker(QtCore.QRunnable):
-    class Signals(QtCore.QObject):
-        ready = QtCore.Signal(list)
-        error = QtCore.Signal(str)
-
-    def __init__(
-        self,
-        *,
-        subsystems: Optional[List[str]],
-        since: Optional[str],
-        limit: int,
-        include_archive: bool = False,
-        archive_only: bool = False,
-    ):
-        super().__init__()
-        self.subsystems = subsystems
-        self.since = since
-        self.limit = limit
-        self.include_archive = include_archive
-        self.archive_only = archive_only
-        self.signals = self.Signals()
-
-    def run(self) -> None:
-        try:
-            subs = self.subsystems or mgmt_logs.available_subsystems()
-            since_ts = log_search.parse_since(self.since)
-            events = log_events.collect_recent_events(
-                subsystems=subs,
-                since_ts=since_ts,
-                per_file_limit=20,
-                max_events=self.limit,
-                include_archive=self.include_archive,
-                archive_only=self.archive_only,
-            )
-            payload = []
-            root = mgmt_logs.management_log_root()
-            for evt in events:
-                try:
-                    rel = evt.file.relative_to(root)
-                    if len(rel.parts) >= 2:
-                        subsystem = rel.parts[-2]
-                    else:
-                        subsystem = rel.parts[0]
-                except Exception:
-                    rel = evt.file
-                    subsystem = "unknown"
-                payload.append(
-                    {
-                        "subsystem": subsystem,
-                        "file": str(rel),
-                        "line": evt.line_no,
-                        "level": evt.level,
-                        "message": evt.message,
-                        "timestamp": evt.timestamp,
-                    }
-                )
-            self.signals.ready.emit(payload)
-        except Exception as exc:
-            self.signals.error.emit(str(exc))
-
-
-class ArchiveLogsWorker(QtCore.QRunnable):
-    class Signals(QtCore.QObject):
-        ready = QtCore.Signal(list)
-        error = QtCore.Signal(str)
-
-    def __init__(self, *, include_active: bool = False):
-        super().__init__()
-        self.include_active = include_active
-        self.signals = self.Signals()
-
-    def run(self) -> None:
-        try:
-            moved = mgmt_logs.archive_all_logs(include_active=self.include_active)
-            self.signals.ready.emit(moved)
-        except Exception as exc:
-            self.signals.error.emit(str(exc))
 
 
 # ----------------------- JSON syntax highlight -------------------------------
@@ -1023,7 +882,7 @@ class AdvancedDialog(QtWidgets.QDialog):
             grid.addWidget(QtWidgets.QLabel(text), row, 0)
             le = QtWidgets.QLineEdit()
             btn = QtWidgets.QToolButton()
-            btn.setText("…")
+            btn.setText("...")
             btn.clicked.connect(lambda _=None, k=key, e=le: self._pick(k, e))
             grid.addWidget(le, row, 1)
             grid.addWidget(btn, row, 2)
@@ -1100,6 +959,8 @@ class Main(QtWidgets.QMainWindow):
         self.setWindowTitle("Vein Server Manager")
         self.resize(1380, 900)
         self.setMinimumSize(1200, 720)  # keep the frame from collapsing/expanding
+        self._default_primary_sizes = [170, 1130]
+        self._default_main_sizes = [1120, 420]
 
         # basic state
         self.config_dir = str(CONFIG_DIR)
@@ -1126,47 +987,52 @@ class Main(QtWidgets.QMainWindow):
 
         self._player_tree_signature = None
         self._status_icon_cache = {}
+        self._sync_guard = False
+        self._view_factories: dict[str, Callable[[], QtWidgets.QWidget]] = {}
+        self._side_tab_store: dict[str, QtWidgets.QWidget] = {}
+        self._sync_guard = False
+        self.nav_ctl = NavigationController(self)
+        self.logs = LogPanelController(self)
+        self.config_ctl = ConfigController(self)
+        self.process_ctl = ProcessController(
+            self,
+            pyexe=_pyexe,
+            resolved_paths=self._resolved_paths,
+            rt_paths=_rt_paths,
+            runtime_paths=_runtime_paths,
+            spawn_logged=spawn_logged,
+            run_once=run_once,
+            mkflag=_mkflag,
+            rm=_rm,
+            wait_for_monitor_exit=_wait_for_monitor_exit,
+            ctrl_dir=CTRL_DIR,
+        )
+        self.status_renderer = StatusRenderer(self)
 
         # 1) build UI (creates tabs + self.chk_live, self.log_game/self.log_lm/self.log_cm)
         self._ui()
 
-        # config renderer handles tab + filter state
-        self.config_renderer = ConfigRenderer(self)
+        # config renderer handles tab + filter state (wrapped by ConfigController)
+        self.config_ctl.renderer = ConfigRenderer(self)
+        self.config_renderer = self.config_ctl.renderer
 
         # 2) signals
         self._signals()  # should connect: b_clearlog-> _clear_current_log, chk_live-> _retail
+        self.logs.connect_signals()
 
-        # 3) init NEW 3-tab tail buffers/handles BEFORE tail_start()
-        self._buf_game, self._buf_lm, self._buf_cm = [], [], []
-        self.tail_game = None
-        self.tail_lm = None
-        self.tail_cm = None
-
-        # one flush timer for all tails
-        self.flush_timer = QtCore.QTimer(self)
-        self.flush_timer.setInterval(250)
-        self.flush_timer.timeout.connect(self._flush_tail)
-        self.flush_timer.start()
-
-        # 4) config list + watch; first selection is applied after the combo is populated
+        # 3) config list + watch; first selection is applied after the combo is populated
         self.refresh_cfgs()
         self.watch_config()
         # Guarantee a real selection + load on first show
         QtCore.QTimer.singleShot(0, self._apply_default_selection)
 
-        # 5) now it’s safe to start tailing
-        self.tail_start()
+        # 4) now it's safe to start tailing
+        self.logs.initialize()
 
-        # 6) background status polling
+        # 5) background status polling
         self.status_bus = StatusBus(self)  # parented to the main window
         self.status_bus.ready.connect(self._status)
         self._pool = QtCore.QThreadPool.globalInstance()
-        self._log_search_running = False
-        self._error_refresh_running = False
-        self._archiving_logs = False
-        self._log_search_worker = None
-        self._error_worker = None
-        self._archive_worker = None
         self._poller = None
         self._status_timer = QtCore.QTimer(self)
         self._status_timer.setInterval(2000)
@@ -1192,6 +1058,21 @@ class Main(QtWidgets.QMainWindow):
         root.setSpacing(8)
 
         root.addWidget(build_command_bar(self, _dot))
+        self._build_shortcuts_menu()
+
+        views_bar = QtWidgets.QHBoxLayout()
+        self.btn_toggle_left = QtWidgets.QToolButton()
+        self.btn_toggle_left.setText("Show Navigation")
+        self.btn_toggle_left.setCheckable(True)
+        self.btn_toggle_left.setChecked(False)
+        self.btn_toggle_right = QtWidgets.QToolButton()
+        self.btn_toggle_right.setText("Hide Side Panel")
+        self.btn_toggle_right.setCheckable(True)
+        self.btn_toggle_right.setChecked(True)
+        views_bar.addWidget(self.btn_toggle_left)
+        views_bar.addWidget(self.btn_toggle_right)
+        views_bar.addStretch(1)
+        root.addLayout(views_bar)
 
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         root.addWidget(self.main_splitter, 1)
@@ -1201,76 +1082,160 @@ class Main(QtWidgets.QMainWindow):
                 "monitor.dashboard",
                 "Server Dashboard",
                 "Live server stats, monitors, and players",
-            )
+            ),
+            NavigationItem(
+                "monitor.logs",
+                "Logs",
+                "Log tails and searches",
+            ),
+            NavigationItem(
+                "monitor.config",
+                "Config",
+                "Config editor",
+            ),
+            NavigationItem(
+                "monitor.discord",
+                "Discord",
+                "Discord chat and webhook status (placeholder)",
+            ),
         ]
-        config_nav_data = [
-            ("config.paths", "Paths", "Server + runtime directories"),
-            ("config.server", "Server", "Launch arguments and gameplay rules"),
-            ("config.steam", "Steam/Updates", "SteamCMD + update settings"),
-            ("config.backups", "Backups", "Schedules and retention"),
-            ("config.monitor_simple", "Monitor (simple)", "Legacy monitor toggles"),
-            ("config.monitor_adv", "Monitor (advanced)", "Advanced monitor settings"),
-            ("config.features", "Features", "Feature flags and integrations"),
-            ("config.top", "Top-level", "Loose scalar keys"),
-            ("config.search", self._search_tab_name, "Quick search results"),
-        ]
-        self._config_nav_map = {vid: tab for vid, tab, _ in config_nav_data}
+        config_nav_data: list[tuple[str, str, str]] = []
+        self._config_nav_map = {}
         config_items = [NavigationItem(vid, label, subtitle) for vid, label, subtitle in config_nav_data]
 
         self.nav_panel = NavigationPanel(monitor_items, config_items)
+        # Only expose factories that are safe to duplicate (dashboard shares owner-bound labels)
+        self._view_factories = {
+            "monitor.discord": lambda: build_placeholder_view(
+                "Discord integration UI will live here once the backend is ready."
+            ),
+        }
+
+        self.primary_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self.primary_splitter.setObjectName("primary_splitter")
         left_panel = build_left_panel(self, self.nav_panel)
-        self.main_splitter.addWidget(left_panel)
+        width_hint = self.nav_panel.property("fixed_width") or self.nav_panel.sizeHint().width()
+        try:
+            width_hint = int(width_hint)
+        except Exception:
+            width_hint = self.nav_panel.sizeHint().width()
+        width_hint = max(140, width_hint)
+        left_panel.setFixedWidth(width_hint)
+        self.left_panel = left_panel
+        self.primary_splitter.addWidget(left_panel)
 
         self.content_stack = QtWidgets.QStackedWidget()
-        self.main_splitter.addWidget(self.content_stack)
+        self.primary_splitter.addWidget(self.content_stack)
+        self.primary_splitter.setStretchFactor(0, 0)
+        self.primary_splitter.setStretchFactor(1, 1)
+        self.primary_splitter.setCollapsible(0, True)
+        self.main_splitter.addWidget(self.primary_splitter)
 
+        self.side_tabs = QtWidgets.QTabWidget()
+        self.side_tabs.setDocumentMode(True)
+        self.side_tabs.setMovable(True)
+        self.side_tabs.setTabsClosable(True)
+        self.side_tabs.setAcceptDrops(True)
+        self.side_tabs.tabBar().setAcceptDrops(True)
         log_panel = build_log_panel(self)
-        self.main_splitter.addWidget(log_panel)
-        self.main_splitter.setStretchFactor(0, 0)
-        self.main_splitter.setStretchFactor(1, 1)
-        self.main_splitter.setStretchFactor(2, 1)
-        self.main_splitter.setCollapsible(2, True)
-        self._populate_log_sources()
+        self.side_tabs.addTab(log_panel, "Logs")
+        self._side_tab_store["Logs"] = log_panel
+
+        config_view = build_config_editor(self)
+        JsonHL(self.json.document())
+        self.side_tabs.addTab(config_view, "Config")
+        self._side_tab_store["Config"] = config_view
+
+        discord_placeholder = build_placeholder_view(
+            "Discord integration UI will live here once the backend is ready."
+        )
+        self.side_tabs.addTab(discord_placeholder, "Discord")
+        self._side_tab_store["Discord"] = discord_placeholder
+
+        self.main_splitter.addWidget(self.side_tabs)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 2)
+        self.main_splitter.setCollapsible(1, True)
+        # recompute defaults using the fixed nav width so the left pane stays tight
+        self._default_primary_sizes = [
+            max(self.left_panel.width(), 140),
+            max(900, self.width() - self.left_panel.width()),
+        ]
+        self._apply_default_sizes()
+        self.primary_splitter.splitterMoved.connect(self._sync_panel_buttons_from_splitters)
+        self.main_splitter.splitterMoved.connect(self._sync_panel_buttons_from_splitters)
+        self.side_tabs.tabCloseRequested.connect(self._close_side_tab)
+        self.side_tabs.installEventFilter(self)
+        self.side_tabs.tabBar().installEventFilter(self)
+        self.content_stack.setAcceptDrops(True)
+        self.content_stack.installEventFilter(self)
+        self.logs.populate_log_sources()
+        self.side_tabs.setCurrentIndex(0)
 
         self._view_routes: dict[str, tuple[QtWidgets.QWidget, Optional[Callable[[], None]]]] = {}
         self._cached_admin_ids: set[str] | None = None
         dashboard = build_dashboard(self, _dot)
         self._register_view("monitor.dashboard", dashboard)
+        logs_stub = build_placeholder_view("Logs are available in the side panel tabs.")
+        self._register_view(
+            "monitor.logs",
+            logs_stub,
+            lambda: self._select_side_tab("Logs"),
+        )
+        config_stub = build_placeholder_view("Config editor is available in the side panel tabs.")
+        self._register_view(
+            "monitor.config",
+            config_stub,
+            lambda: self._select_side_tab("Config"),
+        )
 
         diag_placeholder = build_placeholder_view(
             "Monitor diagnostics view is under construction."
         )
         self._register_view("monitor.diagnostics", diag_placeholder)
 
-        discord_placeholder = build_placeholder_view(
+        discord_nav_placeholder = build_placeholder_view(
             "Discord integration UI will live here once the backend is ready."
         )
-        self._register_view("monitor.discord", discord_placeholder)
-
-        config_view = build_config_editor(self)
-        JsonHL(self.json.document())
-        for view_id, tab_name in self._config_nav_map.items():
-            self._register_view(
-                view_id,
-                config_view,
-                lambda tab=tab_name: self._ensure_tab_visible(tab),
-            )
+        self._register_view("monitor.discord", discord_nav_placeholder)
 
         self.nav_panel.viewSelected.connect(self._on_view_selected)
         self.nav_panel.set_default_selection("monitor.dashboard")
         self._on_view_selected("monitor.dashboard")
+        self.nav_panel.monitor_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.nav_panel.monitor_list.customContextMenuRequested.connect(
+            lambda pos: self._nav_context_menu(self.nav_panel.monitor_list, pos)
+        )
+        if hasattr(self.nav_panel, "config_list"):
+            self.nav_panel.config_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            self.nav_panel.config_list.customContextMenuRequested.connect(
+                lambda pos: self._nav_context_menu(self.nav_panel.config_list, pos)
+            )
+        self.nav_panel.monitor_list.setDragEnabled(True)
+        if hasattr(self.nav_panel, "config_list"):
+            self.nav_panel.config_list.setDragEnabled(True)
+
+        self.btn_toggle_left.toggled.connect(self._set_left_panel_visible)
+        self.btn_toggle_right.toggled.connect(self._set_right_panel_visible)
+        self._set_left_panel_visible(True)
+        self._set_right_panel_visible(True, force_defaults=True)
+        self._sync_panel_buttons_from_splitters()
 
         bottom = QtWidgets.QWidget()
         bottom_layout = QtWidgets.QHBoxLayout(bottom)
-        bottom_layout.setContentsMargins(0, 6, 0, 0)
-        bottom_layout.setSpacing(8)
+        bottom_layout.setContentsMargins(0, 4, 0, 0)
+        bottom_layout.setSpacing(6)
 
         self.state_box = QtWidgets.QTextBrowser()
-        self.state_box.setMaximumHeight(120)
+        self.state_box.setMaximumHeight(60)
+        self.state_box.setMinimumHeight(32)
         bottom_layout.addWidget(self.state_box, 1)
 
-        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes…")
+        self.lbl_watch = QtWidgets.QLabel("Watching for external config changes:")
         self.lbl_watch.setWordWrap(True)
+        self.lbl_watch.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Maximum
+        )
         bottom_layout.addWidget(self.lbl_watch)
 
         root.addWidget(bottom)
@@ -1295,27 +1260,221 @@ class Main(QtWidgets.QMainWindow):
         widget: QtWidgets.QWidget,
         on_show: Callable[[], None] | None = None,
     ) -> None:
-        if self.content_stack.indexOf(widget) < 0:
-            self.content_stack.addWidget(widget)
-        self._view_routes[view_id] = (widget, on_show)
+        return self.nav_ctl.register_view(view_id, widget, on_show)
 
     def _on_view_selected(self, view_id: str):
-        target = getattr(self, "_view_routes", {}).get(view_id)
-        if not target:
-            return
-        widget, callback = target
-        idx = self.content_stack.indexOf(widget)
-        if idx >= 0:
-            self.content_stack.setCurrentIndex(idx)
-        if callback:
-            callback()
+        return self.nav_ctl.on_view_selected(view_id)
 
     def _ensure_tab_visible(self, tab_name: str):
         if tab_name == self._search_tab_name:
-            self.config_renderer.ensure_search_tab()
+            self.config_ctl.ensure_search_tab()
         idx = self._tab_index(tab_name)
         if idx >= 0:
             self.tabs.setCurrentIndex(idx)
+
+    def _update_toggle_button(
+        self,
+        button: QtWidgets.QToolButton | None,
+        visible: bool,
+        show_text: str,
+        hide_text: str,
+    ):
+        if not button:
+            return
+        button.blockSignals(True)
+        button.setChecked(visible)
+        button.setText(hide_text if visible else show_text)
+        button.blockSignals(False)
+
+    def _sync_panel_buttons_from_splitters(self):
+        if self._sync_guard:
+            return
+        left_visible = True
+        right_visible = True
+        if hasattr(self, "primary_splitter"):
+            sizes = self.primary_splitter.sizes()
+            left_visible = bool(sizes and sizes[0] > 4)
+        if hasattr(self, "main_splitter"):
+            sizes = self.main_splitter.sizes()
+            if len(sizes) >= 2:
+                right_visible = sizes[1] > 4
+        self._update_toggle_button(
+            getattr(self, "btn_toggle_left", None),
+            left_visible,
+            "Show Navigation",
+            "Hide Navigation",
+        )
+        self._update_toggle_button(
+            getattr(self, "btn_toggle_right", None),
+            right_visible,
+            "Show Side Panel",
+            "Hide Side Panel",
+        )
+
+    def _select_side_tab(self, label: str):
+        for i in range(self.side_tabs.count()):
+            if self.side_tabs.tabText(i) == label:
+                self.side_tabs.setCurrentIndex(i)
+                self._set_right_panel_visible(True)
+                return
+
+    def _nav_context_menu(self, list_widget: QtWidgets.QListWidget, pos: QtCore.QPoint):
+        return self.nav_ctl.nav_context_menu(list_widget, pos)
+
+    def _pin_view_to_side_tabs(self, view_id: str, label: str):
+        return self.nav_ctl.pin_view_to_side_tabs(view_id, label)
+
+    def _pin_view_to_center(self, view_id: str):
+        return self.nav_ctl.pin_view_to_center(view_id)
+
+    def _ensure_tab_present(self, label: str, factory: Optional[Callable[[], QtWidgets.QWidget]]):
+        return self.nav_ctl.ensure_tab_present(label, factory)
+
+    def _close_side_tab(self, index: int):
+        # keep the base Logs tab persistent
+        widget = self.side_tabs.widget(index)
+        label = self.side_tabs.tabText(index)
+        # For base tabs, keep the widget in the store so it can be re-added
+        if label in ("Logs", "Config", "Discord"):
+            self.side_tabs.removeTab(index)
+            if widget:
+                self._side_tab_store[label] = widget
+            return
+        self.side_tabs.removeTab(index)
+        if widget:
+            widget.deleteLater()
+
+    def _build_shortcuts_menu(self):
+        bar = self.menuBar()
+        shortcuts = bar.addMenu("Shortcuts")
+        shortcuts.addAction(
+            "Open Logs Folder",
+            lambda: self._open_folder(self._resolved_paths()["log_file"].parent),
+        )
+        shortcuts.addAction(
+            "Open Runtime Folder",
+            lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"]),
+        )
+        shortcuts.addAction(
+            "Open Backups Folder",
+            lambda: self._open_folder(_runtime_paths(self.config_path)["backup_root"]),
+        )
+        shortcuts.addAction(
+            "Open Controller Folder", lambda: self._open_folder(CTRL_DIR)
+        )
+        shortcuts.addSeparator()
+        shortcuts.addAction("Advanced...", self._open_advanced)
+
+    def _set_left_panel_visible(self, visible: bool):
+        panel = getattr(self, "left_panel", None)
+        splitter = getattr(self, "primary_splitter", None)
+        if not panel or not splitter:
+            return
+        if self._sync_guard:
+            return
+        self._sync_guard = True
+        panel.setVisible(visible)
+        idx = splitter.indexOf(panel)
+        if idx >= 0:
+            sizes = splitter.sizes()
+            width_hint = panel.width() or panel.sizeHint().width() or 140
+            if visible:
+                last = getattr(self, "_left_last_size", width_hint)
+                if idx < len(sizes):
+                    if sizes[idx] > 0:
+                        last = sizes[idx]
+                    else:
+                        sizes[idx] = last
+                else:
+                    sizes.append(last)
+                # keep the content area alive
+                if len(sizes) == 2 and sizes[1 - idx] <= 0:
+                    sizes[1 - idx] = max(600, last * 2)
+                splitter.setSizes(sizes)
+            else:
+                if idx < len(splitter.sizes()):
+                    self._left_last_size = max(width_hint, splitter.sizes()[idx])
+                sizes = splitter.sizes()
+                if idx < len(sizes):
+                    sizes[idx] = 0
+                    other = 1 - idx
+                    if other < len(sizes) and sizes[other] <= 0:
+                        sizes[other] = max(600, self.width() - 300)
+                    splitter.setSizes(sizes)
+        self._update_toggle_button(
+            getattr(self, "btn_toggle_left", None),
+            visible,
+            "Show Navigation",
+            "Hide Navigation",
+        )
+        self._sync_guard = False
+
+    def _set_right_panel_visible(self, visible: bool, force_defaults: bool = False):
+        pane = getattr(self, "side_tabs", None)
+        splitter = getattr(self, "main_splitter", None)
+        if not pane or not splitter:
+            return
+        if self._sync_guard:
+            return
+        self._sync_guard = True
+        pane.setVisible(visible)
+        idx = splitter.indexOf(pane)
+        if idx >= 0:
+            sizes = splitter.sizes()
+            if visible:
+                if force_defaults or not sizes or sum(sizes) == 0:
+                    self._apply_default_sizes()
+                else:
+                    last = getattr(self, "_right_last_size", self._default_main_sizes[1])
+                    if idx < len(sizes):
+                        if sizes[idx] > 0 and not force_defaults:
+                            last = sizes[idx]
+                        else:
+                            sizes[idx] = last
+                    else:
+                        sizes.append(last)
+                    if len(sizes) == 2 and sizes[1 - idx] <= 0:
+                        sizes[1 - idx] = max(self._default_main_sizes[0], last * 2)
+                    splitter.setSizes(sizes)
+            else:
+                if idx < len(sizes):
+                    self._right_last_size = max(300, sizes[idx])
+                    sizes[idx] = 0
+                    other = 1 - idx
+                    if other < len(sizes) and sizes[other] <= 0:
+                        sizes[other] = max(700, self.width() - 300)
+                    splitter.setSizes(sizes)
+        self._update_toggle_button(
+            getattr(self, "btn_toggle_right", None),
+            visible,
+            "Show Side Panel",
+            "Hide Side Panel",
+        )
+        self._sync_guard = False
+
+    def _apply_default_sizes(self):
+        if hasattr(self, "primary_splitter"):
+            self.primary_splitter.setSizes(self._default_primary_sizes)
+        if hasattr(self, "main_splitter"):
+            self.main_splitter.setSizes(self._default_main_sizes)
+
+    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() in (QtCore.QEvent.DragEnter, QtCore.QEvent.DragMove):
+            md = event.mimeData()
+            if md and md.hasFormat("application/x-vein-view"):
+                event.acceptProposedAction()
+                return True
+        if event.type() == QtCore.QEvent.Drop:
+            md = event.mimeData()
+            if md and md.hasFormat("application/x-vein-view"):
+                view_id = md.data("application/x-vein-view").data().decode("utf-8")
+                if obj is self.side_tabs:
+                    self._pin_view_to_side_tabs(view_id, md.text() or view_id)
+                elif obj is self.content_stack:
+                    self._pin_view_to_center(view_id)
+                event.acceptProposedAction()
+                return True
+        return super().eventFilter(obj, event)
     # ----------------------------- Signals ------------------------------------
     def _signals(self):
         self.b_cfgdir.clicked.connect(self.pick_cfg_dir)
@@ -1330,40 +1489,10 @@ class Main(QtWidgets.QMainWindow):
         timer.setSingleShot(True)
         timer.setInterval(120)
         self.filter.textChanged.connect(lambda _: (timer.stop(), timer.start()))
-        timer.timeout.connect(
-            lambda: self.config_renderer.apply_filter(self.filter.text())
-        )
+        timer.timeout.connect(lambda: self.config_ctl.apply_filter(self.filter.text()))
 
-        self.b_clearfilter.clicked.connect(lambda: self.filter.setText(""))
-        self.b_clearlog.clicked.connect(self._clear_current_log)
-        self.chk_live.toggled.connect(self._retail)
-        self.btn_log_src_refresh.clicked.connect(self._populate_log_sources)
-        self.btn_log_search.clicked.connect(self._run_log_search)
-        self.btn_log_search_clear.clicked.connect(self._clear_log_search)
-        self.cmb_mgmt_log_subsystem.currentIndexChanged.connect(
-            lambda _: self._refresh_mgmt_log_files()
-        )
-        self.btn_mgmt_log_refresh.clicked.connect(self._populate_log_sources)
-        self.btn_mgmt_log_load.clicked.connect(self._load_mgmt_log_file)
-        self.btn_mgmt_log_open.clicked.connect(self._open_selected_mgmt_folder)
-        self.btn_mgmt_archive.clicked.connect(self._archive_logs_now)
-        self.cmb_mgmt_log_file.currentIndexChanged.connect(
-            lambda _: self._load_mgmt_log_file(auto=True)
-        )
-        self.btn_error_refresh.clicked.connect(self._refresh_error_events)
-        self.tbl_error_events.itemDoubleClicked.connect(self._open_error_log_from_table)
+        self.b_clearfilter.clicked.connect(self.config_ctl.clear_filter)
 
-        self.btn_logs.clicked.connect(
-            lambda: self._open_folder(self._resolved_paths()["log_file"].parent)
-        )
-        self.btn_rt.clicked.connect(
-            lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"])
-        )
-        self.btn_bak.clicked.connect(
-            lambda: self._open_folder(_runtime_paths(self.config_path)["backup_root"])
-        )
-        self.btn_ctl.clicked.connect(lambda: self._open_folder(CTRL_DIR))
-        self.btn_adv.clicked.connect(self._open_advanced)
         self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
         self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
 
@@ -1405,11 +1534,7 @@ class Main(QtWidgets.QMainWindow):
             self._cfg_selected(name)
 
     def _cfg_selected(self, name: str):
-        if not name:
-            return
-        self.config_path = str(Path(self.ed_cfgdir.text().strip()).joinpath(name))
-        self.load_config_text()
-        self.watch_config()
+        self.config_ctl.cfg_selected(name)
 
     # -------------------------- Tab Helpers ---------------------------------
     def _strip_cnt(self, s: str) -> str:
@@ -1508,7 +1633,7 @@ class Main(QtWidgets.QMainWindow):
                 else JsonHL(self.json.document())
             )
             self.json.blockSignals(False)
-            self.config_renderer.build_tabs(self._data)
+            self.config_ctl.build_tabs(self._data)
 
             # Show version in status/title (with fallback)
             try:
@@ -1579,7 +1704,7 @@ class Main(QtWidgets.QMainWindow):
                 import json as _json
 
                 _json.loads(self.json.toPlainText())
-            self._status("Config parses ✅")
+            self._status("Config parses OK")
         except Exception as e:
             self._status(f"Parse error: {e}")
 
@@ -1710,7 +1835,7 @@ class Main(QtWidgets.QMainWindow):
             w.clear()
 
     def _current_game_log_path(self) -> Path:
-        # Prefer the monitor’s notion of the active file if available
+        # Prefer the monitor's notion of the active file if available
         rt = _rt_paths(self.config_path)
         lms = self._safe_json(rt["state_log"])
         if lms and lms.get("tailing_file"):
@@ -1723,244 +1848,54 @@ class Main(QtWidgets.QMainWindow):
         # Fallback to resolved default (absolute_log_file or Logs/Vein.log)
         return self._resolved_paths()["log_file"]
 
+
     def tail_start(self):
-        self._retail()
+        return self.logs.retail()
 
     def _tail_stop_all(self):
-        for t in (self.tail_game, self.tail_lm, self.tail_cm):
-            try:
-                if t:
-                    t.stop()
-                    t.deleteLater()
-            except Exception:
-                pass
-        self.tail_game = self.tail_lm = self.tail_cm = None
+        return self.logs.tail_stop_all()
 
     def _retail(self):
-        self._tail_stop_all()
-
-        if not self.chk_live.isChecked():
-            self._status("Live view disabled.")
-            return
-
-        # Provider that re-evaluates the active game log path dynamically
-        def game_provider() -> Path:
-            try:
-                return self._current_game_log_path()
-            except Exception:
-                return self._resolved_paths()["log_file"]
-
-        # Game log (rotation-aware)
-        gp = game_provider()
-        if gp and gp.exists():
-            self.tail_game = FileTail(game_provider)
-            self.tail_game.chunk.connect(self._on_game_line)
-            self.tail_game.start()
-            self._status(f"Tailing game: {gp}")
-        else:
-            self._status(f"Game log not found: {gp}")
-
-        # Management logs (stdout files) - follow newest per-subsystem log
-        lm_provider = lambda: mgmt_logs.latest_log_path("monitor_log", "stdout")
-        cm_provider = lambda: mgmt_logs.latest_log_path("crash_monitor", "stdout")
-
-        self.tail_lm = FileTail(lm_provider)
-        self.tail_lm.chunk.connect(self._on_lm_line)
-        self.tail_lm.start()
-
-        self.tail_cm = FileTail(cm_provider)
-        self.tail_cm.chunk.connect(self._on_cm_line)
-        self.tail_cm.start()
+        return self.logs.retail()
 
     def _populate_log_sources(self):
-        subsystems = mgmt_logs.available_subsystems(include_empty=True)
-        self._set_subsystem_combo(self.cmb_log_sources, subsystems, include_all=True)
-        self._set_subsystem_combo(
-            self.cmb_mgmt_log_subsystem, subsystems, include_all=False
-        )
-        self._set_subsystem_combo(
-            self.cmb_error_subsystem, subsystems, include_all=True
-        )
-        self._refresh_mgmt_log_files()
-
-    def _set_subsystem_combo(self, combo, subsystems, include_all: bool):
-        if combo is None:
-            return
-        current = combo.currentData()
-        combo.blockSignals(True)
-        combo.clear()
-        if combo is self.cmb_mgmt_log_subsystem:
-            combo.addItem("Select subsystem", "__none__")
-        elif include_all:
-            combo.addItem("All subsystems", "__all__")
-        for name in subsystems:
-            combo.addItem(name, name)
-        combo.addItem("Archive (all subsystems)", "__archive__")
-        if current:
-            idx = combo.findData(current)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
-        combo.blockSignals(False)
+        return self.logs.populate_log_sources()
 
     def _run_log_search(self):
-        if self._log_search_running:
-            return
-        query = self.ed_log_search.text().strip()
-        if not query:
-            self.log_search_status.setText("Enter a search query to begin.")
-            return
-        subs_data = self.cmb_log_sources.currentData()
-        subsystems = None
-        archive_only: set[str] = set()
-        include_archive = self.chk_log_include_archive.isChecked()
-        if subs_data == "__archive__":
-            subsystems = mgmt_logs.available_subsystems(include_empty=True)
-            include_archive = True
-            archive_only = set(subsystems)
-        elif isinstance(subs_data, str) and subs_data not in (None, "__all__", ""):
-            subsystems = [subs_data]
-        limit = int(self.spin_log_limit.value())
-        since_expr = self.cmb_log_since.currentData()
-        case_sensitive = self.chk_log_case.isChecked()
-        self._log_search_running = True
-        self.btn_log_search.setEnabled(False)
-        self.log_search_status.setText("Searching…")
-        worker = LogSearchWorker(
-            subsystems=subsystems,
-            pattern=query,
-            since=since_expr,
-            limit=limit,
-            case_sensitive=case_sensitive,
-            include_archive=include_archive,
-            archive_only=archive_only,
-        )
-        worker.signals.ready.connect(self._log_search_ready)
-        worker.signals.error.connect(self._log_search_error)
-        self._pool.start(worker)
-        self._log_search_worker = worker  # keep reference
+        return self.logs._run_log_search()
 
     def _log_search_ready(self, payload: list[dict]):
-        lines = [
-            f"[{hit['subsystem']}] {hit['file']}:{hit['line']} {hit['text']}"
-            for hit in payload
-        ]
-        text = "\n".join(lines) if lines else "No matches."
-        self.log_search_results.setPlainText(text)
-        self.log_search_status.setText(f"{len(payload)} match(es)")
-        self.btn_log_search.setEnabled(True)
-        self._log_search_running = False
-
-        # allow repeated GC once done
-        self._log_search_worker = None
+        return self.logs._log_search_ready(payload)
 
     def _log_search_error(self, message: str):
-        self.log_search_status.setText(f"Search failed: {message}")
-        self.btn_log_search.setEnabled(True)
-        self._log_search_running = False
-        self._log_search_worker = None
+        return self.logs._log_search_error(message)
 
     def _clear_log_search(self):
-        self.log_search_results.clear()
-        self.log_search_status.setText("Idle")
+        return self.logs._clear_log_search()
 
     def _refresh_mgmt_log_files(self):
-        combo = getattr(self, "cmb_mgmt_log_file", None)
-        subs_combo = getattr(self, "cmb_mgmt_log_subsystem", None)
-        if not combo or not subs_combo:
-            return
-        subsystem_value = subs_combo.currentData()
-        combo.blockSignals(True)
-        combo.clear()
-        files: list[tuple[Path, str]] = []
-        if subsystem_value == "__archive__":
-            files = self._collect_archive_files()
-        elif subsystem_value in (None, "__none__"):
-            combo.blockSignals(False)
-            self.txt_mgmt_log.setPlainText("Select a subsystem to load logs.")
-            return
-        else:
-            files = self._collect_subsystem_files(subsystem_value)
-        combo.blockSignals(False)
-        if files:
-            combo.setCurrentIndex(0)
-            self._load_mgmt_log_file(auto=True)
-        else:
-            self.txt_mgmt_log.setPlainText("No logs found for this selection.")
+        return self.logs._refresh_mgmt_log_files()
 
     def _collect_subsystem_files(self, subsystem: str) -> list[tuple[Path, str]]:
-        entries: list[tuple[Path, str]] = []
-        for path in mgmt_logs.iter_log_files(subsystem, include_archive=False):
-            if len(entries) >= 20:
-                break
-            try:
-                ts = path.stat().st_mtime
-            except Exception:
-                ts = 0.0
-            label = f"{path.name} ({self._format_timestamp(ts)})"
-            entries.append((path, label))
-        return entries
+        return self.logs._collect_subsystem_files(subsystem)
 
     def _collect_archive_files(self) -> list[tuple[Path, str]]:
-        records: list[tuple[Path, float, str]] = []
-        subsystems = mgmt_logs.available_subsystems(include_empty=True)
-        for subsystem in subsystems:
-            for path in mgmt_logs.iter_log_files(subsystem, include_archive=True):
-                if not mgmt_logs.is_archived_path(path):
-                    continue
-                try:
-                    ts = path.stat().st_mtime
-                except Exception:
-                    ts = 0.0
-                label = f"[Archive/{subsystem}] {path.name} ({self._format_timestamp(ts)})"
-                records.append((path, ts, label))
-        records.sort(key=lambda item: item[1], reverse=True)
-        return [(path, label) for path, _, label in records[:20]]
+        return self.logs._collect_archive_files()
 
     def _infer_subsystem_from_path(self, path: Path) -> str:
-        root = mgmt_logs.management_log_root()
-        try:
-            rel = path.relative_to(root)
-            parts = list(rel.parts)
-            if parts and parts[0].lower() == "archive":
-                return parts[1] if len(parts) > 1 else ""
-            return parts[0] if parts else ""
-        except Exception:
-            return ""
+        return self.logs._infer_subsystem_from_path(path)
 
     def _archive_logs_now(self):
-        if self._archiving_logs:
-            return
-        self._archiving_logs = True
-        self.btn_mgmt_archive.setEnabled(False)
-        self._status("Archiving logs…")
-        worker = ArchiveLogsWorker()
-        worker.signals.ready.connect(self._archive_logs_done)
-        worker.signals.error.connect(self._archive_logs_error)
-        self._pool.start(worker)
-        self._archive_worker = worker
+        return self.logs._archive_logs_now()
 
     def _archive_logs_done(self, moved: list[tuple[Path, Path]]):
-        self._archiving_logs = False
-        self.btn_mgmt_archive.setEnabled(True)
-        self._populate_log_sources()
-        count = len(moved)
-        self._status(f"Archived {count} log(s).")
-        self._archive_worker = None
+        return self.logs._archive_logs_done(moved)
 
     def _archive_logs_error(self, message: str):
-        self._archiving_logs = False
-        self.btn_mgmt_archive.setEnabled(True)
-        self._status(f"Archive failed: {message}")
-        self._archive_worker = None
+        return self.logs._archive_logs_error(message)
 
-    def _current_mgmt_log_file(self) -> Optional[Path]:
-        combo = getattr(self, "cmb_mgmt_log_file", None)
-        if not combo:
-            return None
-        data = combo.currentData()
-        if not data:
-            return None
-        return Path(data)
+    def _current_mgmt_log_file(self) -> Path | None:
+        return self.logs._current_mgmt_log_file()
 
     def _load_mgmt_log_file(
         self,
@@ -1969,235 +1904,70 @@ class Main(QtWidgets.QMainWindow):
         highlight_line: Optional[int] = None,
         highlight_level: Optional[str] = None,
     ):
-        path = self._current_mgmt_log_file()
-        if not path:
-            if not auto:
-                self.txt_mgmt_log.setPlainText("No log file selected.")
-            return
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-            self.txt_mgmt_log.setPlainText(text)
-            if highlight_line:
-                self._highlight_log_line(highlight_line, highlight_level)
-            else:
-                self.txt_mgmt_log.setExtraSelections([])
-        except Exception as exc:
-            if not auto:
-                self.txt_mgmt_log.setPlainText(f"Failed to load log: {exc}")
+        return self.logs._load_mgmt_log_file(
+            auto=auto,
+            highlight_line=highlight_line,
+            highlight_level=highlight_level,
+        )
 
     def _open_selected_mgmt_folder(self):
-        path = self._current_mgmt_log_file()
-        if path:
-            self._open_folder(path.parent)
+        return self.logs._open_selected_mgmt_folder()
 
     def _format_timestamp(self, ts: float) -> str:
-        if not ts:
-            return "unknown"
-        try:
-            dt = datetime.fromtimestamp(ts)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return "unknown"
+        return self.logs._format_timestamp(ts)
 
     def _refresh_error_events(self):
-        if self._error_refresh_running:
-            return
-        subs_data = self.cmb_error_subsystem.currentData()
-        subsystems = None
-        archive_only = False
-        include_archive = self.chk_error_include_archive.isChecked()
-        if subs_data == "__archive__":
-            subsystems = mgmt_logs.available_subsystems(include_empty=True)
-            include_archive = True
-            archive_only = True
-        elif subs_data not in (None, "__all__", ""):
-            subsystems = [subs_data]
-        since_expr = self.cmb_error_since.currentData()
-        limit = int(self.spin_error_limit.value())
-        self._error_refresh_running = True
-        self.btn_error_refresh.setEnabled(False)
-        self.lbl_error_status.setText("Scanning errors.")
-        worker = LogErrorWorker(
-            subsystems=subsystems,
-            since=since_expr,
-            limit=limit,
-            include_archive=include_archive,
-            archive_only=archive_only,
-        )
-        worker.signals.ready.connect(self._error_ready)
-        worker.signals.error.connect(self._error_error)
-        self._pool.start(worker)
-        self._error_worker = worker
+        return self.logs._refresh_error_events()
 
     def _error_ready(self, payload: list[dict]):
-        table = self.tbl_error_events
-        table.setRowCount(len(payload))
-        latest_ts = 0.0
-        for row, evt in enumerate(payload):
-            ts = evt.get("timestamp", 0.0) or 0.0
-            latest_ts = max(latest_ts, ts)
-            table.setItem(row, 0, QtWidgets.QTableWidgetItem(evt["subsystem"]))
-            ts_item = QtWidgets.QTableWidgetItem(self._format_timestamp(ts))
-            ts_item.setData(QtCore.Qt.UserRole, ts)
-            table.setItem(row, 1, ts_item)
-            file_text = f"{evt['file']}:{evt['line']}"
-            item_file = QtWidgets.QTableWidgetItem(file_text)
-            item_file.setData(QtCore.Qt.UserRole, evt)
-            table.setItem(row, 2, item_file)
-            table.setItem(row, 3, QtWidgets.QTableWidgetItem(evt["level"]))
-            table.setItem(row, 4, QtWidgets.QTableWidgetItem(evt["message"]))
-        status = f"{len(payload)} event(s)"
-        if latest_ts:
-            status += f" • newest {self._format_timestamp(latest_ts)}"
-        self.lbl_error_status.setText(status)
-        self.btn_error_refresh.setEnabled(True)
-        self._error_refresh_running = False
-        self._error_worker = None
+        return self.logs._error_ready(payload)
 
     def _error_error(self, message: str):
-        self.lbl_error_status.setText(f"Error summary failed: {message}")
-        self.btn_error_refresh.setEnabled(True)
-        self._error_refresh_running = False
-        self._error_worker = None
+        return self.logs._error_error(message)
 
     def _open_error_log_from_table(self, item):
-        row = item.row()
-        data_item = self.tbl_error_events.item(row, 2)
-        if not data_item:
-            return
-        evt = data_item.data(QtCore.Qt.UserRole)
-        if not isinstance(evt, dict):
-            return
-        rel_path = evt.get("file")
-        line = int(evt.get("line", 1))
-        subsystem = evt.get("subsystem", "")
-        level = evt.get("level")
-        self._load_log_into_subsystem_tab(
-            rel_path, line, subsystem=subsystem, level=level
-        )
+        return self.logs._open_error_log_from_table(item)
 
     def _ensure_subsystem_selected(self, subsystem: str, archived: bool = False) -> None:
-        combo = self.cmb_mgmt_log_subsystem
-        if not combo or not subsystem:
-            return
-        value = f"archive::{subsystem}" if archived else subsystem
-        display = f"Archive: {subsystem}" if archived else subsystem
-        idx = combo.findData(value)
-        if idx < 0:
-            combo.addItem(display, value)
-            idx = combo.count() - 1
-        combo.setCurrentIndex(idx)
-
-    def _select_mgmt_log_file(self, path: Path) -> None:
-        combo = self.cmb_mgmt_log_file
-        if not combo:
-            return
-        data = str(path)
-        idx = combo.findData(data)
-        if idx < 0:
-            label = path.name
-            if mgmt_logs.is_archived_path(path):
-                subsystem = self._infer_subsystem_from_path(path)
-                label = f"[Archive/{subsystem}] {label}"
-            combo.addItem(label, data)
-            idx = combo.count() - 1
-        combo.setCurrentIndex(idx)
+        return self.logs._ensure_subsystem_selected(subsystem, archived=archived)
 
     def _load_log_into_subsystem_tab(
         self,
         rel_path: str,
         line: int,
         *,
-        subsystem: str | None = None,
-        level: str | None = None,
+        subsystem: str,
+        level: Optional[str],
     ):
-        if not rel_path:
-            return
-        root = mgmt_logs.management_log_root()
-        path = root / rel_path
-        archived = mgmt_logs.is_archived_path(path)
-        if subsystem is None:
-            subsystem = self._infer_subsystem_from_path(path)
-        if subsystem:
-            self._ensure_subsystem_selected(subsystem, archived=archived)
-        if not path.exists():
-            self.txt_mgmt_log.setPlainText(f"Log not found: {path}")
-            self.logTabs.setCurrentWidget(self.mgmt_log_tab)
-            return
-        self._select_mgmt_log_file(path)
-        self._load_mgmt_log_file(
-            auto=True, highlight_line=line, highlight_level=level
+        return self.logs._load_log_into_subsystem_tab(
+            rel_path,
+            line,
+            subsystem=subsystem,
+            level=level,
         )
-        self.logTabs.setCurrentWidget(self.mgmt_log_tab)
 
-    def _highlight_log_line(self, line: int, level: Optional[str]):
-        cursor = self.txt_mgmt_log.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.Start)
-        for _ in range(max(0, line - 1)):
-            if not cursor.movePosition(QtGui.QTextCursor.Down):
-                break
-        selection_cursor = QtGui.QTextCursor(cursor)
-        selection_cursor.movePosition(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
-        selection = QtWidgets.QTextEdit.ExtraSelection()
-        selection.cursor = selection_cursor
-        fmt = QtGui.QTextCharFormat()
-        color = self._highlight_color_for_level(level)
-        fmt.setBackground(QtGui.QColor(color))
-        fmt.setForeground(QtGui.QColor("#000000"))
-        selection.format = fmt
-        self.txt_mgmt_log.setExtraSelections([selection])
-        cursor.setPosition(selection_cursor.anchor())
-        self.txt_mgmt_log.setTextCursor(cursor)
-        self.txt_mgmt_log.ensureCursorVisible()
+    def _highlight_log_line(
+        self, line_no: int, level: Optional[str] = None
+    ) -> None:
+        return self.logs._highlight_log_line(line_no, level)
 
     def _highlight_color_for_level(self, level: Optional[str]) -> str:
-        if not level:
-            return "#d0f0fd"
-        lvl = level.upper()
-        if lvl == "CRITICAL":
-            return "#ffb3b3"
-        if lvl == "ERROR":
-            return "#ffd5b3"
-        if lvl == "WARNING":
-            return "#fffac0"
-        return "#d0f0fd"
+        return self.logs._highlight_color_for_level(level)
 
     @QtCore.Slot(str)
     def _on_game_line(self, s: str):
-        self._buf_game.append(s)
+        return self.logs._on_game_line(s)
 
     @QtCore.Slot(str)
     def _on_lm_line(self, s: str):
-        self._buf_lm.append(s)
+        return self.logs._on_lm_line(s)
 
     @QtCore.Slot(str)
     def _on_cm_line(self, s: str):
-        self._buf_cm.append(s)
+        return self.logs._on_cm_line(s)
 
     def _flush_tail(self):
-        # keep logs from growing unbounded even when paused
-        def cap(w: QtWidgets.QPlainTextEdit):
-            if w.document().characterCount() > 500_000:
-                w.clear()
-
-        if not self.chk_live.isChecked():
-            for w in (self.log_game, self.log_lm, self.log_cm):
-                cap(w)
-            return
-
-        def flush_buf(buf: list[str], widget: QtWidgets.QPlainTextEdit):
-            if not buf:
-                return
-            chunk = "".join(buf)
-            buf.clear()
-            cap(widget)
-            widget.moveCursor(QtGui.QTextCursor.End)
-            widget.insertPlainText(chunk)
-            widget.moveCursor(QtGui.QTextCursor.End)
-
-        flush_buf(self._buf_game, self.log_game)
-        flush_buf(self._buf_lm, self.log_lm)
-        flush_buf(self._buf_cm, self.log_cm)
+        return self.logs._flush_tail()
 
     # ------------------------ Server / monitors -------------------------------
     def _resolved_paths(self) -> Dict[str, Path]:
@@ -2205,157 +1975,31 @@ class Main(QtWidgets.QMainWindow):
         return _resolved_paths(self.config_path, ov)
 
     def start_server(self):
-        paths = self._resolved_paths()
-        py = paths["start_server"]
-        if not py.exists():
-            self._status("start_server.py not found.")
-            return
-        env = os.environ.copy()
-        env["VEIN_CONFIG"] = self.config_path
-        srv_stdout = mgmt_logs.allocate_log_file(
-            "vein_manager",
-            label="start_server",
-            record_latest=False,
-            metadata={"action": "start_server", "config": self.config_path},
-        )
-        try:
-            spawn_logged(f'{_pyexe()} "{py}"', srv_stdout, py.parent, env=env)
-            self._status("Server starting…")
-        except Exception as e:
-            self._status(f"Start failed: {e}")
+        return self.process_ctl.start_server()
 
     def stop_server(self):
-        paths = self._resolved_paths()
-        py = paths["shutdown_server"]
-        if not py.exists():
-            self._status("shutdown_server.py not found.")
-            return
-        try:
-            code, out, err = run_once(f'{_pyexe()} "{py}"', cwd=py.parent, timeout=180)
-            if out:
-                self._write_action_log("stop_server", "stdout", out)
-            if err:
-                self._write_action_log("stop_server", "stderr", err)
-            self._status(
-                "Server stop requested."
-                if code == 0
-                else f"Stop returned {code}. {err or out}"
-            )
-        except Exception as e:
-            self._status(f"Stop failed: {e}")
+        return self.process_ctl.stop_server()
 
     def restart_server(self):
-        self.stop_server()
-        QtCore.QTimer.singleShot(1200, self.start_server)
+        return self.process_ctl.restart_server()
 
     def start_lm(self):
-        paths = self._resolved_paths()
-        mon_py = paths["monitor_log"]
-        if not mon_py.exists():
-            self._status("monitor_log.py not found.")
-            return
-        rp = _rt_paths(self.config_path)
-        _rm(rp["stop_log"])
-        _rm(rp["pid_log"])
-        env = os.environ.copy()
-        env["VEIN_CONFIG"] = self.config_path
-
-        # Write monitor stdout/stderr here:
-        lm_stdout = mgmt_logs.allocate_log_file(
-            "monitor_log",
-            label="monitor_log",
-            metadata={"action": "start_monitor_log"},
-        )
-        try:
-            spawn_logged(
-                f'{_pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env
-            )
-            self._status("Log monitor starting…")
-        except Exception as e:
-            self._status(f"Log monitor start failed: {e}")
-
-        if _runtime_paths(self.config_path)["log_monitor_enabled"]:
-            self.chk_live.setChecked(True)
+        return self.process_ctl.start_lm()
 
     def stop_lm(self):
-        rp = _rt_paths(self.config_path)
-        _mkflag(rp["stop_log"])
-        self._status("Stopping Log Monitor…")
-        if _wait_for_monitor_exit(rp["pid_log"], timeout_sec=20):
-            self._status("Log Monitor stopped.")
-        else:
-            # gentle Python fallback (existing utils hook)
-            try:
-                run_once(
-                    f"{_pyexe()} -c \"import sys;sys.path.insert(0, r'{CTRL_DIR}');from Tools import monitors;monitors.stop_log_monitor();print('OK')\"",
-                    CTRL_DIR,
-                    timeout=10,
-                )
-            except Exception:
-                pass
-            if not _wait_for_monitor_exit(rp["pid_log"], timeout_sec=10):
-                # last resort: force-kill by command line match
-                try:
-                    run_once(
-                        'powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
-                        "Where-Object { $_.CommandLine -match 'monitor_log.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"",
-                        timeout=8,
-                    )
-                except Exception:
-                    pass
-            self._status("Log Monitor stop requested.")
+        return self.process_ctl.stop_lm()
 
     def start_cm(self):
-        paths = self._resolved_paths()
-        cm_py = paths["crash_monitor"]
-        if not cm_py.exists():
-            self._status("crash_monitor.py not found.")
-            return
-        rp = _rt_paths(self.config_path)
-        _rm(rp["stop_crash"])
-        _rm(rp["pid_crash"])
-        env = os.environ.copy()
-        env["VEIN_CONFIG"] = self.config_path
-
-        cm_stdout = mgmt_logs.allocate_log_file(
-            "crash_monitor",
-            label="crash_monitor",
-            metadata={"action": "start_crash_monitor"},
-        )
-        try:
-            spawn_logged(f'{_pyexe()} "{cm_py}"', cm_stdout, cm_py.parent, env=env)
-            self._status("Crash monitor starting…")
-        except Exception as e:
-            self._status(f"Crash monitor start failed: {e}")
+        return self.process_ctl.start_cm()
 
     def stop_cm(self):
-        rp = _rt_paths(self.config_path)
-        _mkflag(rp["stop_crash"])
-        self._status("Stopping Crash Monitor…")
-        if _wait_for_monitor_exit(rp["pid_crash"], timeout_sec=30):
-            self._status("Crash Monitor stopped.")
-        else:
-            try:
-                run_once(
-                    f"{_pyexe()} -c \"import sys;sys.path.insert(0, r'{CTRL_DIR}');from Tools import monitors;monitors.stop_crash_monitor();print('OK')\"",
-                    CTRL_DIR,
-                    timeout=10,
-                )
-            except Exception:
-                pass
-            if not _wait_for_monitor_exit(rp["pid_crash"], timeout_sec=10):
-                try:
-                    run_once(
-                        'powershell -NoProfile -WindowStyle Hidden -Command "Get-CimInstance Win32_Process | '
-                        "Where-Object { $_.CommandLine -match 'crash_monitor.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"",
-                        timeout=8,
-                    )
-                except Exception:
-                    pass
-            self._status("Crash Monitor stop requested.")
+        return self.process_ctl.stop_cm()
 
     # ----------------------- Background status wiring -------------------------
     def _apply_status_snapshot(self, snap: dict):
+        return self.status_renderer.apply(snap)
+
+    def _apply_status_snapshot_impl(self, snap: dict):
         # Update gumballs without blocking
         def dot(on, warn=False):
             return _dot(on, warn)
@@ -2387,15 +2031,15 @@ class Main(QtWidgets.QMainWindow):
         )
         self.lblLogStatus.setText("running" if lm_on else "stopped")
         self.lblLogLast.setText(f"Last update: {_age_str(last)}")
-        self.lblLogJoin.setText(f"Joinable: {st.get('server_joinable') if st else '—'}")
-        self.lblLogPlayers.setText(f"Players: {st.get('player_count') if st else '—'}")
+        self.lblLogJoin.setText(f"Joinable: {st.get('server_joinable') if st else '-'}")
+        self.lblLogPlayers.setText(f"Players: {st.get('player_count') if st else '-'}")
         if st and isinstance(st.get("uptime_seconds"), int):
             up = st["uptime_seconds"]
             self.lblLogUptime.setText(
                 f"Uptime: {up//3600:02d}:{(up%3600)//60:02d}:{up%60:02d}"
             )
         else:
-            self.lblLogUptime.setText("Uptime: —")
+            self.lblLogUptime.setText("Uptime: -")
 
         http_state = lms.get("http_api") if isinstance(lms, dict) else None
 
@@ -2407,7 +2051,8 @@ class Main(QtWidgets.QMainWindow):
         self._render_player_tree(player_snapshot)
 
         # Hint the tailer in case path switched (next poll will re-open)
-        if self.tail_game:
+        tail_game = getattr(getattr(self, "logs", None), "tail_game", None)
+        if tail_game:
             try:
                 _ = (
                     self._current_game_log_path()
@@ -2420,18 +2065,18 @@ class Main(QtWidgets.QMainWindow):
         self.lblCrashLast.setText(f"Last heartbeat: {_age_str(cs.get('ts'))}")
 
         bk = snap.get("backup", {}) or {}
-        bk_last = bk.get("last_utc") or "—"
-        bk_file = bk.get("last_zip") or "—"
+        bk_last = bk.get("last_utc") or "-"
+        bk_file = bk.get("last_zip") or "-"
         bk_total = (bk.get("counts") or {}).get("TOTAL", 0)
 
         # --- Backups card update ---
         bk_enabled = bool((snap.get("backup") or {}).get("enabled", True))
         bk_counts = (snap.get("backup") or {}).get("counts") or {}
-        age = _age_str(bk_last) if bk_last and bk_last != "—" else "—"
+        age = _age_str(bk_last) if bk_last and bk_last != "-" else "-"
 
         def _fmt_counts(d: dict) -> str:
             if not d:
-                return "—"
+                return "-"
             keys = [k for k in d.keys() if k != "TOTAL"]
             keys.sort()
             return "  ".join(
@@ -2453,10 +2098,10 @@ class Main(QtWidgets.QMainWindow):
         self.state_box.setText(
             f"Server flag: {'present' if _file_exists(rp['state_flag']) else 'absent'}   |   "
             f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}   |   "
-            f"Backup: Last={bk_last} • File={bk_file} • Total={bk_total}"
+            f"Backup: Last={bk_last} - File={bk_file} - Total={bk_total}"
         )
 
-        # Nice UX touch: show details on the “Open Backups” button
+        # Nice UX touch: show details on the "Open Backups" button
         try:
             self.btn_bak.setToolTip(
                 f"Last backup: {bk_last}\nFile: {bk_file}\nTotal archives: {bk_total}"
@@ -2501,9 +2146,9 @@ class Main(QtWidgets.QMainWindow):
             return
 
         status_text = "HTTP API: disabled"
-        players_text = "API Players: —"
-        world_text = "World Time: —"
-        weather_text = "Weather: —"
+        players_text = "API Players: -"
+        world_text = "World Time: -"
+        weather_text = "Weather: -"
 
         if isinstance(http_state, dict):
             enabled = bool(http_state.get("enabled", False))
@@ -2562,7 +2207,7 @@ class Main(QtWidgets.QMainWindow):
             age = _age_str(ts)
             self.lblPlayerSnapshotTs.setText(f"Players refreshed: {age} ago")
         else:
-            self.lblPlayerSnapshotTs.setText("Players refreshed: �")
+            self.lblPlayerSnapshotTs.setText("Players refreshed: -")
 
         errors = data.get("errors") or []
         if errors:
@@ -2626,7 +2271,7 @@ class Main(QtWidgets.QMainWindow):
                     detail_bits.append("offline")
                 icon = self._status_icon("offline", "#E74C3C")
             if entry.get("verified_by_api"):
-                detail_bits.append("API ✔")
+                detail_bits.append("API verified")
             elif online:
                 detail_bits.append("log-only")
             last_log = entry.get("last_log_event")
@@ -2639,7 +2284,7 @@ class Main(QtWidgets.QMainWindow):
             if current_char_id and online and not in_select:
                 current_char_name = self._find_character_name(entry, current_char_id)
                 if current_char_name:
-                    detail += f" — playing {current_char_name}"
+                    detail += f" - playing {current_char_name}"
             player_payload = {"type": "player", "data": entry, "key": f"player:{steam_id}"}
             top = QtWidgets.QTreeWidgetItem([display, steam_id, detail])
             if icon:
@@ -2750,7 +2395,7 @@ class Main(QtWidgets.QMainWindow):
     def _format_http_api_time(
         self, time_payload: Optional[dict], status_payload: Optional[dict]
     ) -> str:
-        label = "World Time: —"
+        label = "World Time: -"
         ts = (
             time_payload.get("unixSeconds")
             if isinstance(time_payload, dict)
@@ -2770,12 +2415,12 @@ class Main(QtWidgets.QMainWindow):
 
     def _format_http_api_weather(self, payload: Optional[dict]) -> str:
         if not isinstance(payload, dict):
-            return "Weather: —"
+            return "Weather: -"
 
         parts: list[str] = []
         temp = payload.get("temperature")
         if isinstance(temp, (int, float)):
-            parts.append(f"{temp:.1f}°C")
+            parts.append(f"{temp:.1f} degC")
 
         humidity = payload.get("relativeHumidity")
         if isinstance(humidity, (int, float)):
@@ -2785,14 +2430,14 @@ class Main(QtWidgets.QMainWindow):
         wind_dir = payload.get("windDirection")
         wind_force = payload.get("windForce")
         if isinstance(wind_dir, (int, float)) and isinstance(wind_force, (int, float)):
-            parts.append(f"wind {wind_dir:.0f}°@{wind_force:.1f}")
+            parts.append(f"wind {wind_dir:.0f} deg @ {wind_force:.1f}")
 
         precip = payload.get("precipitation")
         if isinstance(precip, (int, float)):
             parts.append(f"precip {precip:.2f}")
 
         if not parts:
-            return "Weather: —"
+            return "Weather: -"
         return f"Weather: {', '.join(parts)}"
 
     def _configured_admin_ids(self) -> List[str]:
@@ -2996,13 +2641,22 @@ def main():
         app.setStyle("Fusion")
     w = Main()
     w.show()
-    sys.exit(app.exec())
+    try:
+        rc = app.exec()
+    except Exception:
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    finally:
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+    sys.exit(rc)
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-

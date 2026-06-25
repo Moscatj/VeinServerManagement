@@ -25,6 +25,8 @@ __all__ = [
     "is_archived_path",
 ]
 
+_BASE_ROOT = Path(__file__).resolve().parents[2]
+
 _DEFAULT_LAYOUT = {
     "vein_manager": "gui",
     "gui": "gui",
@@ -49,9 +51,11 @@ def _default_root() -> Path:
     root = (
         paths.get("mgmt_log_dir")
         or config.get("mgmt_log_dir")
-        or str(Path(__file__).resolve().parents[2] / "Logs")
+        or "Logs"
     )
     path = Path(root).expanduser()
+    if not path.is_absolute():
+        path = (_BASE_ROOT / path).resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -123,10 +127,13 @@ RETENTION = _retention_defaults()
 
 def _archive_defaults() -> Dict[str, object]:
     cfg = (config.get("management_logs") or {}).get("archive") or {}
-    root = cfg.get("root") or str(ROOT / "Archive")
+    root = cfg.get("root") or "Logs/Archive"
+    root_path = Path(root).expanduser()
+    if not root_path.is_absolute():
+        root_path = (_BASE_ROOT / root_path).resolve()
     defaults = {
         "enabled": bool(cfg.get("enabled", True)),
-        "root": Path(root).expanduser(),
+        "root": root_path,
         "max_files": int(cfg.get("max_files", 200) or 200),
         "max_age_days": int(cfg.get("max_age_days", 90) or 90),
     }

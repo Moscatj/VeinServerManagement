@@ -66,50 +66,13 @@ def build_left_panel(owner: "Main", nav_panel: QtWidgets.QWidget) -> QtWidgets.Q
     panel = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(panel)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(10)
+    layout.setSpacing(8)
 
-    shortcuts = QtWidgets.QHBoxLayout()
-    layout.addLayout(shortcuts)
-    owner.btn_logs = QtWidgets.QPushButton("Logs")
-    owner.btn_rt = QtWidgets.QPushButton("Runtime")
-    owner.btn_bak = QtWidgets.QPushButton("Backups")
-    owner.btn_ctl = QtWidgets.QPushButton("Controller")
-    owner.btn_adv = QtWidgets.QPushButton("Advanced…")
-    for btn in (owner.btn_logs, owner.btn_rt, owner.btn_bak, owner.btn_ctl):
-        btn.setMinimumWidth(70)
-        shortcuts.addWidget(btn)
-    shortcuts.addStretch(1)
-    shortcuts.addWidget(owner.btn_adv)
-
-    owner.config_source_box = CollapsibleBox("Config Source")
-    owner.config_source_box.toggle.setChecked(False)
-    grid = QtWidgets.QGridLayout()
-    grid.setContentsMargins(4, 0, 4, 6)
-    grid.setHorizontalSpacing(6)
-    grid.setVerticalSpacing(4)
-
-    owner.ed_cfgdir = QtWidgets.QLineEdit(owner.config_dir)
-    owner.b_cfgdir = QtWidgets.QPushButton("Browse…")
-    owner.b_cfgdir.setFixedWidth(110)
-    owner.b_reload_cfgs = QtWidgets.QPushButton("Refresh")
-    owner.b_reload_cfgs.setFixedWidth(80)
-    grid.addWidget(QtWidgets.QLabel("Folder:"), 0, 0)
-    grid.addWidget(owner.ed_cfgdir, 0, 1)
-    grid.addWidget(owner.b_cfgdir, 0, 2)
-
-    owner.cb_cfg = QtWidgets.QComboBox()
-    owner.cb_cfg.setMinimumWidth(220)
-    owner.cb_cfg.setSizeAdjustPolicy(
-        QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
-    )
-    owner.cb_cfg.setMinimumContentsLength(20)
-    grid.addWidget(QtWidgets.QLabel("Config:"), 1, 0)
-    grid.addWidget(owner.cb_cfg, 1, 1)
-    grid.addWidget(owner.b_reload_cfgs, 1, 2)
-
-    inner = owner.config_source_box.layout_for_rows()
-    inner.addLayout(grid)
-    layout.addWidget(owner.config_source_box)
+    width_hint = max(nav_panel.sizeHint().width(), 140)
+    nav_panel.setMinimumWidth(width_hint)
+    nav_panel.setMaximumWidth(width_hint)
+    nav_panel.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+    nav_panel.setProperty("fixed_width", width_hint)
     layout.addWidget(nav_panel, 1)
     return panel
 
