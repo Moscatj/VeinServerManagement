@@ -55,3 +55,12 @@ Desktop.ini
 *.old
 .coverage
 htmlcov/
+
+# API keys / local secrets
+.env
+.env.*
+!.env.example
+
+# Continue local config/secrets
+.continue/.env
+.continue/**/*.env
