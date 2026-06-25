@@ -1,8 +1,15 @@
 # Vein Server Management Suite
 
+[![CI](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/VeinServerManagement/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A Python and PySide6 toolkit for hosting and supervising a Vein dedicated server on Windows.
 
 This repository does not contain the game server. It is a management layer that lives alongside a Steam-installed Vein dedicated server and handles startup, shutdown, monitoring, backups, and local GUI control.
+
+## Project Status
+
+This is a personal open-source portfolio project. It is suitable for experimentation and local use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
 ## Features
 
@@ -125,10 +132,15 @@ Start here:
 - [Docs/control_layer_overview.md](Docs/control_layer_overview.md)
 - [Docs/config_reference.md](Docs/config_reference.md)
 - [Docs/testing.md](Docs/testing.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Pull requests should describe the change, testing performed, tests added or updated, and any risk to shutdown, backups, crash monitoring, process control, or game-file safety.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ## Security And Open-Source Hygiene
 
@@ -144,3 +156,5 @@ Tracked files are scanned for high-confidence secret patterns and local markers 
 - `Controller/Legacy/WebAdmin/server_state.json`
 
 If a real secret is ever committed, revoke it immediately. Removing a secret from the current tree does not remove it from Git history.
+
+For vulnerability reporting guidance, see [SECURITY.md](SECURITY.md).

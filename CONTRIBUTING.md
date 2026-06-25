@@ -91,6 +91,12 @@ Use a focused branch and include:
 
 Pull requests should not be merged while CI is failing.
 
+For user-facing changes, add a short note to `CHANGELOG.md` under `Unreleased`.
+
+## Issues
+
+Use the GitHub issue templates for bug reports and feature requests. Do not include secrets, webhooks, private logs, save files, or local account data in issues.
+
 ## Secret Hygiene
 
 Never commit:

@@ -1,0 +1,50 @@
+name: Bug report
+description: Report something that is broken or unsafe.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not include secrets, webhooks, save files, or private server logs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the commands, GUI actions, or monitor state that led to the issue.
+      placeholder: |
+        1. Run ...
+        2. Click ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Windows version, Python version, and whether you used GUI, scripts, or direct Python entrypoints.
+      placeholder: |
+        Windows:
+        Python:
+        Entry point:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized output
+      description: Paste only sanitized snippets. Remove tokens, webhooks, usernames, local private paths, and save data.
+      render: text
