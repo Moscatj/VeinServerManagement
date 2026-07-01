@@ -6,6 +6,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Moved GUI shutdown command execution off the Qt UI thread so server shutdown no longer makes the window appear unresponsive.
 - Avoided comment-preserving YAML parsing in GUI runtime polling paths to prevent native YAML parser crashes during manual GUI testing.
 - Clarified management-log documentation and kept `Logs/Archive` out of subsystem discovery.
 - Added a read-only project health check command for config, dependency, path, executable, SteamCMD, and Discord webhook safety diagnostics.

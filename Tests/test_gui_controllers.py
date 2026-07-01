@@ -102,14 +102,46 @@ class GuiControllerTests(unittest.TestCase):
             )
             with mock.patch("GUI.process_control.mgmt_logs.allocate_log_file", return_value=base / "run.log"):
                 controller.start_server()
-            controller.stop_server()
+            with mock.patch.object(controller._pool, "start", side_effect=lambda worker: worker.run()):
+                controller.stop_server()
 
         spawn.assert_called_once()
         run_once.assert_called_once()
         owner._write_action_log.assert_any_call("stop_server", "stdout", "out")
         owner._write_action_log.assert_any_call("stop_server", "stderr", "err")
         owner._status.assert_any_call("Server starting.")
+        owner._status.assert_any_call("Server stop requested; waiting for shutdown script.")
         owner._status.assert_any_call("Server stop requested.")
+
+    def test_process_controller_stop_server_runs_off_gui_thread(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            stop = base / "shutdown_server.py"
+            stop.write_text("", encoding="utf-8")
+            owner = mock.Mock()
+            owner.config_path = str(base / "config.yaml")
+            owner._status = mock.Mock()
+            owner._write_action_log = mock.Mock()
+            run_once = mock.Mock(return_value=(0, "out", "err"))
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "python",
+                resolved_paths=lambda: {"shutdown_server": stop},
+                rt_paths=lambda _: {},
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=run_once,
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=mock.Mock(return_value=True),
+                ctrl_dir=base,
+            )
+            with mock.patch.object(controller._pool, "start") as start:
+                controller.stop_server()
+
+        run_once.assert_not_called()
+        start.assert_called_once()
+        owner._status.assert_called_once_with("Server stop requested; waiting for shutdown script.")
 
 
 if __name__ == "__main__":

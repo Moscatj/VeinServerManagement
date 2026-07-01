@@ -16,6 +16,38 @@ from PySide6 import QtCore
 from Tools import mgmt_logs
 
 
+class RunOnceWorker(QtCore.QRunnable):
+    class Signals(QtCore.QObject):
+        finished = QtCore.Signal(int, str, str)
+        failed = QtCore.Signal(str)
+
+    def __init__(
+        self,
+        run_once: Callable[..., tuple[int, str, str]],
+        command: str,
+        *,
+        cwd: Path,
+        timeout: int,
+    ) -> None:
+        super().__init__()
+        self._run_once = run_once
+        self._command = command
+        self._cwd = cwd
+        self._timeout = timeout
+        self.signals = self.Signals()
+
+    def run(self) -> None:
+        try:
+            code, out, err = self._run_once(
+                self._command,
+                cwd=self._cwd,
+                timeout=self._timeout,
+            )
+            self.signals.finished.emit(int(code), str(out or ""), str(err or ""))
+        except Exception as exc:
+            self.signals.failed.emit(str(exc))
+
+
 class ProcessController:
     def __init__(
         self,
@@ -43,6 +75,8 @@ class ProcessController:
         self._rm = rm
         self._wait_for_monitor_exit = wait_for_monitor_exit
         self._ctrl_dir = ctrl_dir
+        self._pool = QtCore.QThreadPool.globalInstance()
+        self._workers: list[QtCore.QRunnable] = []
 
     # ------------------------ Server / monitors -------------------------------
     def start_server(self) -> None:
@@ -65,16 +99,23 @@ class ProcessController:
         except Exception as e:
             self.owner._status(f"Start failed: {e}")
 
-    def stop_server(self) -> None:
+    def stop_server(self, *, after_success: Optional[Callable[[], None]] = None) -> None:
         paths = self._resolved_paths()
         py = paths["shutdown_server"]
         if not py.exists():
             self.owner._status("shutdown_server.py not found.")
             return
-        try:
-            code, out, err = self._run_once(
-                f'{self._pyexe()} "{py}"', cwd=py.parent, timeout=180
-            )
+        worker = RunOnceWorker(
+            self._run_once,
+            f'{self._pyexe()} "{py}"',
+            cwd=py.parent,
+            timeout=180,
+        )
+        self._workers.append(worker)
+
+        def finished(code: int, out: str, err: str) -> None:
+            if worker in self._workers:
+                self._workers.remove(worker)
             if out:
                 self.owner._write_action_log("stop_server", "stdout", out)
             if err:
@@ -84,12 +125,21 @@ class ProcessController:
                 if code == 0
                 else f"Stop returned {code}. {err or out}"
             )
-        except Exception as e:
-            self.owner._status(f"Stop failed: {e}")
+            if code == 0 and after_success:
+                QtCore.QTimer.singleShot(1200, after_success)
+
+        def failed(message: str) -> None:
+            if worker in self._workers:
+                self._workers.remove(worker)
+            self.owner._status(f"Stop failed: {message}")
+
+        worker.signals.finished.connect(finished)
+        worker.signals.failed.connect(failed)
+        self.owner._status("Server stop requested; waiting for shutdown script.")
+        self._pool.start(worker)
 
     def restart_server(self) -> None:
-        self.stop_server()
-        QtCore.QTimer.singleShot(1200, self.start_server)
+        self.stop_server(after_success=self.start_server)
 
     def start_lm(self) -> None:
         paths = self._resolved_paths()
