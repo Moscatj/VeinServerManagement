@@ -402,8 +402,8 @@ def proc_exists_by_cmdline(substr: str) -> bool:
 # --------------------------- Runtime helpers ---------------------------------
 def _rt_paths(cfg_path: str) -> dict:
     cfg = _load_cfg_for_runtime(cfg_path)
-    rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
-    monitor_cfg = cfg.get("monitor") or {}
+    rt = Path(_cfg_path_value(cfg, "runtime_dir") or RUNTIME_FALLBACK)
+    monitor_cfg = cfg.get("log_monitor") or cfg.get("monitor") or {}
     state_candidates: list[Path] = []
     cfg_state = monitor_cfg.get("state_file")
     if isinstance(cfg_state, str) and cfg_state.strip():
@@ -482,18 +482,101 @@ def _wait_for_monitor_exit(pid_file: Path, timeout_sec: int = 30) -> bool:
 
 
 # ----------------------- Config helpers (paths, logs) -------------------------
-def _load_cfg_for_runtime(cfg_path: str) -> dict:
+_RUNTIME_CFG_CACHE: dict[str, tuple[float | None, dict]] = {}
+
+
+def _load_cfg_with_config_module(cfg_path: str) -> dict:
+    import config as config_module
+
+    path = Path(cfg_path).expanduser()
+    old_env = os.environ.get("VEIN_CONFIG")
+    old_cache = getattr(config_module, "_CONFIG_CACHE", None)
     try:
-        obj, kind, _ = _load_any_config(cfg_path)
-        return dict(obj) if isinstance(obj, dict) else {}
-    except Exception:
+        os.environ["VEIN_CONFIG"] = str(path)
+        if hasattr(config_module, "_CONFIG_CACHE"):
+            config_module._CONFIG_CACHE = None
+        loaded = config_module.load_config()
+        return dict(loaded) if isinstance(loaded, dict) else {}
+    finally:
+        if old_env is None:
+            os.environ.pop("VEIN_CONFIG", None)
+        else:
+            os.environ["VEIN_CONFIG"] = old_env
+        if hasattr(config_module, "_CONFIG_CACHE"):
+            config_module._CONFIG_CACHE = old_cache
+
+
+def _load_cfg_raw_safe(cfg_path: str) -> dict:
+    path = Path(cfg_path).expanduser()
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
         return {}
+    if path.suffix.lower() in (".yaml", ".yml"):
+        import yaml
+
+        data = yaml.safe_load(text)
+    else:
+        data = json.loads(text)
+    return dict(data) if isinstance(data, dict) else {}
+
+
+def _load_cfg_for_runtime(cfg_path: str) -> dict:
+    path = Path(cfg_path).expanduser()
+    try:
+        resolved = str(path.resolve())
+    except Exception:
+        resolved = str(path)
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = None
+
+    cached = _RUNTIME_CFG_CACHE.get(resolved)
+    if cached and cached[0] == mtime:
+        return dict(cached[1])
+
+    try:
+        cfg = _load_cfg_with_config_module(cfg_path)
+    except Exception:
+        try:
+            cfg = _load_cfg_raw_safe(cfg_path)
+        except Exception:
+            cfg = {}
+
+    _RUNTIME_CFG_CACHE[resolved] = (mtime, dict(cfg))
+    return dict(cfg)
+
+
+def _cfg_section(cfg: dict, key: str) -> dict:
+    value = cfg.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _cfg_path_value(
+    cfg: dict,
+    flat_key: str,
+    *,
+    section: str = "paths",
+    aliases: tuple[str, ...] = (),
+):
+    value = cfg.get(flat_key)
+    if value:
+        return value
+    section_cfg = _cfg_section(cfg, section)
+    for key in aliases or (flat_key,):
+        value = section_cfg.get(key)
+        if value:
+            return value
+    return None
 
 
 def _runtime_paths(cfg_path: str) -> dict:
     cfg = _load_cfg_for_runtime(cfg_path)
-    rt = Path(cfg.get("runtime_dir") or RUNTIME_FALLBACK)
-    server_dir = Path(cfg.get("server_dir") or ROOT.parent)
+    rt = Path(_cfg_path_value(cfg, "runtime_dir") or RUNTIME_FALLBACK)
+    server_dir = Path(
+        _cfg_path_value(cfg, "server_dir", aliases=("server_root", "server_dir"))
+        or ROOT.parent
+    )
 
     # prefer nested 'backups.root' from YAML, then fallback to legacy top-level
     b = cfg.get("backups", {}) or {}
@@ -513,7 +596,8 @@ def _runtime_paths(cfg_path: str) -> dict:
     except Exception:
         hb = 60
 
-    monitor = cfg.get("monitor", {}) if isinstance(cfg.get("monitor", {}), dict) else {}
+    monitor = cfg.get("log_monitor") or cfg.get("monitor") or {}
+    monitor = monitor if isinstance(monitor, dict) else {}
 
     return {
         "runtime_dir": rt,
@@ -522,10 +606,13 @@ def _runtime_paths(cfg_path: str) -> dict:
         "server_state": rt / "server_state.json",
         "crash_state": rt / "crash_monitor_state.json",
         "logs_dir": Path(
-            cfg.get("logs_dir") or (server_dir / "Vein" / "Saved" / "Logs")
+            _cfg_path_value(cfg, "logs_dir", aliases=("logs_dir", "logs"))
+            or (server_dir / "Vein" / "Saved" / "Logs")
         ),
         "absolute_log_file": (
-            Path(cfg.get("absolute_log_file")) if cfg.get("absolute_log_file") else None
+            Path(_cfg_path_value(cfg, "absolute_log_file"))
+            if _cfg_path_value(cfg, "absolute_log_file")
+            else None
         ),
         "backup_root": backup_root,
         "features": cfg.get("features", {}),
@@ -536,7 +623,7 @@ def _runtime_paths(cfg_path: str) -> dict:
             cfg.get("features", {}).get("enable_crash_monitor", True)
         ),
         "hb_seconds": hb,
-        "state_log": Path(monitor.get("state_file") or (rt / "log_monitor_state.json")),
+        "state_log": Path(monitor.get("state_file") or (rt / "log_monitor.state.json")),
     }
 
 

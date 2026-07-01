@@ -6,6 +6,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Avoided comment-preserving YAML parsing in GUI runtime polling paths to prevent native YAML parser crashes during manual GUI testing.
 - Clarified management-log documentation and kept `Logs/Archive` out of subsystem discovery.
 - Added a read-only project health check command for config, dependency, path, executable, SteamCMD, and Discord webhook safety diagnostics.
 - Added coverage strategy documentation and updated AI/contributor testing rules.
