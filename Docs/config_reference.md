@@ -57,12 +57,14 @@ Note: Any path value may now be expressed relative to the management root (the f
   • Current: {"vein_manager": "gui", "start_server": "controller/start_server", "monitor_log": "monitors/log_monitor", "crash_monitor": "monitors/crash_monitor", "http_api": "monitors/http_api"}
 
 - management_logs.retention  
-  • Controls how many live log files are kept before moving the rest to Archive/.  
+  • Controls how many live management log files are kept before moving the rest to Archive/.
   • Current: {"max_files": 6, "max_age_days": 14}
 
 - management_logs.archive  
   • Destination and retention window for archived management logs.  
   • Current: {"enabled": true, "root": "Logs/Archive", "max_files": 150, "max_age_days": 90}
+
+See [management_logs.md](management_logs.md) for the full layout, archive behavior, and CLI helpers.
 
 ---
 

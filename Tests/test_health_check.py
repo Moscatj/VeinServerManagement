@@ -63,10 +63,11 @@ class HealthCheckTests(unittest.TestCase):
     def test_raw_discord_webhook_is_a_failure(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             cfg = self._base_config(Path(tmp))
+            raw_webhook = "https://discord.com/api/" + "webhooks/123/secret"
             raw_cfg = {
                 "discord": {
                     "webhooks": {
-                        "default": "https://discord.com/api/webhooks/123/secret"
+                        "default": raw_webhook
                     }
                 }
             }

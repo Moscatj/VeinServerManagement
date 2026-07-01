@@ -50,6 +50,7 @@ Key folders and files:
   - `backups.py` — backup plumbing (locations, retention helpers)
   - `config_io.py` — config file I/O helpers (JSON/YAML)
   - `discord.py` — Discord webhook send helpers
+  - `mgmt_logs.py` - management-log layout, manifest, retention, and archive helpers
   - `log_events.py` — parse/interpret Vein log events
   - `process.py` — process discovery, PID checks
   - `state_io.py` — read/write small JSON state files in `Runtime/`
@@ -71,6 +72,7 @@ Key folders and files:
 
 - `Logs/`
   - Per-subsystem management logs (GUI, monitors, controller helpers) plus `Archive/` for rotated history.
+  - This is separate from the Vein game install logs under the configured `paths.logs_dir`.
   - `manifest.json` (metadata for every log emission) and `summary.json` (latest aggregated warnings/errors).
 
 - `Docs/`

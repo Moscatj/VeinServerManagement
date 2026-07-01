@@ -88,12 +88,23 @@ def available_subsystems(include_empty: bool = False) -> List[str]:
     try:
         for entry in ROOT.iterdir():
             if entry.is_dir():
+                if _is_archive_entry(entry):
+                    continue
                 has_logs = any(entry.glob("*.log"))
                 if include_empty or has_logs:
                     subs.add(_canon(entry.name))
     except Exception:
         pass
     return sorted(subs)
+
+
+def _is_archive_entry(path: Path) -> bool:
+    try:
+        if path.resolve() == ARCHIVE_ROOT.resolve():
+            return True
+    except Exception:
+        pass
+    return _canon(path.name) == "archive"
 
 
 def _retention_defaults() -> Dict[str, int]:

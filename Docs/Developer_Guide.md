@@ -39,7 +39,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 | **Config/** | Stores `config.yaml`, the primary configuration file. |
 | **Runtime/** | Contains transient files (PIDs, state JSONs, flags) written by controllers. |
 | **Backups/** | Categorized backup directories: Manual, Startup, Autosave, Crash, and Nightly. |
-| **Logs/** | Game log outputs read by the log monitor. |
+| **Logs/** | Management-suite logs, summaries, manifests, and archived controller/monitor output. |
 | **Docs/** | All documentation and technical reference files. |
 
 ---

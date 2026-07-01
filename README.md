@@ -136,6 +136,7 @@ Start here:
 - [Docs/testing.md](Docs/testing.md)
 - [Docs/coverage_strategy.md](Docs/coverage_strategy.md)
 - [Docs/health_check.md](Docs/health_check.md)
+- [Docs/management_logs.md](Docs/management_logs.md)
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASING.md](RELEASING.md)
 - [ROADMAP.md](ROADMAP.md)

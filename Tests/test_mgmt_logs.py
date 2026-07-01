@@ -198,6 +198,27 @@ class MgmtLogsTests(unittest.TestCase):
         self.assertTrue((self.archive / "gui" / "one.log").exists())
         self.assertTrue((self.archive / "monitors" / "log_monitor" / "two.log").exists())
 
+    def test_available_subsystems_does_not_treat_archive_as_subsystem(self) -> None:
+        archived = self.archive / "gui" / "old.log"
+        archived.parent.mkdir(parents=True)
+        archived.write_text("old\n", encoding="utf-8")
+
+        subsystems = mgmt_logs.available_subsystems(include_empty=True)
+
+        self.assertIn("vein_manager", subsystems)
+        self.assertNotIn("archive", subsystems)
+
+    def test_archive_all_logs_does_not_rearchive_archive_folder(self) -> None:
+        archived = self.archive / "gui" / "old.log"
+        archived.parent.mkdir(parents=True)
+        archived.write_text("old\n", encoding="utf-8")
+
+        moved = mgmt_logs.archive_all_logs(include_active=True)
+
+        self.assertEqual(moved, [])
+        self.assertTrue(archived.exists())
+        self.assertFalse((self.archive / "Archive").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
