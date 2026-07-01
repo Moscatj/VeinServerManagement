@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import sys
 import unittest
@@ -25,6 +26,27 @@ class BackupsHelperTests(unittest.TestCase):
         self.assertEqual(backups._cfg_to_dict({"a": 1}), {"a": 1})
         self.assertEqual(backups._cfg_to_dict(Obj())["backups"], {"root": "Backups"})
         self.assertEqual(backups._cfg_to_dict(Obj())["runtime_dir"], "Runtime")
+
+    def test_cfg_to_dict_handles_adapter_methods_and_dataclasses(self) -> None:
+        class ToDictObj:
+            def to_dict(self) -> dict:
+                return {"backups": {"root": "A"}}
+
+        class AsDictObj:
+            def as_dict(self) -> dict:
+                return {"runtime_dir": "RuntimeA"}
+
+        @dataclass
+        class DataConfig:
+            backups: dict
+            runtime_dir: str
+
+        self.assertEqual(backups._cfg_to_dict(ToDictObj()), {"backups": {"root": "A"}})
+        self.assertEqual(backups._cfg_to_dict(AsDictObj()), {"runtime_dir": "RuntimeA"})
+        self.assertEqual(
+            backups._cfg_to_dict(DataConfig(backups={"root": "B"}, runtime_dir="RuntimeB")),
+            {"backups": {"root": "B"}, "runtime_dir": "RuntimeB"},
+        )
 
     def test_backup_path_helpers_use_config_view(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -62,6 +84,61 @@ class BackupsHelperTests(unittest.TestCase):
 
         self.assertEqual(chosen, save)
         self.assertEqual(digest, hashlib.sha256(b"hello").hexdigest())
+
+    def test_pick_existing_save_reports_missing_candidates_and_discord(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            candidates = [Path(tmp) / "missing-a.vns", Path(tmp) / "missing-b.vns"]
+            with mock.patch.object(backups, "_save_candidates", return_value=candidates), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=True,
+            ), mock.patch.object(backups, "send_discord_message") as discord, mock.patch(
+                "builtins.print"
+            ) as printed:
+                self.assertIsNone(backups._pick_existing_save())
+
+        printed.assert_called_once()
+        discord.assert_called_once()
+
+    def test_runtime_dir_and_state_writer_tolerate_config_and_write_failures(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = {
+                "runtime_dir": str(base / "Runtime"),
+                "backups": {
+                    "root": str(base / "Backups"),
+                    "folders": {"Manual": "Manual"},
+                },
+            }
+            (base / "Backups" / "Manual").mkdir(parents=True)
+            (base / "Backups" / "Manual" / "one.zip").write_text("zip", encoding="utf-8")
+            with mock.patch.object(backups, "_cfg", return_value=cfg):
+                self.assertEqual(backups._runtime_dir(), base / "Runtime")
+                counts = backups._count_all()
+
+            with mock.patch.object(backups, "_cfg", side_effect=RuntimeError("bad config")):
+                self.assertEqual(backups._runtime_dir().name, "Runtime")
+
+            with mock.patch.object(backups, "_runtime_dir", return_value=base / "Runtime"), mock.patch.object(
+                backups,
+                "_root",
+                return_value=base / "Backups",
+            ), mock.patch.object(
+                backups,
+                "_count_all",
+                return_value={"TOTAL": 1},
+            ), mock.patch.object(
+                backups,
+                "write_state",
+                side_effect=OSError("cannot write"),
+            ), mock.patch(
+                "builtins.print"
+            ) as printed:
+                backups._write_backup_state(last_reason="Manual", last_zip=base / "Backups" / "one.zip")
+
+        self.assertEqual(counts["Manual"], 1)
+        self.assertEqual(counts["TOTAL"], 1)
+        printed.assert_called_once()
 
 
 if __name__ == "__main__":

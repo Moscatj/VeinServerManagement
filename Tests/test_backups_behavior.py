@@ -77,6 +77,81 @@ class BackupsBehaviorTests(unittest.TestCase):
                 with self.assertRaises(backups.BackupSkip):
                     backups.make_backup("Manual")
 
+    def test_make_backup_raises_skip_when_save_is_missing(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=False,
+            ), mock.patch("builtins.print"):
+                with self.assertRaises(backups.BackupSkip):
+                    backups.make_backup("Manual")
+
+    def test_make_backup_wraps_destination_creation_failure(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            save = base / "Saved" / "Server.vns"
+            save.parent.mkdir()
+            save.write_text("save", encoding="utf-8")
+            blocked_dest = base / "blocked"
+            blocked_dest.write_text("not a directory", encoding="utf-8")
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=False,
+            ), mock.patch("builtins.print"):
+                with self.assertRaises(backups.BackupError):
+                    backups.make_backup("Manual", dst=blocked_dest / "child")
+
+    def test_make_backup_includes_extra_files_and_ignores_missing_extras(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            save = base / "Saved" / "Server.vns"
+            extra = base / "extra.txt"
+            save.parent.mkdir()
+            save.write_text("save", encoding="utf-8")
+            extra.write_text("extra", encoding="utf-8")
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=False,
+            ), mock.patch("builtins.print"):
+                created = backups.make_backup("Manual", files=[save, extra, base / "missing.txt"])
+
+            with zipfile.ZipFile(created, "r") as zf:
+                names = set(zf.namelist())
+
+        self.assertIn("Server.vns", names)
+        self.assertIn("extra/extra.txt", names)
+        self.assertNotIn("extra/missing.txt", names)
+
+    def test_make_backup_wraps_archive_write_failure_and_removes_temp_copy(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            save = base / "Saved" / "Server.vns"
+            save.parent.mkdir()
+            save.write_text("save", encoding="utf-8")
+            dest = base / "Backups" / "Manual"
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=False,
+            ), mock.patch.object(
+                backups.zipfile,
+                "ZipFile",
+                side_effect=OSError("zip failed"),
+            ), mock.patch("builtins.print"):
+                with self.assertRaises(backups.BackupError):
+                    backups.make_backup("Manual")
+
+            leftovers = list(dest.glob(".tmp_copy_*"))
+
+        self.assertEqual(leftovers, [])
+
     def test_prune_backups_deletes_oldest_over_count(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)
@@ -101,6 +176,29 @@ class BackupsBehaviorTests(unittest.TestCase):
             self.assertFalse(old_zip.exists())
             self.assertTrue(new_zip.exists())
 
+    def test_prune_backups_deletes_by_age_and_notifies_when_enabled(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["discord"]["notify_on_prune"] = True
+            cfg["backups"]["retention"]["Manual"] = {"max_backups": 10, "max_age_days": 0}
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            old_zip = folder / "old.zip"
+            old_zip.write_text("old", encoding="utf-8")
+            old_ts = time.time() - 86400 * 2
+            os.utime(old_zip, (old_ts, old_ts))
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=True,
+            ), mock.patch.object(backups, "send_discord_message") as discord:
+                result = backups.prune_backups("Manual")
+
+        self.assertEqual(result, {"deleted": 1})
+        discord.assert_called_once()
+
     def test_latest_backup_searches_folders_and_restore_extracts_target(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)
@@ -118,6 +216,40 @@ class BackupsBehaviorTests(unittest.TestCase):
             self.assertEqual(latest, archive)
             self.assertTrue(restored)
             self.assertEqual(restored_text, "restored")
+
+    def test_restore_from_latest_handles_no_archive_missing_member_and_zip_errors(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            backup_dir = base / "Backups" / "Manual"
+            backup_dir.mkdir(parents=True)
+            archive = backup_dir / "backup.zip"
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("Other.vns", "other")
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "latest_backup",
+                return_value=None,
+            ), mock.patch("builtins.print"):
+                self.assertFalse(backups.restore_from_latest("Server.vns"))
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "latest_backup",
+                return_value=archive,
+            ), mock.patch("builtins.print"):
+                self.assertFalse(backups.restore_from_latest("Server.vns"))
+
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "latest_backup",
+                return_value=archive,
+            ), mock.patch.object(
+                backups.zipfile,
+                "ZipFile",
+                side_effect=OSError("bad zip"),
+            ), mock.patch("builtins.print"):
+                self.assertFalse(backups.restore_from_latest("Server.vns"))
 
     def test_export_log_snapshot_zips_copy_and_prunes(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -140,6 +272,38 @@ class BackupsBehaviorTests(unittest.TestCase):
             self.assertFalse(old.exists())
             with zipfile.ZipFile(zipped, "r") as zf:
                 self.assertEqual(zf.read(zf.namelist()[0]).decode("utf-8").splitlines(), ["line"])
+
+    def test_export_log_snapshot_handles_missing_source_and_copy_failure(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            missing = base / "missing.log"
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)):
+                self.assertIsNone(backups.export_log_snapshot(missing))
+
+            src = base / "Vein.log"
+            src.write_text("line", encoding="utf-8")
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups.shutil,
+                "copy2",
+                side_effect=OSError("copy failed"),
+            ), mock.patch("builtins.print") as printed:
+                self.assertIsNone(backups.export_log_snapshot(src))
+
+        printed.assert_called_once()
+
+    def test_export_log_snapshot_sends_discord_breadcrumb_when_enabled(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            src = base / "Vein.log"
+            src.write_text("line", encoding="utf-8")
+            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
+                backups,
+                "is_discord_channel_enabled",
+                return_value=True,
+            ), mock.patch.object(backups, "send_discord_message") as discord:
+                self.assertIsNotNone(backups.export_log_snapshot(src))
+
+        discord.assert_called_once()
 
 
 if __name__ == "__main__":
