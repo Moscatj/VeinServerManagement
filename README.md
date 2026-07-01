@@ -97,12 +97,14 @@ python Controller\start_server.py
 python Controller\monitor_log.py
 python Controller\crash_monitor.py
 python Controller\shutdown_server.py
+python Controller\health_check.py
 ```
 
 Common wrappers:
 
 ```powershell
 Scripts\TestSuite.bat __RUN__
+Scripts\HealthCheck.bat
 Scripts\StartServer.bat
 Scripts\StartAllMonitors.bat
 Scripts\Start_VeinManager.bat
@@ -133,6 +135,7 @@ Start here:
 - [Docs/config_reference.md](Docs/config_reference.md)
 - [Docs/testing.md](Docs/testing.md)
 - [Docs/coverage_strategy.md](Docs/coverage_strategy.md)
+- [Docs/health_check.md](Docs/health_check.md)
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASING.md](RELEASING.md)
 - [ROADMAP.md](ROADMAP.md)

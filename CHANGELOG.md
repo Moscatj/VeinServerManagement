@@ -6,6 +6,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a read-only project health check command for config, dependency, path, executable, SteamCMD, and Discord webhook safety diagnostics.
 - Added coverage strategy documentation and updated AI/contributor testing rules.
 - Added a project roadmap and fixed the README CI badge repository URL.
 - Added release process documentation and AI-assisted versioning rules.

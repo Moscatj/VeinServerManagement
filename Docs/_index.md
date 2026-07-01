@@ -28,6 +28,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [config_helper_summary.md](config_helper_summary.md) — Helper API for accessing config safely
 - [testing.md](testing.md) — Unit test, coverage, and CI expectations
 - [coverage_strategy.md](coverage_strategy.md) — Practical coverage priorities and current baseline
+- [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 
 ---
 
@@ -57,6 +58,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
 | Testing and CI | [testing.md](testing.md) |
 | Coverage Strategy | [coverage_strategy.md](coverage_strategy.md) |
+| Health Check | [health_check.md](health_check.md) |
 | Release Process | [../RELEASING.md](../RELEASING.md) |
 | Roadmap | [../ROADMAP.md](../ROADMAP.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |

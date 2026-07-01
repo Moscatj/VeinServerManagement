@@ -165,6 +165,12 @@ class CliWrapperTests(unittest.TestCase):
         stop.run.assert_called_once()
         start.run.assert_called_once()
 
+    def test_vein_tools_health_check_command_dispatches(self) -> None:
+        command = vein_tools.COMMANDS["health-check"]
+        with mock.patch("Tools.health_check.main", return_value=0) as health_main:
+            self.assertEqual(command.run(), 0)
+        health_main.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

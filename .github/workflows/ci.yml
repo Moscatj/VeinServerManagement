@@ -24,6 +24,9 @@ jobs:
       - name: Run unit tests
         run: py -3 -m unittest discover -s Tests
 
+      - name: Run health check
+        run: py -3 Controller\health_check.py
+
       - name: Run diagnostic suite
         shell: cmd
         env:

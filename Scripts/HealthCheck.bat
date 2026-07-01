@@ -1,20 +1,18 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%.") do set "SCRIPTS=%%~fI"
+set "ROOT=%SCRIPTS%\.."
+set "CTRL=%ROOT%\Controller"
 
-echo === Vein Health Check ===
-echo.
-echo [Server processes]
-tasklist /fi "imagename eq VeinServer.exe"
-tasklist /fi "imagename eq VeinServer-Win64-Test.exe"
-echo.
-echo [Monitors]
-tasklist /v /fi "imagename eq cmd.exe" | findstr /i /c:"Vein Log Monitor" /c:"Vein Crash Monitor"
-
-for %%P in (python.exe py.exe) do (
-  echo.
-  echo [Python %%P with monitor scripts]
-  wmic process where "name='%%P' and (CommandLine like '%%monitor_log.py%%' or CommandLine like '%%crash_monitor.py%%')" get ProcessId,CommandLine /format:list
+if not defined VEIN_CONFIG (
+  if exist "%ROOT%\Config\config.yaml" set "VEIN_CONFIG=%ROOT%\Config\config.yaml"
+  if not defined VEIN_CONFIG if exist "%ROOT%\Config\config.json" set "VEIN_CONFIG=%ROOT%\Config\config.json"
 )
-echo.
-pause
+
+if exist "%SystemRoot%\py.exe" (
+  py -3 "%CTRL%\health_check.py" %*
+) else (
+  python "%CTRL%\health_check.py" %*
+)
+exit /b %ERRORLEVEL%

@@ -84,6 +84,9 @@ COMMANDS: dict[str, CommandSpec] = {
     "stop-all-monitors": CommandSpec(
         "Tools.monitors", "stop_all_monitors", "Stop log + crash monitors"
     ),
+    "health-check": CommandSpec(
+        "Tools.health_check", "main", "Run project health diagnostics"
+    ),
     "nightly-backup": CommandSpec(
         "nightly_backup", "main", "Run the nightly backup routine once"
     ),

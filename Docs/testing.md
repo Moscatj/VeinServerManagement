@@ -8,11 +8,13 @@ Run these before finalizing code changes:
 
 ```powershell
 python -m unittest discover -s Tests
+python Controller\health_check.py
 Scripts\TestSuite.bat __RUN__
 Scripts\RunCoverage.bat
 ```
 
 `Scripts\TestSuite.bat` now exits non-zero when unit tests fail, so it is safe for automation.
+`Controller\health_check.py` exits non-zero on failed diagnostics and allows warnings for optional local dependencies or environment-specific paths.
 
 ## Test Policy
 
@@ -40,6 +42,7 @@ GitHub Actions runs on every push and pull request:
 
 - Installs `requirements-dev.txt`
 - Runs unit tests
+- Runs the project health check
 - Runs `Scripts\TestSuite.bat __RUN__`
 - Runs `Scripts\RunCoverage.bat`
 - Scans tracked files for high-confidence secrets and local markers
