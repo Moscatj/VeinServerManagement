@@ -121,7 +121,7 @@ Scripts\RunCoverage.bat
 
 GitHub Actions runs tests, diagnostics, coverage, and a lightweight secret/local-marker scan on every push and pull request.
 
-Coverage is a guide, not a hard 100% target. The priority is meaningful coverage around config loading, process control, runtime state, backups, log parsing, API helpers, and other behavior that can regress.
+Coverage is a guide, not a hard 100% target. The priority is meaningful coverage around config loading, process control, runtime state, backups, log parsing, API helpers, and other behavior that can regress. See [Docs/coverage_strategy.md](Docs/coverage_strategy.md) for the testing philosophy and current coverage baseline.
 
 ## Documentation
 
@@ -132,6 +132,7 @@ Start here:
 - [Docs/control_layer_overview.md](Docs/control_layer_overview.md)
 - [Docs/config_reference.md](Docs/config_reference.md)
 - [Docs/testing.md](Docs/testing.md)
+- [Docs/coverage_strategy.md](Docs/coverage_strategy.md)
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASING.md](RELEASING.md)
 - [ROADMAP.md](ROADMAP.md)

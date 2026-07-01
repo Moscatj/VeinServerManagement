@@ -335,6 +335,10 @@ AI agents must add or update focused unit tests when changing behavior that can
 be exercised without starting the Vein server or writing to the game install.
 If tests are not practical, the final response must explain why.
 
+For test-only or coverage-focused work, AI agents must follow
+`Docs/coverage_strategy.md`. Coverage is a risk guide, not a hard 100% target.
+Prefer meaningful backend tests over brittle GUI or line-chasing tests.
+
 ---
 
 # 14. VERSIONING & RELEASE RULES

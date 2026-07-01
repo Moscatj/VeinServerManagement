@@ -1,6 +1,6 @@
 # 📘 Vein Server Management Suite — Documentation Index
 
-> **Version:** v2.2.0
+> **Version:** v2.2.1
 > **Maintainers:** Project contributors
 > **Purpose:** Central index for all project documentation files.
 > Start here if you’re exploring or extending the Vein Server Management system.
@@ -27,6 +27,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [config_summary.md](config_summary.md) — Configuration loader (`config.py`)
 - [config_helper_summary.md](config_helper_summary.md) — Helper API for accessing config safely
 - [testing.md](testing.md) — Unit test, coverage, and CI expectations
+- [coverage_strategy.md](coverage_strategy.md) — Practical coverage priorities and current baseline
 
 ---
 
@@ -55,6 +56,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Config Structure | [config_reference.md](config_reference.md) |
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
 | Testing and CI | [testing.md](testing.md) |
+| Coverage Strategy | [coverage_strategy.md](coverage_strategy.md) |
 | Release Process | [../RELEASING.md](../RELEASING.md) |
 | Roadmap | [../ROADMAP.md](../ROADMAP.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |
@@ -74,6 +76,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 | Version | Date | Summary |
 |----------|------|----------|
+| **v2.2.1** | 2026 | Backend test coverage hardening |
 | **v2.2.0** | 2026 | Public source hardening baseline, CI, tests, source hygiene, and release process |
 | **v2.1** | 2025 | Documentation refresh, modular split, and GUI integration |
 | **v2.0** | 2024 | Initial stable server + monitor release |

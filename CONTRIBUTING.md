@@ -79,6 +79,8 @@ Scripts\RunCoverage.bat
 
 New behavior should include unit tests when the behavior is practical to test without starting the Vein server. Bug fixes should include a regression test when practical. If a change is intentionally not unit-tested, explain why in the pull request.
 
+Coverage is used as a risk guide, not a hard 100% target. Read [Docs/coverage_strategy.md](Docs/coverage_strategy.md) before large test-only changes so new tests focus on meaningful backend behavior rather than brittle line coverage.
+
 ## Pull Requests
 
 Use a focused branch and include:
@@ -86,6 +88,7 @@ Use a focused branch and include:
 - What changed.
 - How it was tested.
 - Which tests were added or updated, or why tests were not appropriate.
+- Coverage impact, if the change is test-focused.
 - Any risk to shutdown, backups, crash monitoring, process control, or game-file safety.
 - Any config or migration notes.
 - Release impact: `none`, `patch`, `minor`, or `major`.
@@ -130,3 +133,5 @@ AI-assisted changes should also classify release impact before finalizing:
 - `patch`: bug fix, docs, tests, CI, hardening, or non-breaking cleanup.
 - `minor`: user-facing feature or meaningful new capability.
 - `major`: breaking behavior or large architecture/config change.
+
+For test-only work, AI assistants should follow `Docs/coverage_strategy.md` and prioritize backend risk reduction over raw percentage increases.
