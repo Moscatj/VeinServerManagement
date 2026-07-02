@@ -24,6 +24,8 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 DisableProgramGroupPage=yes
 UninstallDisplayName={#MyAppName}
+UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallFilesDir={app}\Uninstall
 WizardStyle=modern
 #ifexist "{#MyAppIcon}"
 SetupIconFile={#MyAppIcon}

@@ -108,7 +108,7 @@ Installer responsibilities:
 - Store SteamCMD in the management app folder, separate from the dedicated server install folder
 - Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
 - Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
-- Register an uninstaller entry in Add/Remove Programs
+- Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
 Recommended folder layout:

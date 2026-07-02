@@ -34,6 +34,13 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*"', text)
 
+    def test_installer_moves_default_uninstaller_files_out_of_app_root(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("UninstallFilesDir={app}\\Uninstall", text)
+        self.assertIn("UninstallDisplayIcon={app}\\{#MyAppExeName}", text)
+        self.assertIn('Name: "{group}\\Uninstall Vein Server Management"; Filename: "{uninstallexe}"', text)
+
     def test_installer_configures_existing_server_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 

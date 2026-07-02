@@ -11,6 +11,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Fixed installed app launch by granting modify permissions to installer-owned config/runtime folders and preventing packaged CLI subcommands from inheriting wrapper arguments.
 - Improved installer onboarding by always collecting the Vein dedicated server root and writing installed config paths for both SteamCMD and existing-server installs.
 - Kept installer-managed SteamCMD files separate from the dedicated server root and added validation for accidentally selecting the inner `Vein` folder.
+- Moved Inno Setup's generated uninstaller files into an `Uninstall` subfolder and set the uninstall display icon to the GUI executable.
 
 ## 2.3.4 - 2026-07-02
 
