@@ -98,7 +98,7 @@ begin
 
   ExistingServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
   ExistingServerRadio.Parent := ServerChoicePage.Surface;
-  ExistingServerRadio.Caption := 'Skip server install; I already have the dedicated server';
+  ExistingServerRadio.Caption := 'Use an existing dedicated server folder';
   ExistingServerRadio.Checked := True;
   LayoutServerChoiceControl(ExistingServerRadio, InstallServerRadio.Top + InstallServerRadio.Height + ScaleY(10));
   ExistingServerRadio.OnClick := @ServerChoiceChanged;
@@ -106,7 +106,7 @@ begin
   InstallServerBox := TNewStaticText.Create(ServerChoicePage.Surface);
   InstallServerBox.Parent := ServerChoicePage.Surface;
   InstallServerBox.Caption :=
-    'Optional: download SteamCMD from Valve and install app {#SteamAppId}.';
+    'Choose an existing server folder, or let the installer download SteamCMD and install app {#SteamAppId}.';
   InstallServerBox.AutoSize := False;
   InstallServerBox.Height := ScaleY(40);
   LayoutServerChoiceControl(InstallServerBox, ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(16));
@@ -114,8 +114,8 @@ begin
   ServerDirPage := CreateInputDirPage(
     ServerChoicePage.ID,
     'Server Install Location',
-    'Choose where the Vein dedicated server should be installed.',
-    'Select an existing folder or create a new one. It must be writable.',
+    'Choose where the Vein dedicated server is or should be installed.',
+    'Select the server root folder. It should contain Vein\Binaries\Win64 after the dedicated server is installed.',
     False,
     ''
   );
@@ -127,20 +127,48 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
-  if Assigned(ServerDirPage) and (PageID = ServerDirPage.ID) then
-    Result := not InstallServer;
 end;
 
 function ValidateServerDir: Boolean;
+var
+  ServerDir, ExeA, ExeB: string;
 begin
   Result := True;
-  if InstallServer then
+  ServerDir := ServerDirPage.Values[0];
+  if ServerDir = '' then
   begin
-    if ServerDirPage.Values[0] = '' then
-    begin
-      MsgBox('Please choose a folder for the dedicated server files.', mbError, MB_OK);
-      Result := False;
-    end;
+    MsgBox('Please choose the dedicated server root folder.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  if InstallServer then
+    exit;
+
+  if not DirExists(ServerDir) then
+  begin
+    MsgBox(
+      'The selected server folder does not exist. Choose an existing server folder, or go Back and choose the SteamCMD install option.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  ExeA := AddBackslash(ServerDir) + 'Vein\Binaries\Win64\VeinServer.exe';
+  ExeB := AddBackslash(ServerDir) + 'Vein\Binaries\Win64\VeinServer-Win64-Test.exe';
+  if (not FileExists(ExeA)) and (not FileExists(ExeB)) then
+  begin
+    Result := MsgBox(
+      'The selected folder does not appear to contain the Vein dedicated server executable.'#13#10#13#10 +
+      'Expected one of:'#13#10 +
+      ExeA + #13#10 +
+      ExeB + #13#10#13#10 +
+      'Use this folder anyway?',
+      mbConfirmation,
+      MB_YESNO
+    ) = IDYES;
   end;
 end;
 
@@ -149,7 +177,7 @@ begin
   Result := True;
   if CurPageID = ServerChoicePage.ID then
   begin
-    Result := ValidateServerDir;
+    UpdateServerChoiceState;
   end
   else if Assigned(ServerDirPage) and (CurPageID = ServerDirPage.ID) then
   begin
@@ -210,9 +238,19 @@ begin
     ReplaceConfigValue(Content, '  saves_dir: "../Vein/Saved/SaveGames"', '  saves_dir: "' + SavesPath + '"');
     ReplaceConfigValue(Content, '  logs_dir: "../Vein/Saved/Logs"', '  logs_dir: "' + LogsPath + '"');
     ReplaceConfigValue(Content, '  absolute_log_file: "../Vein/Saved/Logs/Vein.log"', '  absolute_log_file: "' + LogFile + '"');
-    ReplaceConfigValue(Content, '  steamcmd_path: "ENV:STEAMCMD_PATH"', '  steamcmd_path: "' + SteamCmdPath + '"');
+    if SteamCmdExe <> '' then
+      ReplaceConfigValue(Content, '  steamcmd_path: "ENV:STEAMCMD_PATH"', '  steamcmd_path: "' + SteamCmdPath + '"');
     SaveStringToFile(ConfigPath, Content, False);
   end;
+end;
+
+procedure SaveServerInstallPath(const ServerDir: string);
+begin
+  SaveStringToFile(
+    ExpandConstant('{app}\Runtime\server_install_path.txt'),
+    ServerDir,
+    False
+  );
 end;
 
 procedure InstallDedicatedServer;
@@ -272,17 +310,28 @@ begin
 
   SetStatus('Updating config paths to match the installed server...');
   UpdateConfigPaths(ServerDir, SteamCmdExe);
-  SaveStringToFile(
-    ExpandConstant('{app}\Runtime\server_install_path.txt'),
-    ServerDir,
-    False
-  );
+  SaveServerInstallPath(ServerDir);
+end;
+
+procedure ConfigureExistingServer;
+var
+  ServerDir: string;
+begin
+  ServerDir := ServerDirPage.Values[0];
+  if ServerDir = '' then
+    exit;
+  SetStatus('Updating config paths to match the selected server...');
+  UpdateConfigPaths(ServerDir, '');
+  SaveServerInstallPath(ServerDir);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssInstall) and InstallServer then
+  if CurStep = ssPostInstall then
   begin
-    InstallDedicatedServer;
+    if InstallServer then
+      InstallDedicatedServer
+    else
+      ConfigureExistingServer;
   end;
 end;

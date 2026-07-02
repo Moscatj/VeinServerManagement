@@ -28,7 +28,7 @@ What happens:
   - `Controller/`, `Config/`, `Scripts/`, and `Docs/`
   - empty `Backups/`, `Logs/`, and `Runtime/` directories
   - README/AGENTS/docs_for_codex for reference
-- `Config/config.yaml` ships with relative paths (Runtime, Logs, `../VeinServer`, etc.) so the suite can be installed on any drive; update `paths.server_root` and related entries after install if your Vein server lives elsewhere.
+- `Config/config.yaml` is staged from the public template. During install, the installer asks for the Vein dedicated server root and rewrites the installed runtime config paths to match that folder.
 - During staging the builder copies `Config/config.example.yaml` into the bundle as `Config/config.yaml`, ensuring secrets from your live config never leak. Customize the installed copy after deployment.
 
 - A console-friendly launcher (`VeinTools.exe`) is built alongside the GUI so you can trigger helper scripts without installing Python.
@@ -99,11 +99,13 @@ Workflow:
 6. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
 7. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
 
-Installer responsibilities (current + future):
+Installer responsibilities:
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`
 - Create Start Menu/Desktop shortcuts (`VeinManager`, docs, log folder)
-- Offer to create writable `Logs/`, `Backups/`, `Runtime/` under `%ProgramData%` in a later iteration
+- Create writable app-owned `Config\`, `Logs\`, `Backups\`, and `Runtime\` folders
+- Ask whether to install/update the dedicated server with SteamCMD or use an existing server folder
+- Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
 - Register an uninstaller entry in Add/Remove Programs
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
@@ -113,7 +115,7 @@ Installer responsibilities (current + future):
 
 1. **Release artifact workflow** - publish `VeinServerManagement-Setup.exe` on GitHub Releases for each stable release tag.
 2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
-3. **Installer polish** - expose destination folders, add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
+3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
 4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.
 
 ---

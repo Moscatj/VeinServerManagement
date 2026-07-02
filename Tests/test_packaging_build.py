@@ -34,6 +34,21 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*"', text)
 
+    def test_installer_configures_existing_server_paths(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("ExistingServerRadio.Caption := 'Use an existing dedicated server folder';", text)
+        self.assertIn("procedure ConfigureExistingServer;", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, '');", text)
+        self.assertIn("if CurStep = ssPostInstall then", text)
+
+    def test_installer_validates_existing_server_executable_candidates(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("'Vein\\Binaries\\Win64\\VeinServer.exe'", text)
+        self.assertIn("'Vein\\Binaries\\Win64\\VeinServer-Win64-Test.exe'", text)
+        self.assertIn("'Use this folder anyway?'", text)
+
     def test_copy_config_dir_stages_example_as_runtime_config(self) -> None:
         module = _load_build_module()
         with TemporaryDirectory(dir=ROOT) as tmp:
