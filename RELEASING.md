@@ -73,6 +73,14 @@ Before creating a release tag:
    git push origin vX.Y.Z
    ```
 
+6. GitHub Actions will build the Windows installer from the tagged source and
+   attach `VeinServerManagement-Setup.exe` to the GitHub Release. The release
+   installer workflow can also be run manually with `workflow_dispatch` to
+   produce a temporary Actions artifact without creating a release tag.
+
+Release installers are generated artifacts. Do not commit files from `dist/` or
+`build/` to the repository.
+
 ## AI Assistant Rules
 
 AI assistants must not create release tags automatically unless the user asks

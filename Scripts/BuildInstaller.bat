@@ -67,6 +67,6 @@ set "ERR=1"
 
 :done
 echo(
-pause
+if /i not "%CI%"=="true" pause
 exit /b %ERR%
 

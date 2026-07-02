@@ -16,6 +16,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Added uninstall safeguards that preserve external dedicated server folders and require an explicit save-loss warning prompt before deleting app-managed server files.
 - Documented the planned multi-server profile model for hosting multiple Vein server installs from one management suite.
 - Updated GitHub Actions workflow dependencies to Node 24-compatible action versions.
+- Added a tag-triggered GitHub Actions workflow that builds the Windows installer and publishes it as a GitHub Release asset.
 
 ## 2.3.4 - 2026-07-02
 

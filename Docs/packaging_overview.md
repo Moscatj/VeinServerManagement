@@ -99,6 +99,15 @@ Workflow:
 6. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
 7. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
 
+GitHub release workflow:
+
+- `.github/workflows/release-installer.yml` runs on `vMAJOR.MINOR.PATCH` tags.
+- The workflow builds the PyInstaller bundle, compiles the Inno Setup installer,
+  uploads the installer as an Actions artifact, and attaches
+  `VeinServerManagement-Setup.exe` to the GitHub Release.
+- Manual `workflow_dispatch` runs build a temporary Actions artifact without
+  publishing a release asset.
+
 Installer responsibilities:
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`

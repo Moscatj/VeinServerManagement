@@ -165,6 +165,7 @@ dist\installer\VeinServerManagement-Setup.exe
 ```
 
 Generated installers and binaries should be published through GitHub Releases, not committed to the repository.
+Release tags run the installer workflow and attach `VeinServerManagement-Setup.exe` to the GitHub Release.
 
 See [Docs/packaging_overview.md](Docs/packaging_overview.md) for the full packaging workflow.
 
