@@ -96,6 +96,11 @@ COMMANDS: dict[str, CommandSpec] = {
     "stop-all-monitors": CommandSpec(
         "Tools.monitors", "stop_all_monitors", "Stop log + crash monitors"
     ),
+    "uninstall-cleanup": CommandSpec(
+        "Tools.uninstall_cleanup",
+        "main",
+        "Stop monitors and any running server before uninstall",
+    ),
     "health-check": CommandSpec(
         "Tools.health_check", "main", "Run project health diagnostics"
     ),

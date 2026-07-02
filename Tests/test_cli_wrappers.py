@@ -187,6 +187,12 @@ class CliWrapperTests(unittest.TestCase):
 
         self.assertEqual(seen, [["VeinTools.exe"]])
 
+    def test_vein_tools_exposes_uninstall_cleanup_command(self) -> None:
+        command = vein_tools.COMMANDS["uninstall-cleanup"]
+
+        self.assertEqual(command.module, "Tools.uninstall_cleanup")
+        self.assertEqual(command.attr, "main")
+
 
 if __name__ == "__main__":
     unittest.main()

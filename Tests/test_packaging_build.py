@@ -41,6 +41,14 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("UninstallDisplayIcon={app}\\{#MyAppExeName}", text)
         self.assertIn('Name: "{group}\\Uninstall Vein Server Management"; Filename: "{uninstallexe}"', text)
 
+    def test_installer_runs_cleanup_before_uninstalling_files(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("[UninstallRun]", text)
+        self.assertIn('Filename: "{app}\\VeinTools.exe"; Parameters: "uninstall-cleanup"', text)
+        self.assertIn('StatusMsg: "Stopping Vein server and monitors..."', text)
+        self.assertIn('RunOnceId: "VeinServerManagement.UninstallCleanup"', text)
+
     def test_installer_configures_existing_server_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 

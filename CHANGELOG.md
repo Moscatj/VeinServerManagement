@@ -12,6 +12,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Improved installer onboarding by always collecting the Vein dedicated server root and writing installed config paths for both SteamCMD and existing-server installs.
 - Kept installer-managed SteamCMD files separate from the dedicated server root and added validation for accidentally selecting the inner `Vein` folder.
 - Moved Inno Setup's generated uninstaller files into an `Uninstall` subfolder and set the uninstall display icon to the GUI executable.
+- Added uninstall cleanup that stops log/crash monitors and performs a controlled server shutdown when a Vein server process is still running.
 
 ## 2.3.4 - 2026-07-02
 

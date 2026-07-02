@@ -109,6 +109,7 @@ Installer responsibilities:
 - Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
 - Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
 - Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
+- Run a best-effort uninstall cleanup that stops log/crash monitors first and then performs a controlled server shutdown only when a Vein server process is running
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
 Recommended folder layout:

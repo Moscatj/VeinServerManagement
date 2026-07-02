@@ -57,6 +57,9 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Vein Server Manager"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+Filename: "{app}\VeinTools.exe"; Parameters: "uninstall-cleanup"; WorkingDir: "{app}"; StatusMsg: "Stopping Vein server and monitors..."; Flags: runhidden skipifdoesntexist; RunOnceId: "VeinServerManagement.UninstallCleanup"
+
 [Code]
 var
   ServerChoicePage: TWizardPage;
