@@ -10,6 +10,7 @@ import argparse
 import importlib
 import os
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -53,6 +54,16 @@ def _default_config() -> Path:
 DEFAULT_CONFIG = _default_config()
 
 
+@contextmanager
+def _clean_child_argv():
+    original = sys.argv[:]
+    sys.argv = [original[0] if original else "VeinTools.exe"]
+    try:
+        yield
+    finally:
+        sys.argv = original
+
+
 @dataclass(frozen=True)
 class CommandSpec:
     module: str
@@ -62,7 +73,8 @@ class CommandSpec:
     def run(self) -> int:
         module = importlib.import_module(self.module)
         func: Callable[..., int] | Callable[..., None] = getattr(module, self.attr)
-        result = func()
+        with _clean_child_argv():
+            result = func()
         return int(result) if isinstance(result, int) else 0
 
 

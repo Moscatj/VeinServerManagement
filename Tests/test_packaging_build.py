@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_SCRIPT = ROOT / "Controller" / "Tools" / "packing" / "build_gui_exe.py"
+INSTALLER_SCRIPT = ROOT / "Installer" / "VeinServerManager.iss"
 
 
 def _load_build_module():
@@ -22,6 +23,17 @@ def _load_build_module():
 
 
 class PackagingBuildTests(unittest.TestCase):
+    def test_installer_grants_modify_permissions_to_writable_app_dirs(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        for folder in ("Backups", "Config", "Logs", "Runtime"):
+            self.assertIn(f'Name: "{{app}}\\{folder}"; Permissions: users-modify', text)
+
+    def test_installer_excludes_runtime_folder_contents(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*"', text)
+
     def test_copy_config_dir_stages_example_as_runtime_config(self) -> None:
         module = _load_build_module()
         with TemporaryDirectory(dir=ROOT) as tmp:

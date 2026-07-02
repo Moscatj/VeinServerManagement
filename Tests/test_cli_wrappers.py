@@ -171,6 +171,22 @@ class CliWrapperTests(unittest.TestCase):
             self.assertEqual(command.run(), 0)
         health_main.assert_called_once()
 
+    def test_vein_tools_subcommand_does_not_leak_wrapper_argv(self) -> None:
+        seen: list[list[str]] = []
+
+        def fake_main() -> int:
+            seen.append(list(sys.argv))
+            return 0
+
+        command = vein_tools.CommandSpec("Tools.health_check", "main", "Run health check")
+        with mock.patch("Tools.health_check.main", side_effect=fake_main), mock.patch(
+            "sys.argv",
+            ["VeinTools.exe", "health-check"],
+        ):
+            self.assertEqual(command.run(), 0)
+
+        self.assertEqual(seen, [["VeinTools.exe"]])
+
 
 if __name__ == "__main__":
     unittest.main()

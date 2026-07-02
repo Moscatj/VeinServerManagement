@@ -8,6 +8,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 - Clarified installer usage and roadmap, added packaging requirements, and made installer builds derive their version from the release tag.
 - Fixed Inno Setup compilation issues and tightened packaged bundle staging to exclude local backups, legacy account state, and development-only scripts.
+- Fixed installed app launch by granting modify permissions to installer-owned config/runtime folders and preventing packaged CLI subcommands from inheriting wrapper arguments.
 
 ## 2.3.4 - 2026-07-02
 

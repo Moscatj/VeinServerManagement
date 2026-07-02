@@ -33,7 +33,13 @@ SetupIconFile={#MyAppIcon}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "{#MyStageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#MyStageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "Backups\*,Logs\*,Runtime\*"
+
+[Dirs]
+Name: "{app}\Backups"; Permissions: users-modify
+Name: "{app}\Config"; Permissions: users-modify
+Name: "{app}\Logs"; Permissions: users-modify
+Name: "{app}\Runtime"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\Vein Server Manager"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"
