@@ -10,8 +10,8 @@ ships the PySide6 GUI (`VeinManager`) as a Windows `.exe`, bundles the Python he
 
 Prerequisites:
 
-1. Python 3.11+
-2. `py -3 -m pip install -r requirements-packaging.txt`
+1. Python 3.11 or 3.12 for packaging. Python 3.13 may be unreliable with PyInstaller on this project.
+2. `py -3.12 -m pip install -r requirements-packaging.txt`
 
 Command:
 
@@ -91,12 +91,13 @@ staging the bundle to produce `VeinServerManager-Setup.exe`.
 
 Workflow:
 
-1. Install packaging dependencies: `py -3 -m pip install -r requirements-packaging.txt`.
+1. Install packaging dependencies: `py -3.12 -m pip install -r requirements-packaging.txt`.
 2. Install Inno Setup (https://jrsoftware.org/isinfo.php).
 3. Run `Scripts\BuildInstaller.bat`.
 4. The build script stages the PyInstaller bundle, compiles the Inno installer, and passes the latest Git tag as `MyAppVersion`.
-5. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
-6. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
+5. Set `PYTHON_BIN` to choose the packaging runtime, for example `set "PYTHON_BIN=py -3.12"`.
+6. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
+7. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
 
 Installer responsibilities (current + future):
 

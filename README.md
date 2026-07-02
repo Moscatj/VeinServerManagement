@@ -152,9 +152,11 @@ VeinTools.exe stop-all-monitors
 Packaging is Windows-focused and uses PyInstaller plus Inno Setup 6.
 
 ```powershell
-py -3 -m pip install -r requirements-packaging.txt
+py -3.12 -m pip install -r requirements-packaging.txt
 Scripts\BuildInstaller.bat
 ```
+
+Python 3.11 or 3.12 is recommended for packaging; Python 3.13 may be unreliable with PyInstaller on this project. Set `PYTHON_BIN` to choose the packaging runtime, for example `set "PYTHON_BIN=py -3.12"`.
 
 By default, `Scripts\BuildInstaller.bat` derives the installer version from the latest Git tag. Set `VEIN_PACKAGE_VERSION` to override it for a local test build. The output installer is written to:
 

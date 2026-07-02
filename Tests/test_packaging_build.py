@@ -45,6 +45,54 @@ class PackagingBuildTests(unittest.TestCase):
             self.assertEqual((dst / "config.yaml").read_text(encoding="utf-8"), "secret: false\n")
             self.assertEqual((dst / "config.example.yaml").read_text(encoding="utf-8"), "secret: false\n")
 
+    def test_stage_bundle_excludes_local_sensitive_and_dev_files(self) -> None:
+        module = _load_build_module()
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            pyinstaller_dir = root / "PyInstallerOutput"
+            pyinstaller_dir.mkdir()
+            (pyinstaller_dir / "VeinManager.exe").write_text("exe", encoding="utf-8")
+
+            controller = root / "Controller"
+            (controller / "Backups" / "Configs").mkdir(parents=True)
+            (controller / "Backups" / "Configs" / "config-secret.yaml").write_text("secret", encoding="utf-8")
+            (controller / "Legacy" / "WebAdmin").mkdir(parents=True)
+            (controller / "Legacy" / "WebAdmin" / "user_accounts.json").write_text("secret", encoding="utf-8")
+            (controller / "Legacy" / "WebAdmin" / "web_admin.py").write_text("ok", encoding="utf-8")
+
+            config = root / "Config"
+            (config / "Backup").mkdir(parents=True)
+            (config / "Backup" / "config.json").write_text("secret", encoding="utf-8")
+            (config / "config.yaml").write_text("secret: true\n", encoding="utf-8")
+            (config / "config.example.yaml").write_text("secret: false\n", encoding="utf-8")
+
+            scripts = root / "Scripts"
+            scripts.mkdir()
+            (scripts / "StartServer.bat").write_text("ok", encoding="utf-8")
+            (scripts / "TestSuite.bat").write_text("dev", encoding="utf-8")
+
+            (root / "Docs").mkdir()
+            (root / "Docs" / "readme.md").write_text("docs", encoding="utf-8")
+
+            bundle = root / "Bundle"
+            original_root = module.REPO_ROOT
+            original_template = module.CONFIG_TEMPLATE
+            try:
+                module.REPO_ROOT = root
+                module.CONFIG_TEMPLATE = Path("Config/config.example.yaml")
+                module._stage_bundle(pyinstaller_dir, bundle)
+            finally:
+                module.REPO_ROOT = original_root
+                module.CONFIG_TEMPLATE = original_template
+
+            self.assertFalse((bundle / "Controller" / "Backups").exists())
+            self.assertFalse((bundle / "Controller" / "Legacy" / "WebAdmin" / "user_accounts.json").exists())
+            self.assertTrue((bundle / "Controller" / "Legacy" / "WebAdmin" / "web_admin.py").exists())
+            self.assertFalse((bundle / "Config" / "Backup").exists())
+            self.assertEqual((bundle / "Config" / "config.yaml").read_text(encoding="utf-8"), "secret: false\n")
+            self.assertTrue((bundle / "Scripts" / "StartServer.bat").exists())
+            self.assertFalse((bundle / "Scripts" / "TestSuite.bat").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

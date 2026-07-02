@@ -26,6 +26,28 @@ DEFAULT_BUILD = REPO_ROOT / "build"
 DEFAULT_BUNDLE = DEFAULT_DIST / "VeinServerManager"
 SUPPORT_DIRS: tuple[str, ...] = ("Controller", "Config", "Docs", "Scripts")
 EMPTY_DIRS: tuple[str, ...] = ("Backups", "Logs", "Runtime")
+COMMON_IGNORE_PATTERNS: tuple[str, ...] = ("__pycache__", "*.pyc", "*.pyo")
+SUPPORT_IGNORE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "Controller": (
+        "Backups",
+        "user_accounts.json",
+        "server_state.json",
+        "*.log",
+    ),
+    "Config": (
+        "Backup",
+        "config.yaml",
+        "*.local.yaml",
+        "*.local.json",
+    ),
+    "Scripts": (
+        "BuildInstaller.bat",
+        "InstallGitHooks.bat",
+        "RunCoverage.bat",
+        "TestSuite.bat",
+        "UninstallGitHooks.bat",
+    ),
+}
 EXTRA_FILES: tuple[Path, ...] = tuple(
     Path(p) for p in ("README.md", "AGENTS.md", "Docs/docs_for_codex.md")
 )
@@ -55,6 +77,8 @@ def _pyinstaller_args(*, dist: Path, build: Path, onefile: bool) -> list[str]:
         str(dist),
         "--workpath",
         str(build),
+        "--specpath",
+        str(build / "spec"),
         "--paths",
         str(ENTRYPOINT.parent),
         "--collect-submodules",
@@ -88,6 +112,8 @@ def _cli_pyinstaller_args(*, dist: Path, build: Path) -> list[str]:
         str(dist),
         "--workpath",
         str(build),
+        "--specpath",
+        str(build / "cli" / "spec"),
         "--paths",
         str(ENTRYPOINT.parent),
         "--console",
@@ -100,7 +126,17 @@ def _copytree(src: Path, dst: Path) -> None:
         src,
         dst,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        ignore=shutil.ignore_patterns(*COMMON_IGNORE_PATTERNS),
+    )
+
+
+def _copy_support_dir(name: str, src: Path, dst: Path) -> None:
+    ignore_patterns = COMMON_IGNORE_PATTERNS + SUPPORT_IGNORE_PATTERNS.get(name, ())
+    shutil.copytree(
+        src,
+        dst,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns(*ignore_patterns),
     )
 
 
@@ -120,7 +156,7 @@ def _stage_bundle(pyinstaller_dir: Path, bundle_dir: Path) -> None:
         if name.lower() == "config":
             _copy_config_dir(src, dst)
         else:
-            _copytree(src, dst)
+            _copy_support_dir(name, src, dst)
     for name in EMPTY_DIRS:
         (bundle_dir / name).mkdir(parents=True, exist_ok=True)
     for rel in EXTRA_FILES:
@@ -136,7 +172,10 @@ def _copy_config_dir(src: Path, dst: Path) -> None:
         src,
         dst,
         dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", "config.yaml"),
+        ignore=shutil.ignore_patterns(
+            *COMMON_IGNORE_PATTERNS,
+            *SUPPORT_IGNORE_PATTERNS["Config"],
+        ),
     )
     template_src = REPO_ROOT / CONFIG_TEMPLATE
     dst_cfg = dst / "config.yaml"

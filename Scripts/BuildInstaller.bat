@@ -18,14 +18,26 @@ if not defined PACKAGE_VERSION set "PACKAGE_VERSION=0.0.0-dev"
 if /i "%PACKAGE_VERSION:~0,1%"=="v" set "PACKAGE_VERSION=%PACKAGE_VERSION:~1%"
 echo [INFO] Package version: %PACKAGE_VERSION%
 
+if not defined PYTHON_BIN set "PYTHON_BIN=py -3"
+echo [INFO] Python command: %PYTHON_BIN%
+
+for /f "delims=" %%V in ('%PYTHON_BIN% --version 2^>^&1') do set "PYTHON_VERSION=%%V"
+echo [INFO] %PYTHON_VERSION%
+echo %PYTHON_VERSION% | findstr /r "Python 3\.13" >nul
+if not errorlevel 1 (
+  echo [WARN] PyInstaller may be unreliable with Python 3.13 for this project.
+  echo [WARN] Recommended packaging runtime: Python 3.11 or 3.12.
+  echo [WARN] Example: set "PYTHON_BIN=py -3.12"
+)
+
 echo [INFO] Checking for PyInstaller...
-py -3 -m PyInstaller --version >nul 2>&1
+%PYTHON_BIN% -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] PyInstaller not found. Run: py -3 -m pip install -r requirements-packaging.txt
+  echo [ERROR] PyInstaller not found. Run: %PYTHON_BIN% -m pip install -r requirements-packaging.txt
   goto :error
 )
 echo [INFO] Step 1/2 - Building VeinManager/VeinTools bundle...
-py -3 Controller\Tools\packing\build_gui_exe.py
+%PYTHON_BIN% Controller\Tools\packing\build_gui_exe.py
 if errorlevel 1 goto :error
 
 echo [INFO] Step 2/2 - Compiling installer via Inno Setup...

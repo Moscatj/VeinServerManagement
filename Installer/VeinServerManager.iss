@@ -103,11 +103,12 @@ begin
     ServerChoicePage.ID,
     'Server Install Location',
     'Choose where the Vein dedicated server should be installed.',
-    'Select an existing folder or create a new one. It must be writable.'
+    'Select an existing folder or create a new one. It must be writable.',
+    False,
+    ''
   );
   ServerDirPage.Add('');
   ServerDirPage.Values[0] := ExpandConstant('{sd}\VeinServer');
-  ServerDirPage.Visible := False;
   UpdateServerChoiceState;
 end;
 
@@ -167,7 +168,8 @@ end;
 
 function NormalizePathForYaml(const Value: string): string;
 begin
-  Result := StringChange(Value, '\', '/');
+  Result := Value;
+  StringChangeEx(Result, '\', '/', True);
 end;
 
 procedure ReplaceConfigValue(var Content: string; const Needle, InsertValue: string);
@@ -177,12 +179,14 @@ end;
 
 procedure UpdateConfigPaths(const ServerDir, SteamCmdExe: string);
 var
+  RawContent: AnsiString;
   ConfigPath, Content: string;
   ServerRoot, VeinRoot, SavesPath, LogsPath, LogFile, SteamCmdPath: string;
 begin
   ConfigPath := ExpandConstant('{app}\Config\config.yaml');
-  if LoadStringFromFile(ConfigPath, Content) then
+  if LoadStringFromFile(ConfigPath, RawContent) then
   begin
+    Content := RawContent;
     ServerRoot := NormalizePathForYaml(ServerDir);
     VeinRoot := NormalizePathForYaml(AddBackslash(ServerDir) + 'Vein');
     SavesPath := NormalizePathForYaml(AddBackslash(AddBackslash(ServerDir) + 'Vein') + 'Saved\SaveGames');
