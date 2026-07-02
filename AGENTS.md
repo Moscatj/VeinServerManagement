@@ -122,7 +122,8 @@ shell
 Copy code
 
 ### ✔ Config  
-Config/config.yaml
+Config/config.example.yaml is the tracked public template.
+Config/config.yaml is the local runtime config and is ignored by Git.
 
 shell
 Copy code
@@ -184,6 +185,7 @@ Config/config.yaml
 
 yaml
 Copy code
+- `Config/config.yaml` is local-only; keep public defaults in `Config/config.example.yaml`
 - YAML is the primary config; JSON is legacy and must not be expanded
 - Agent must not rewrite config to a new format without explicit permission
 

@@ -8,6 +8,8 @@ jobs:
   tests:
     name: Unit Tests And Safety Checks
     runs-on: windows-latest
+    env:
+      VEIN_CONFIG: Config/config.example.yaml
 
     steps:
       - name: Check out repository

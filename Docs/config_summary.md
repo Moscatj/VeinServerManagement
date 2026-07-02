@@ -4,11 +4,11 @@
 ---
 
 ## Purpose
-`config.py` is the **resilient loader** and validator for `config.yaml`.
+`config.py` is the **resilient loader** and validator for the active local config.
 It provides a consistent entry point for all controllers and utilities that need access to configuration data.
 
 This module:
-- Finds the correct `config.yaml` using multiple fallbacks.
+- Finds the correct local `config.yaml` using multiple fallbacks.
 - Normalizes and validates paths and settings.
 - Applies sensible defaults for missing fields.
 - Resolves Discord webhook overrides.
@@ -17,9 +17,9 @@ This module:
 
 ---
 
-## Search Order for config.yaml
+## Search Order for Runtime Config
 1. Environment variable **`VEIN_CONFIG`** — absolute path to YAML or JSON file.
-2. `<VEIN_MGMT_ROOT>\Config\config.yaml` — preferred default location.
+2. `<VEIN_MGMT_ROOT>\Config\config.yaml` — preferred local runtime location, ignored by Git.
 3. `<VEIN_MGMT_ROOT>\Controller\config.json` — legacy fallback.
 
 Also respects environment variables:

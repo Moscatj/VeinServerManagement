@@ -27,8 +27,8 @@ This is a personal source-available portfolio project. It is suitable for experi
 AGENTS.md                 AI/Codex safety and workflow rules
 CONTRIBUTING.md           Contributor workflow and test expectations
 Config/
-  config.yaml             Primary config
-  config.example.yaml     Sanitized template
+  config.example.yaml     Tracked sanitized template
+  config.yaml             Local runtime config, ignored by Git
 Controller/
   *.py                    Controller entrypoints
   GUI/                    PySide6 GUI modules
@@ -54,7 +54,21 @@ The management suite may read game logs and saves as configured, but it should n
 
 ## Configuration
 
-The primary config file is:
+The tracked public template is:
+
+```text
+Config/config.example.yaml
+```
+
+Create your local runtime config from that template:
+
+```powershell
+Copy-Item Config\config.example.yaml Config\config.yaml
+```
+
+`Config/config.yaml` is ignored by Git so local paths, ports, retention settings, and server preferences do not get committed accidentally.
+
+At runtime, the primary local config file is:
 
 ```text
 Config/config.yaml
@@ -79,7 +93,7 @@ steam:
   steamcmd_path: "ENV:STEAMCMD_PATH"
 ```
 
-Do not commit `.env` files, local config overrides, generated runtime state, logs, backups, or user-account files.
+Do not commit `.env` files, local config files, generated runtime state, logs, backups, or user-account files.
 
 ## Running Locally
 
@@ -160,6 +174,7 @@ Tracked files are scanned for high-confidence secret patterns and local markers 
 - `.env`
 - `.continue/.env`
 - `.coverage`
+- `Config/config.yaml`
 - `Config/Backup/`
 - `Config/*.local.yaml`
 - `Config/*.local.json`

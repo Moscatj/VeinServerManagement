@@ -8,8 +8,8 @@ This project is a Windows-focused management suite for the Vein dedicated server
 
 - `Controller/`: Python entrypoints and GUI code.
 - `Controller/Tools/`: shared helper modules.
-- `Config/config.yaml`: primary configuration file.
-- `Config/config.example.yaml`: sanitized configuration template.
+- `Config/config.example.yaml`: tracked sanitized configuration template.
+- `Config/config.yaml`: local runtime configuration file, ignored by Git.
 - `Scripts/*.bat`: Windows entrypoints.
 - `Docs/`: developer and operator documentation.
 - `Runtime/`, `Logs/`, and `Backups/`: generated local state, ignored by Git.
@@ -31,7 +31,7 @@ python -m venv .venv
 python -m pip install -r requirements-dev.txt
 ```
 
-Copy or edit `Config/config.yaml` for your local server install. Do not commit local secrets, local absolute paths, generated state, or user/account files.
+Copy `Config/config.example.yaml` to `Config/config.yaml` for your local server install. Do not commit local secrets, local absolute paths, generated state, or user/account files.
 
 ## Basic Commands
 
@@ -122,7 +122,7 @@ This project supports AI-assisted development. If using an AI coding assistant:
 1. Read `README.md`.
 2. Read `AGENTS.md`.
 3. Skim `Docs/control_layer_overview.md` and `Docs/Developer_Guide.md`.
-4. Confirm that `Config/config.yaml` is the primary config.
+4. Confirm that `Config/config.example.yaml` is the tracked template and `Config/config.yaml` is local-only.
 5. Confirm that the actual Vein game install is outside the repo and must not be modified.
 
 Review AI-generated changes carefully, especially around filesystem access, shutdown, backups, crash monitoring, and process control.

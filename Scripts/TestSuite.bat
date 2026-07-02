@@ -20,10 +20,14 @@ set "MGMT=%CD%"
 set "SCRIPTS=%MGMT%\Scripts"
 set "CONTROLLER=%MGMT%\Controller"
 set "CONFIG1=%MGMT%\Config\config.yaml"
+set "CONFIG_EXAMPLE=%MGMT%\Config\config.example.yaml"
 set "CONFIG2=%MGMT%\Config\config.json"
 set "CONFIG3=%CONTROLLER%\config.json"
 set "PYEXE=py -3"
-if exist "%CONFIG1%" (set "VEIN_CONFIG=%CONFIG1%") else if exist "%CONFIG2%" (set "VEIN_CONFIG=%CONFIG2%") else if exist "%CONFIG3%" (set "VEIN_CONFIG=%CONFIG3%")
+if not defined VEIN_CONFIG if exist "%CONFIG1%" set "VEIN_CONFIG=%CONFIG1%"
+if not defined VEIN_CONFIG if exist "%CONFIG_EXAMPLE%" set "VEIN_CONFIG=%CONFIG_EXAMPLE%"
+if not defined VEIN_CONFIG if exist "%CONFIG2%" set "VEIN_CONFIG=%CONFIG2%"
+if not defined VEIN_CONFIG if exist "%CONFIG3%" set "VEIN_CONFIG=%CONFIG3%"
 
 set "SUITE_FAIL=0"
 set "SUITE_WARN=0"
@@ -36,6 +40,7 @@ echo [env] MGMT=%MGMT%
 echo [env] SCRIPTS=%SCRIPTS%
 echo [env] CONTROLLER=%CONTROLLER%
 echo [env] CONFIG1=%CONFIG1%
+echo [env] CONFIG_EXAMPLE=%CONFIG_EXAMPLE%
 echo [env] CONFIG2=%CONFIG2%
 echo [env] CONFIG3=%CONFIG3%
 echo [env] PYEXE=%PYEXE%

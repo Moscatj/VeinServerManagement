@@ -10,7 +10,7 @@
 ## 🧩 Project Overview
 
 The Vein Server Management Suite automates hosting, monitoring, and maintaining a **dedicated Vein game server** on Windows.
-It handles startup, crash recovery, scheduled backups, and Discord event reporting — all driven by a central `config.yaml` file and a cross-linked controller architecture.
+It handles startup, crash recovery, scheduled backups, and Discord event reporting, all driven by a local `config.yaml` created from the tracked `config.example.yaml` template.
 
 For general setup and usage, start with the root-level [README.md](../README.md).
 This folder contains all **developer** and **system-level** documentation.

@@ -28,7 +28,7 @@ Every script (`StartServer.bat`, `StartCrashMonitor.bat`, `StartLogMonitor.bat`,
 | **VEIN_MGMT_ROOT** | Absolute path to the Server Management suite root. Normally the folder containing `Controller/`, `Config/`, and `Scripts/`. |
 | **VEIN_MGMT_SCRIPTS** | Points to the `Scripts/` subfolder containing the batch utilities. |
 | **VEIN_MGMT_CONTROLLER** | Points to `Controller/`, where all Python logic lives (`start_server.py`, `Controller/Tools/*`, etc.). |
-| **VEIN_CONFIG** | Absolute path to the active configuration file (`Config/config.yaml`). |
+| **VEIN_CONFIG** | Absolute path to the active local configuration file (`Config/config.yaml`). |
 | **PYEXE** | Python executable command used by all scripts (`py -3`, `py -3w`, or a full path). |
 | **RUNTIME_DIR** | (Optional) Path to the Runtime directory containing flags, PID, and state JSONs. |
 | **PATH** | Updated so that Python and SteamCMD (if applicable) are discoverable. |

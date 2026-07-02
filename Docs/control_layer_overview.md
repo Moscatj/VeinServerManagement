@@ -20,14 +20,14 @@ This document ties together the main control scripts and their shared dependenci
 | Module | Purpose |
 |---------|----------|
 | **Controller/Tools/** | Shared helper modules (process, runtime, restart, backups, Discord, Steam updates). |
-| **config.py** | Loads and validates `config.yaml`, applies defaults, and handles environment overrides. |
+| **config.py** | Loads and validates the active local config, applies defaults, and handles environment overrides. |
 | **config_helper.py** | Simplified API for retrieving typed config values and feature flags. |
 
 ### Support Layers
 | Layer | Role |
 |--------|------|
 | **vein_manager.py** | PySide6 GUI that provides visual control, config editing, live log display, and monitor status indicators. |
-| **config.yaml** | Central configuration file defining all paths, features, and behavior. |
+| **config.example.yaml / config.yaml** | Tracked public template and ignored local runtime config defining all paths, features, and behavior. |
 | **env_setup.bat** | Initializes environment variables (`VEIN_MGMT_ROOT`, `VEIN_CONFIG`, etc.) for all scripts. |
 | **Runtime/** | Folder for live flag/state/heartbeat files used by monitors and the GUI. |
 | **Backups/** | Categorized folders for Manual, Startup, Autosave, Crash, and Nightly backups. |

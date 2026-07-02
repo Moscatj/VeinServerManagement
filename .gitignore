@@ -66,6 +66,7 @@ htmlcov/
 .continue/**/*.env
 
 # Local config backups and legacy runtime credentials
+Config/config.yaml
 Config/Backup/
 Config/*.local.yaml
 Config/*.local.json

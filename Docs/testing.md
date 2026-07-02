@@ -41,6 +41,7 @@ Coverage is a guide, not a hard 100% target. Prefer meaningful tests around risk
 GitHub Actions runs on every push and pull request:
 
 - Installs `requirements-dev.txt`
+- Uses `Config/config.example.yaml` as `VEIN_CONFIG`
 - Runs unit tests
 - Runs the project health check
 - Runs `Scripts\TestSuite.bat __RUN__`

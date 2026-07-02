@@ -29,7 +29,8 @@ If you are not an AI, you probably want `README.md` or `Docs/Developer_Guide.md`
 Key folders and files:
 
 - `Config/`
-  - `config.yaml` — primary configuration file (YAML)
+  - `config.example.yaml` - tracked sanitized configuration template
+  - `config.yaml` - local runtime configuration file, ignored by Git
   - `Backup/` — old sample configs / backups (JSON/YAML)
 
 - `Controller/`
@@ -88,7 +89,8 @@ Key folders and files:
 1. **Config is king**
    - Use `Controller/config.py` + `Controller/config_helper.py` for config.
    - Do *not* hardcode absolute paths.
-   - Primary config: `Config/config.yaml`, with JSON as legacy fallback.
+   - Primary local config: `Config/config.yaml`, with JSON as legacy fallback.
+   - Tracked template: `Config/config.example.yaml`.
 
 2. **Safe shutdown is sacred**
    - `Controller/shutdown_server.py` + `Controller/Tools/` (runtime/backups/process/restart) form the canonical shutdown pipeline.
@@ -142,7 +144,8 @@ These are examples of the kinds of work you’ll likely be asked to perform and 
 - Files:
   - `Controller/nightly_backup.py`
   - `Controller/Tools/backups.py`
-  - `Config/config.yaml`
+  - `Config/config.example.yaml`
+  - local-only `Config/config.yaml` when present
 - Goals:
   - Introduce new backup modes
   - Adjust retention policy
@@ -152,7 +155,7 @@ These are examples of the kinds of work you’ll likely be asked to perform and 
 
 > I want a new backup mode: "pre-shutdown backup" triggered only on intentional shutdowns.  
 > Please:
-> - Inspect Controller/shutdown_server.py, Controller/Tools/ (process/runtime/restart/backups), and Config/config.yaml.
+> - Inspect Controller/shutdown_server.py, Controller/Tools/ (process/runtime/restart/backups), and Config/config.example.yaml.
 > - Propose a plan to add a config flag `backups.pre_shutdown.enabled` and implement it so that:
 >   - On intentional shutdown, if enabled, a backup is taken before the server is killed.
 >   - If backups are disabled globally, behavior does not change.
@@ -187,7 +190,8 @@ These are examples of the kinds of work you’ll likely be asked to perform and 
 - Files:
   - `Controller/config.py`
   - `Controller/config_helper.py`
-  - `Config/config.yaml`
+  - `Config/config.example.yaml`
+  - local-only `Config/config.yaml` when present
   - `Docs/config_summary.md`, `Docs/config_helper_summary.md`
 
 **Example prompt:**
@@ -231,7 +235,8 @@ When a new AI session is started on this repo, it should:
 4. Apply changes as **small diffs** to:
    - `Controller/*.py`
    - `Controller/Tools/*.py`
-   - `Config/config.yaml`
+   - `Config/config.example.yaml`
+   - local-only `Config/config.yaml` when present
    - `Docs/*.md` (if behavior changes)
 
 ---

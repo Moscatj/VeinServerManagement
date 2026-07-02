@@ -7,6 +7,7 @@ set "CTRL=%ROOT%\Controller"
 
 if not defined VEIN_CONFIG (
   if exist "%ROOT%\Config\config.yaml" set "VEIN_CONFIG=%ROOT%\Config\config.yaml"
+  if not defined VEIN_CONFIG if exist "%ROOT%\Config\config.example.yaml" set "VEIN_CONFIG=%ROOT%\Config\config.example.yaml"
   if not defined VEIN_CONFIG if exist "%ROOT%\Config\config.json" set "VEIN_CONFIG=%ROOT%\Config\config.json"
 )
 

@@ -27,7 +27,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 | **Controller/nightly_backup.py** | Creates scheduled Nightly backups and prunes by count/age. |
 | **Controller/vein_manager.py** | PySide6 GUI for controlling the server, viewing logs, and editing config. |
 | **Controller/utils.py** | Shared logic for process management, backups, Steam updates, and Discord messaging. |
-| **Controller/config.py** | Loads, validates, and normalizes `Config/config.yaml`. Handles defaults and environment overrides. |
+| **Controller/config.py** | Loads, validates, and normalizes the active local config (`Config/config.yaml` by default). Handles defaults and environment overrides. |
 | **Controller/config_helper.py** | Provides typed getters and feature gate logic (`is_feature_enabled`, etc.). |
 | **Scripts/env_setup.bat** | Initializes all environment variables required by the suite. |
 | **Scripts/StartServer.bat** | Calls `env_setup.bat` then launches the Python startup controller. |
@@ -36,7 +36,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 ### Supporting Folders
 | Folder | Purpose |
 |---------|----------|
-| **Config/** | Stores `config.yaml`, the primary configuration file. |
+| **Config/** | Stores `config.example.yaml` as the tracked template and local-only `config.yaml` for runtime configuration. |
 | **Runtime/** | Contains transient files (PIDs, state JSONs, flags) written by controllers. |
 | **Backups/** | Categorized backup directories: Manual, Startup, Autosave, Crash, and Nightly. |
 | **Logs/** | Management-suite logs, summaries, manifests, and archived controller/monitor output. |
@@ -66,7 +66,7 @@ For details, see [Docs/env_setup_summary.md](env_setup_summary.md).
 
 ## ⚙️ Configuration System
 
-All runtime behavior is controlled by **Config/config.yaml**.
+All runtime behavior is controlled by the local **Config/config.yaml** file created from **Config/config.example.yaml**.
 See [Docs/config_reference.md](config_reference.md) for detailed key descriptions and defaults.
 
 ### Highlights
@@ -251,7 +251,8 @@ Every controller imports this module for consistent, reusable functionality.
 ## 🗂 Folder Summary
 
 VeinServerManagement/
-├── Config/config.yaml
+├── Config/config.example.yaml
+├── Config/config.yaml (local, ignored)
 ├── Controller/
 │ ├── *.py
 ├── Scripts/
