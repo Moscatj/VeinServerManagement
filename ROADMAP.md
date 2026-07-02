@@ -68,6 +68,46 @@ Near-term installer hardening:
 - Package a cleaner Windows launch/install workflow with downloadable release
   artifacts.
 
+## Multi-Server Hosting Goals
+
+The current suite manages one configured Vein dedicated server at a time. A
+future multi-server workflow should be based on named server profiles rather
+than treating SteamCMD installs as the primary selector.
+
+Target model:
+
+- Add named profiles such as `Personal`, `Test`, or `Community PVE`.
+- Each profile owns its own:
+  - `server_root`
+  - executable preference
+  - game/query ports
+  - save and log paths
+  - runtime state directory
+  - backup root and retention policy
+  - Discord channel/webhook routing
+  - Steam branch/update settings
+- The GUI selects the active profile before start/stop/backup/monitor actions.
+- Process matching and shutdown must target only the selected profile whenever
+  possible, so two installed servers are not accidentally stopped together.
+- Backups should be grouped by profile, not just by save filename.
+
+SteamCMD should remain an implementation detail:
+
+- One SteamCMD install can update multiple server roots by changing
+  `force_install_dir`.
+- Multiple SteamCMD installs may still be supported for operators who want
+  isolated tool folders, but this should not be required for normal use.
+- Server identity should come from the profile and server root, not from which
+  SteamCMD executable updated it.
+
+Open design questions:
+
+- Whether concurrent multi-server hosting is supported in the first version, or
+  whether the GUI initially allows multiple profiles but only one running server
+  at a time.
+- How to display per-profile monitor state without mixing runtime files.
+- How much profile editing belongs in the installer versus the GUI.
+
 ## Testing Goals
 
 - Increase coverage around:

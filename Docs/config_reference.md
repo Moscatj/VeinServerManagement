@@ -4,6 +4,13 @@ This document explains every key in the tracked `Config/config.example.yaml` tem
 
 Note: Any path value may now be expressed relative to the management root (the folder that contains `Controller/` and `Config/`). Relative entries are resolved during config load, so packaged builds work no matter which drive or directory the suite is installed on.
 
+Current scope: `Config/config.yaml` describes one active server profile. Multiple
+Vein dedicated server installs can exist on the same computer, but the
+management suite currently starts, monitors, backs up, and shuts down the one
+server root selected in this config. Future multi-server support should add
+named profiles with separate server roots, ports, saves/logs, runtime state,
+backups, Discord routing, and Steam update settings.
+
 ---
 
 ## Top-level Paths

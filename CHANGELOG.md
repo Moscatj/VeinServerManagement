@@ -14,6 +14,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Moved Inno Setup's generated uninstaller files into an `Uninstall` subfolder and set the uninstall display icon to the GUI executable.
 - Added uninstall cleanup that stops log/crash monitors and performs a controlled server shutdown when a Vein server process is still running.
 - Added uninstall safeguards that preserve external dedicated server folders and require an explicit save-loss warning prompt before deleting app-managed server files.
+- Documented the planned multi-server profile model for hosting multiple Vein server installs from one management suite.
 
 ## 2.3.4 - 2026-07-02
 
