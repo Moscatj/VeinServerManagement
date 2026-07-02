@@ -132,7 +132,7 @@ D:\VeinServer\
 Uninstall behavior:
 
 - The uninstaller stops management monitors and shuts down a running Vein server before removing app files.
-- Server roots outside the app folder, such as `D:\VeinServer` or `G:\Servers\VeinServer`, are preserved.
+- Server roots outside the app folder, such as `D:\VeinServer` or `<external drive>\Servers\VeinServer`, are preserved.
 - Server roots inside the app folder can be deleted only after an explicit warning prompt. The default answer preserves saves and server data.
 
 ---
