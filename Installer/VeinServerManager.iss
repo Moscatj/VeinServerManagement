@@ -1,5 +1,7 @@
 #define MyAppName "Vein Server Management Suite"
-#define MyAppVersion "2.1.0"
+#ifndef MyAppVersion
+#define MyAppVersion "0.0.0-dev"
+#endif
 #define MyAppPublisher "Vein Server Management Contributors"
 #define MyAppExeName "VeinManager.exe"
 #define MyStageDir "..\\dist\\VeinServerManager"

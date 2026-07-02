@@ -1,8 +1,8 @@
 # Packaging Overview
 
 This document explains how to turn the Vein Server Management Suite into a redistributable package that
-ships the PySide6 GUI (`VeinManager`) as a Windows `.exe`, bundles the Python helpers, and prepares for a
-full installer.
+ships the PySide6 GUI (`VeinManager`) as a Windows `.exe`, bundles the Python helpers into a CLI launcher
+(`VeinTools.exe`), and produces a Windows installer for GitHub Releases.
 
 ---
 
@@ -11,7 +11,7 @@ full installer.
 Prerequisites:
 
 1. Python 3.11+
-2. `pip install pyinstaller`
+2. `py -3 -m pip install -r requirements-packaging.txt`
 
 Command:
 
@@ -58,24 +58,25 @@ Flags:
 - `--skip-cli`: skip building VeinTools.exe (useful for GUI-only debugging)
 - `--dist`, `--build`, `--bundle`: override output directories
 
-> ⚠️ **Sensitive config**: the staging step copies whichever files currently live under `Config/`.
-> Sanitize webhooks/passwords before distributing a build.
+> Sensitive config: the staging step ignores local `Config/config.yaml` and creates the packaged runtime
+> config from `Config/config.example.yaml`. Keep public defaults in the example file and keep local secrets
+> in ignored config or environment variables.
 
 ---
 
 ## 2. Expected release layout
 
-```
+```text
 VeinServerManager/
-?"o?"? VeinTools.exe                  # Console CLI for headless helpers
-├─ VeinManager.exe                # GUI launcher
-├─ Controller/                    # Python automation scripts + Tools/ helpers
-├─ Config/                        # YAML config templates (edit in-place after install)
-├─ Scripts/                       # Batch helpers for CLI workflows
-├─ Docs/                          # Reference docs
-├─ Backups/ (empty placeholder)   # Created on first run
-├─ Logs/ (empty placeholder)
-└─ Runtime/ (empty placeholder)
+|-- VeinTools.exe                 # Console CLI for headless helpers
+|-- VeinManager.exe               # GUI launcher
+|-- Controller/                   # Python automation scripts + Tools/ helpers
+|-- Config/                       # YAML config templates and runtime config
+|-- Scripts/                      # Batch helpers for CLI workflows
+|-- Docs/                         # Reference docs
+|-- Backups/                      # Empty placeholder; created on first run
+|-- Logs/                         # Empty placeholder
+`-- Runtime/                      # Empty placeholder
 ```
 
 This mirrors the repository structure so that the GUI can keep resolving `Controller/*`
@@ -90,33 +91,29 @@ staging the bundle to produce `VeinServerManager-Setup.exe`.
 
 Workflow:
 
-1. Build/stage the bundle (`py -3 Controller\Tools\packing\build_gui_exe.py`)  
-   *(Shortcut: run `Scripts\BuildInstaller.bat` to run this step and the Inno compiler in one go.)*
-2. Install Inno Setup (https://jrsoftware.org/isinfo.php)
-3. Open `Installer/VeinServerManager.iss`
-4. Update the `#define MyAppVersion` to match the release
-5. Compile → output goes to `dist/installer/`
+1. Install packaging dependencies: `py -3 -m pip install -r requirements-packaging.txt`.
+2. Install Inno Setup (https://jrsoftware.org/isinfo.php).
+3. Run `Scripts\BuildInstaller.bat`.
+4. The build script stages the PyInstaller bundle, compiles the Inno installer, and passes the latest Git tag as `MyAppVersion`.
+5. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
+6. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
 
 Installer responsibilities (current + future):
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`
 - Create Start Menu/Desktop shortcuts (`VeinManager`, docs, log folder)
 - Offer to create writable `Logs/`, `Backups/`, `Runtime/` under `%ProgramData%` in a later iteration
-- Register an uninstaller entry in “Add/Remove Programs”
+- Register an uninstaller entry in Add/Remove Programs
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
 ---
 
 ## 4. Roadmap / Next Steps
 
-1. **Automated config templating** – add a sanitized `Config/config.example.yaml` and teach the builder
-   to copy/rename it by default so secrets never leak.
-2. **Optional monitor executables** – re-use PyInstaller to ship `start_server.py`,
-   `monitor_log.py`, etc., as CLI tools for hosts that do not install Python.
-3. **Installer polish** – expose destination folders, integrate with Windows Firewall prompts,
-   and optionally register scheduled tasks (nightly backups) if the operator opts in.
-4. **Smoke tests** – add a basic CI workflow that runs the builder with `--skip-stage`
-   to ensure PyInstaller stays happy as dependencies evolve.
+1. **Release artifact workflow** - publish `VeinServerManagement-Setup.exe` on GitHub Releases for each stable release tag.
+2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
+3. **Installer polish** - expose destination folders, add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
+4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.
 
 ---
 

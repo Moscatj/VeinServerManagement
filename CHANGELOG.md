@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Clarified installer usage and roadmap, added packaging requirements, and made installer builds derive their version from the release tag.
+
 ## 2.3.4 - 2026-07-02
 
 - Made `Config/config.yaml` local-only and kept `Config/config.example.yaml` as the tracked public template.

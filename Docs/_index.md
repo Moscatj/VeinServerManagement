@@ -1,6 +1,6 @@
 # 📘 Vein Server Management Suite — Documentation Index
 
-> **Version:** v2.2.1
+> **Version:** v2.3.4
 > **Maintainers:** Project contributors
 > **Purpose:** Central index for all project documentation files.
 > Start here if you’re exploring or extending the Vein Server Management system.
@@ -30,6 +30,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [coverage_strategy.md](coverage_strategy.md) — Practical coverage priorities and current baseline
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
+- [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
 
 ---
 

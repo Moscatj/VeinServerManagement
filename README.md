@@ -100,6 +100,16 @@ Do not commit `.env` files, local config files, generated runtime state, logs, b
 
 ## Running Locally
 
+There are two supported ways to use the project.
+
+For normal users, use the Windows installer from the GitHub Releases page when a packaged release is available. The installer provides:
+
+- `VeinManager.exe` for the GUI.
+- `VeinTools.exe` for command-line operations such as health checks, server start/stop, monitor control, and backups.
+- A local `Config/config.yaml` copied from the sanitized template.
+
+The repository itself is the developer/source workflow. Clone it when you want to inspect code, run tests, or build the installer locally.
+
 Install development dependencies:
 
 ```powershell
@@ -127,6 +137,34 @@ Scripts\StartAllMonitors.bat
 Scripts\Start_VeinManager.bat
 Scripts\StopServer.bat
 ```
+
+Packaged CLI examples:
+
+```powershell
+VeinTools.exe health-check
+VeinTools.exe start-server
+VeinTools.exe stop-server
+VeinTools.exe stop-all-monitors
+```
+
+## Building The Installer
+
+Packaging is Windows-focused and uses PyInstaller plus Inno Setup 6.
+
+```powershell
+py -3 -m pip install -r requirements-packaging.txt
+Scripts\BuildInstaller.bat
+```
+
+By default, `Scripts\BuildInstaller.bat` derives the installer version from the latest Git tag. Set `VEIN_PACKAGE_VERSION` to override it for a local test build. The output installer is written to:
+
+```text
+dist\installer\VeinServerManagement-Setup.exe
+```
+
+Generated installers and binaries should be published through GitHub Releases, not committed to the repository.
+
+See [Docs/packaging_overview.md](Docs/packaging_overview.md) for the full packaging workflow.
 
 ## Testing
 
