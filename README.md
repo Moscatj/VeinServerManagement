@@ -152,7 +152,7 @@ VeinTools.exe stop-all-monitors
 Packaging is Windows-focused and uses PyInstaller plus Inno Setup 6.
 
 ```powershell
-py -3.12 -m pip install -r requirements-packaging.txt
+py -3.12 -m pip install -r requirements-dev.txt -r requirements-packaging.txt
 Scripts\BuildInstaller.bat
 ```
 

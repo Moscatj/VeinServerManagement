@@ -17,6 +17,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Documented the planned multi-server profile model for hosting multiple Vein server installs from one management suite.
 - Updated GitHub Actions workflow dependencies to Node 24-compatible action versions.
 - Added a tag-triggered GitHub Actions workflow that builds the Windows installer and publishes it as a GitHub Release asset.
+- Fixed release installer builds so PyInstaller has the GUI/runtime dependencies, including PySide6, available during packaging.
 
 ## 2.3.4 - 2026-07-02
 

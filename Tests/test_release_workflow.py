@@ -34,7 +34,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         text = WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("PYTHON_BIN: python", text)
-        self.assertIn("python -m pip install -r requirements-packaging.txt", text)
+        self.assertIn(
+            "python -m pip install -r requirements-dev.txt -r requirements-packaging.txt",
+            text,
+        )
 
 
 if __name__ == "__main__":
