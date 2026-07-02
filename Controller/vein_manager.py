@@ -245,14 +245,16 @@ def _load_any_config(path: str | Path):
     txt = p.read_text(encoding="utf-8")
     suf = p.suffix.lower()
     if suf in (".yaml", ".yml"):
-        # Try ruamel in pure-Python mode first.
+        # Use round-trip mode here because the config editor needs to preserve
+        # comments and ordering. Runtime polling paths use _load_cfg_for_runtime.
         try:
             from ruamel.yaml import YAML
 
-            y = YAML(typ="safe", pure=True)
+            y = YAML(typ="rt", pure=True)
+            y.preserve_quotes = True
             doc = y.load(txt) or {}
             data = dict(doc) if isinstance(doc, dict) else {}
-            return data, "yaml", None
+            return data, "yaml", doc
         except Exception:
             pass
 
@@ -1770,8 +1772,9 @@ class Main(QtWidgets.QMainWindow):
             except Exception:
                 # fall back to raw text (do nothing)
                 new_text = self.json.toPlainText()
+        elif self._cfg_kind == "yaml":
+            new_text = _dump_any_config(self._data, "yaml")
         else:
-            # JSON: re-dump pretty
             new_text = _dump_any_config(self._data, "json")
 
         # 3) push text to the editor (this is what Save uses)

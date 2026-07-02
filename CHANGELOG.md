@@ -6,6 +6,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Fixed GUI config-row edits for YAML files so saving a single setting does not rewrite `config.yaml` as JSON.
 - Moved GUI log-monitor and crash-monitor stop waits off the Qt UI thread so monitor controls stay responsive.
 - Moved GUI shutdown command execution off the Qt UI thread so server shutdown no longer makes the window appear unresponsive.
 - Avoided comment-preserving YAML parsing in GUI runtime polling paths to prevent native YAML parser crashes during manual GUI testing.

@@ -105,6 +105,37 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
         self.assertEqual(paths["logs_dir"], Path("GameLogs"))
         self.assertEqual(paths["absolute_log_file"], Path("GameLogs/Vein.log"))
 
+    @unittest.skipUnless(vein_manager._HAVE_RUAMEL, "ruamel.yaml not installed")
+    def test_yaml_config_editor_loads_round_trip_document(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            cfg_path = Path(tmp) / "config.yaml"
+            cfg_path.write_text(
+                "# keep this comment\nserver:\n  max_players: 8\n",
+                encoding="utf-8",
+            )
+
+            data, kind, ydoc = vein_manager._load_any_config(cfg_path)
+            ydoc["server"]["max_players"] = 10
+            rendered = vein_manager._dump_any_config(data, kind, ydoc=ydoc)
+
+        self.assertEqual(kind, "yaml")
+        self.assertIsNotNone(ydoc)
+        self.assertIn("# keep this comment", rendered)
+        self.assertIn("max_players: 10", rendered)
+        self.assertFalse(rendered.lstrip().startswith("{"))
+
+    @unittest.skipUnless(vein_manager._HAVE_RUAMEL, "ruamel.yaml not installed")
+    def test_yaml_dump_without_round_trip_doc_stays_yaml(self) -> None:
+        rendered = vein_manager._dump_any_config(
+            {"server": {"max_players": 10}},
+            "yaml",
+            ydoc=None,
+        )
+
+        self.assertIn("server:", rendered)
+        self.assertIn("max_players: 10", rendered)
+        self.assertFalse(rendered.lstrip().startswith("{"))
+
 
 if __name__ == "__main__":
     unittest.main()
