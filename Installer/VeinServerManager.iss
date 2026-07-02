@@ -57,6 +57,13 @@ var
   InstallServerBox: TNewStaticText;
   InstallServer: Boolean;
 
+procedure LayoutServerChoiceControl(Control: TControl; Top: Integer);
+begin
+  Control.Left := ScaleX(0);
+  Control.Top := Top;
+  Control.Width := ServerChoicePage.SurfaceWidth;
+end;
+
 procedure UpdateServerChoiceState;
 begin
   InstallServer := InstallServerRadio.Checked;
@@ -78,26 +85,25 @@ begin
 
   InstallServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
   InstallServerRadio.Parent := ServerChoicePage.Surface;
-  InstallServerRadio.Caption :=
-    'Install or update the Vein dedicated server using SteamCMD (Windows only)';
+  InstallServerRadio.Caption := 'Install or update the dedicated server with SteamCMD';
   InstallServerRadio.Checked := False;
+  LayoutServerChoiceControl(InstallServerRadio, ScaleY(56));
   InstallServerRadio.OnClick := @ServerChoiceChanged;
 
   ExistingServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
   ExistingServerRadio.Parent := ServerChoicePage.Surface;
-  ExistingServerRadio.Caption :=
-    'Skip (I already have the dedicated server installed)';
+  ExistingServerRadio.Caption := 'Skip server install; I already have the dedicated server';
   ExistingServerRadio.Checked := True;
-  ExistingServerRadio.Top := InstallServerRadio.Top + InstallServerRadio.Height + ScaleY(8);
+  LayoutServerChoiceControl(ExistingServerRadio, InstallServerRadio.Top + InstallServerRadio.Height + ScaleY(10));
   ExistingServerRadio.OnClick := @ServerChoiceChanged;
 
   InstallServerBox := TNewStaticText.Create(ServerChoicePage.Surface);
   InstallServerBox.Parent := ServerChoicePage.Surface;
   InstallServerBox.Caption :=
-    'The installer can optionally download SteamCMD from Valve and install app {#SteamAppId}.';
+    'Optional: download SteamCMD from Valve and install app {#SteamAppId}.';
   InstallServerBox.AutoSize := False;
-  InstallServerBox.Width := ServerChoicePage.SurfaceWidth;
-  InstallServerBox.Top := ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(8);
+  InstallServerBox.Height := ScaleY(40);
+  LayoutServerChoiceControl(InstallServerBox, ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(16));
 
   ServerDirPage := CreateInputDirPage(
     ServerChoicePage.ID,
