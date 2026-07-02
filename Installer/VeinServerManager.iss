@@ -40,6 +40,7 @@ Name: "{app}\Backups"; Permissions: users-modify
 Name: "{app}\Config"; Permissions: users-modify
 Name: "{app}\Logs"; Permissions: users-modify
 Name: "{app}\Runtime"; Permissions: users-modify
+Name: "{app}\SteamCMD"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\Vein Server Manager"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"
@@ -115,7 +116,7 @@ begin
     ServerChoicePage.ID,
     'Server Install Location',
     'Choose where the Vein dedicated server is or should be installed.',
-    'Select the server root folder. It should contain Vein\Binaries\Win64 after the dedicated server is installed.',
+    'Select the server root folder. Choose the parent folder that contains Vein\Binaries\Win64, not the Vein folder itself.',
     False,
     ''
   );
@@ -131,13 +132,29 @@ end;
 
 function ValidateServerDir: Boolean;
 var
-  ServerDir, ExeA, ExeB: string;
+  ServerDir, ExeA, ExeB, NestedExeA, NestedExeB: string;
 begin
   Result := True;
   ServerDir := ServerDirPage.Values[0];
   if ServerDir = '' then
   begin
     MsgBox('Please choose the dedicated server root folder.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  NestedExeA := AddBackslash(ServerDir) + 'Binaries\Win64\VeinServer.exe';
+  NestedExeB := AddBackslash(ServerDir) + 'Binaries\Win64\VeinServer-Win64-Test.exe';
+  if FileExists(NestedExeA) or FileExists(NestedExeB) then
+  begin
+    MsgBox(
+      'The selected folder appears to be the inner Vein game folder.'#13#10#13#10 +
+      'Choose its parent folder instead. For example, choose:'#13#10 +
+      ExtractFileDir(ServerDir) + #13#10#13#10 +
+      'The management suite expects the server root to contain Vein\Binaries\Win64.',
+      mbError,
+      MB_OK
+    );
     Result := False;
     exit;
   end;
@@ -262,7 +279,7 @@ begin
   if ServerDir = '' then
     exit;
   ForceDirectories(ServerDir);
-  SteamCmdDir := AddBackslash(ServerDir) + 'SteamCMD';
+  SteamCmdDir := ExpandConstant('{app}\SteamCMD');
   ForceDirectories(SteamCmdDir);
 
   TempZip := ExpandConstant('{tmp}\steamcmd.zip');

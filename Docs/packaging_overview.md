@@ -105,9 +105,27 @@ Installer responsibilities:
 - Create Start Menu/Desktop shortcuts (`VeinManager`, docs, log folder)
 - Create writable app-owned `Config\`, `Logs\`, `Backups\`, and `Runtime\` folders
 - Ask whether to install/update the dedicated server with SteamCMD or use an existing server folder
+- Store SteamCMD in the management app folder, separate from the dedicated server install folder
 - Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
+- Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
 - Register an uninstaller entry in Add/Remove Programs
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
+
+Recommended folder layout:
+
+```text
+C:\Program Files\VeinServerManagement\
+|-- VeinManager.exe
+|-- VeinTools.exe
+`-- SteamCMD\
+    `-- steamcmd.exe
+
+D:\VeinServer\
+`-- Vein\
+    `-- Binaries\
+        `-- Win64\
+            `-- VeinServer.exe
+```
 
 ---
 

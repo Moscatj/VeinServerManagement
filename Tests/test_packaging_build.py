@@ -26,7 +26,7 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_grants_modify_permissions_to_writable_app_dirs(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        for folder in ("Backups", "Config", "Logs", "Runtime"):
+        for folder in ("Backups", "Config", "Logs", "Runtime", "SteamCMD"):
             self.assertIn(f'Name: "{{app}}\\{folder}"; Permissions: users-modify', text)
 
     def test_installer_excludes_runtime_folder_contents(self) -> None:
@@ -48,6 +48,19 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("'Vein\\Binaries\\Win64\\VeinServer.exe'", text)
         self.assertIn("'Vein\\Binaries\\Win64\\VeinServer-Win64-Test.exe'", text)
         self.assertIn("'Use this folder anyway?'", text)
+
+    def test_installer_keeps_steamcmd_out_of_server_root(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("SteamCmdDir := ExpandConstant('{app}\\SteamCMD');", text)
+        self.assertNotIn("SteamCmdDir := AddBackslash(ServerDir) + 'SteamCMD';", text)
+
+    def test_installer_rejects_inner_vein_folder_selection(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("'Binaries\\Win64\\VeinServer.exe'", text)
+        self.assertIn("'The selected folder appears to be the inner Vein game folder.'", text)
+        self.assertIn("'Choose its parent folder instead. For example, choose:'", text)
 
     def test_copy_config_dir_stages_example_as_runtime_config(self) -> None:
         module = _load_build_module()
