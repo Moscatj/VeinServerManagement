@@ -6,8 +6,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.3.4 - 2026-07-02
+
 - Made `Config/config.yaml` local-only and kept `Config/config.example.yaml` as the tracked public template.
 - Disabled Steam updates by default in the public example config until SteamCMD is configured.
+
+## Earlier 2.3.x Changes
+
 - Fixed GUI config-row edits for YAML files so saving a single setting does not rewrite `config.yaml` as JSON.
 - Moved GUI log-monitor and crash-monitor stop waits off the Qt UI thread so monitor controls stay responsive.
 - Moved GUI shutdown command execution off the Qt UI thread so server shutdown no longer makes the window appear unresponsive.
