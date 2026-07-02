@@ -143,6 +143,72 @@ class GuiControllerTests(unittest.TestCase):
         start.assert_called_once()
         owner._status.assert_called_once_with("Server stop requested; waiting for shutdown script.")
 
+    def test_process_controller_stop_log_monitor_runs_off_gui_thread(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            pid = base / "log_monitor.pid"
+            stop_flag = base / "stop_log_monitor.flag"
+            owner = mock.Mock()
+            owner.config_path = str(base / "config.yaml")
+            owner._status = mock.Mock()
+            wait_for_exit = mock.Mock(return_value=True)
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "python",
+                resolved_paths=lambda: {},
+                rt_paths=lambda _: {"pid_log": pid, "stop_log": stop_flag},
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=mock.Mock(),
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=wait_for_exit,
+                ctrl_dir=base,
+            )
+            with mock.patch.object(controller._pool, "start") as start:
+                controller.stop_lm()
+
+        wait_for_exit.assert_not_called()
+        start.assert_called_once()
+        controller._mkflag.assert_called_once_with(stop_flag)
+        owner._status.assert_called_once_with("Stopping Log Monitor; waiting for monitor exit.")
+
+    def test_process_controller_stop_monitors_report_completion_from_worker(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            pid_log = base / "log_monitor.pid"
+            pid_crash = base / "crash_monitor.pid"
+            owner = mock.Mock()
+            owner.config_path = str(base / "config.yaml")
+            owner._status = mock.Mock()
+            wait_for_exit = mock.Mock(return_value=True)
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "python",
+                resolved_paths=lambda: {},
+                rt_paths=lambda _: {
+                    "pid_log": pid_log,
+                    "stop_log": base / "stop_log_monitor.flag",
+                    "pid_crash": pid_crash,
+                    "stop_crash": base / "stop_crash_monitor.flag",
+                },
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=mock.Mock(),
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=wait_for_exit,
+                ctrl_dir=base,
+            )
+            with mock.patch.object(controller._pool, "start", side_effect=lambda worker: worker.run()):
+                controller.stop_lm()
+                controller.stop_cm()
+
+        wait_for_exit.assert_any_call(pid_log, timeout_sec=20)
+        wait_for_exit.assert_any_call(pid_crash, timeout_sec=30)
+        owner._status.assert_any_call("Log Monitor stopped.")
+        owner._status.assert_any_call("Crash Monitor stopped.")
+
 
 if __name__ == "__main__":
     unittest.main()

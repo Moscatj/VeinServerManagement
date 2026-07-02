@@ -48,6 +48,53 @@ class RunOnceWorker(QtCore.QRunnable):
             self.signals.failed.emit(str(exc))
 
 
+class StopMonitorWorker(QtCore.QRunnable):
+    class Signals(QtCore.QObject):
+        status = QtCore.Signal(str)
+
+    def __init__(
+        self,
+        *,
+        monitor_name: str,
+        pid_file: Path,
+        wait_for_monitor_exit: Callable[[Path, int], bool],
+        fallback_command: str,
+        fallback_cwd: Path,
+        run_once: Callable[..., tuple[int, str, str]],
+        initial_timeout: int,
+        fallback_timeout: int = 10,
+    ) -> None:
+        super().__init__()
+        self.monitor_name = monitor_name
+        self.pid_file = pid_file
+        self.wait_for_monitor_exit = wait_for_monitor_exit
+        self.fallback_command = fallback_command
+        self.fallback_cwd = fallback_cwd
+        self.run_once = run_once
+        self.initial_timeout = initial_timeout
+        self.fallback_timeout = fallback_timeout
+        self.signals = self.Signals()
+
+    def run(self) -> None:
+        if self.wait_for_monitor_exit(self.pid_file, timeout_sec=self.initial_timeout):
+            self.signals.status.emit(f"{self.monitor_name} stopped.")
+            return
+        try:
+            self.run_once(
+                self.fallback_command,
+                self.fallback_cwd,
+                timeout=self.fallback_timeout,
+            )
+        except Exception:
+            pass
+        if not self.wait_for_monitor_exit(self.pid_file, timeout_sec=self.fallback_timeout):
+            self.signals.status.emit(
+                f"{self.monitor_name} stop requested; process still running."
+            )
+            return
+        self.signals.status.emit(f"{self.monitor_name} stop requested.")
+
+
 class ProcessController:
     def __init__(
         self,
@@ -172,22 +219,15 @@ class ProcessController:
     def stop_lm(self) -> None:
         rp = self._rt_paths(self.owner.config_path)
         self._mkflag(rp["stop_log"])
-        self.owner._status("Stopping Log Monitor.")
-        if self._wait_for_monitor_exit(rp["pid_log"], timeout_sec=20):
-            self.owner._status("Log Monitor stopped.")
-            return
-        try:
-            self._run_once(
-                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');from Tools import monitors;monitors.stop_log_monitor();print('OK')\"",
-                self._ctrl_dir,
-                timeout=10,
-            )
-        except Exception:
-            pass
-        if not self._wait_for_monitor_exit(rp["pid_log"], timeout_sec=10):
-            self.owner._status("Log Monitor stop requested; process still running.")
-            return
-        self.owner._status("Log Monitor stop requested.")
+        self._stop_monitor_async(
+            monitor_name="Log Monitor",
+            pid_file=rp["pid_log"],
+            fallback_command=(
+                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
+                "from Tools import monitors;monitors.stop_log_monitor();print('OK')\""
+            ),
+            initial_timeout=20,
+        )
 
     def start_cm(self) -> None:
         paths = self._resolved_paths()
@@ -215,19 +255,40 @@ class ProcessController:
     def stop_cm(self) -> None:
         rp = self._rt_paths(self.owner.config_path)
         self._mkflag(rp["stop_crash"])
-        self.owner._status("Stopping Crash Monitor.")
-        if self._wait_for_monitor_exit(rp["pid_crash"], timeout_sec=30):
-            self.owner._status("Crash Monitor stopped.")
-            return
-        try:
-            self._run_once(
-                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');from Tools import monitors;monitors.stop_crash_monitor();print('OK')\"",
-                self._ctrl_dir,
-                timeout=10,
-            )
-        except Exception:
-            pass
-        if not self._wait_for_monitor_exit(rp["pid_crash"], timeout_sec=10):
-            self.owner._status("Crash Monitor stop requested; process still running.")
-            return
-        self.owner._status("Crash Monitor stop requested.")
+        self._stop_monitor_async(
+            monitor_name="Crash Monitor",
+            pid_file=rp["pid_crash"],
+            fallback_command=(
+                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
+                "from Tools import monitors;monitors.stop_crash_monitor();print('OK')\""
+            ),
+            initial_timeout=30,
+        )
+
+    def _stop_monitor_async(
+        self,
+        *,
+        monitor_name: str,
+        pid_file: Path,
+        fallback_command: str,
+        initial_timeout: int,
+    ) -> None:
+        worker = StopMonitorWorker(
+            monitor_name=monitor_name,
+            pid_file=pid_file,
+            wait_for_monitor_exit=self._wait_for_monitor_exit,
+            fallback_command=fallback_command,
+            fallback_cwd=self._ctrl_dir,
+            run_once=self._run_once,
+            initial_timeout=initial_timeout,
+        )
+        self._workers.append(worker)
+
+        def status(message: str) -> None:
+            if worker in self._workers:
+                self._workers.remove(worker)
+            self.owner._status(message)
+
+        worker.signals.status.connect(status)
+        self.owner._status(f"Stopping {monitor_name}; waiting for monitor exit.")
+        self._pool.start(worker)
