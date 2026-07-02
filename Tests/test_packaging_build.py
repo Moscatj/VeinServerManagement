@@ -49,6 +49,21 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn('StatusMsg: "Stopping Vein server and monitors..."', text)
         self.assertIn('RunOnceId: "VeinServerManagement.UninstallCleanup"', text)
 
+    def test_uninstaller_preserves_external_server_roots(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function IsPathInsideApp(const Value: string): Boolean;", text)
+        self.assertIn("Candidate <> AppRoot", text)
+        self.assertIn("The Vein dedicated server folder is outside the app install folder and will not be removed", text)
+
+    def test_uninstaller_requires_explicit_opt_in_for_app_managed_server_delete(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Deleting it can permanently remove world saves, logs, SteamCMD data, and server files.", text)
+        self.assertIn("Choose No to preserve all server data.", text)
+        self.assertIn("MB_YESNO or MB_DEFBUTTON2", text)
+        self.assertIn("DelTree(AppManagedServerDir, True, True, True);", text)
+
     def test_installer_configures_existing_server_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 

@@ -68,6 +68,8 @@ var
   ServerDirPage: TInputDirWizardPage;
   InstallServerBox: TNewStaticText;
   InstallServer: Boolean;
+  RemoveAppManagedServer: Boolean;
+  AppManagedServerDir: string;
 
 procedure LayoutServerChoiceControl(Control: TControl; Top: Integer);
 begin
@@ -239,6 +241,39 @@ begin
   StringChangeEx(Content, Needle, InsertValue, False);
 end;
 
+function NormalizePathForCompare(const Value: string): string;
+begin
+  Result := Lowercase(Trim(Value));
+  StringChangeEx(Result, '/', '\', True);
+  while (Length(Result) > 3) and (Copy(Result, Length(Result), 1) = '\') do
+    Delete(Result, Length(Result), 1);
+end;
+
+function IsPathInsideApp(const Value: string): Boolean;
+var
+  AppRoot, Candidate: string;
+begin
+  AppRoot := NormalizePathForCompare(ExpandConstant('{app}'));
+  Candidate := NormalizePathForCompare(Value);
+  Result :=
+    (Candidate <> '') and
+    (Candidate <> AppRoot) and
+    (Pos(AppRoot + '\', Candidate) = 1);
+end;
+
+function LoadInstalledServerPath(var ServerDir: string): Boolean;
+var
+  RawContent: AnsiString;
+begin
+  Result := False;
+  ServerDir := '';
+  if LoadStringFromFile(ExpandConstant('{app}\Runtime\server_install_path.txt'), RawContent) then
+  begin
+    ServerDir := Trim(RawContent);
+    Result := ServerDir <> '';
+  end;
+end;
+
 procedure UpdateConfigPaths(const ServerDir, SteamCmdExe: string);
 var
   RawContent: AnsiString;
@@ -355,5 +390,51 @@ begin
       InstallDedicatedServer
     else
       ConfigureExistingServer;
+  end;
+end;
+
+function InitializeUninstall(): Boolean;
+var
+  ServerDir: string;
+begin
+  Result := True;
+  RemoveAppManagedServer := False;
+  AppManagedServerDir := '';
+
+  if LoadInstalledServerPath(ServerDir) then
+  begin
+    if IsPathInsideApp(ServerDir) then
+    begin
+      AppManagedServerDir := ServerDir;
+      RemoveAppManagedServer :=
+        MsgBox(
+          'The Vein dedicated server appears to be installed inside the app folder:'#13#10#13#10 +
+          ServerDir + #13#10#13#10 +
+          'Deleting it can permanently remove world saves, logs, SteamCMD data, and server files.'#13#10#13#10 +
+          'Choose No to preserve all server data.'#13#10#13#10 +
+          'Delete the app-managed Vein dedicated server folder too?',
+          mbCriticalError,
+          MB_YESNO or MB_DEFBUTTON2
+        ) = IDYES;
+    end
+    else
+    begin
+      MsgBox(
+        'The Vein dedicated server folder is outside the app install folder and will not be removed:'#13#10#13#10 +
+        ServerDir + #13#10#13#10 +
+        'The uninstaller will remove the management app only after stopping monitors/server processes.',
+        mbInformation,
+        MB_OK
+      );
+    end;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and RemoveAppManagedServer and (AppManagedServerDir <> '') then
+  begin
+    Log('Removing app-managed Vein dedicated server folder: ' + AppManagedServerDir);
+    DelTree(AppManagedServerDir, True, True, True);
   end;
 end;

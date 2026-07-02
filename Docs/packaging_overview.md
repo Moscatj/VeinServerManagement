@@ -110,6 +110,7 @@ Installer responsibilities:
 - Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
 - Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
 - Run a best-effort uninstall cleanup that stops log/crash monitors first and then performs a controlled server shutdown only when a Vein server process is running
+- Preserve external Vein dedicated server installs by default. If the recorded server root is inside the app install folder, the uninstaller offers an explicit opt-in deletion prompt with save-loss warnings and defaults to preserving data.
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
 Recommended folder layout:
@@ -127,6 +128,12 @@ D:\VeinServer\
         `-- Win64\
             `-- VeinServer.exe
 ```
+
+Uninstall behavior:
+
+- The uninstaller stops management monitors and shuts down a running Vein server before removing app files.
+- Server roots outside the app folder, such as `D:\VeinServer` or `G:\Servers\VeinServer`, are preserved.
+- Server roots inside the app folder can be deleted only after an explicit warning prompt. The default answer preserves saves and server data.
 
 ---
 
