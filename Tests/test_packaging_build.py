@@ -49,6 +49,13 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn('StatusMsg: "Stopping Vein server and monitors..."', text)
         self.assertIn('RunOnceId: "VeinServerManagement.UninstallCleanup"', text)
 
+    def test_installer_server_choice_controls_have_explicit_heights(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("InstallServerRadio.Height := ScaleY(26);", text)
+        self.assertIn("ExistingServerRadio.Height := ScaleY(26);", text)
+        self.assertIn("InstallServerBox.Height := ScaleY(56);", text)
+
     def test_uninstaller_preserves_external_server_roots(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 

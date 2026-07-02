@@ -102,6 +102,7 @@ begin
   InstallServerRadio.Caption := 'Install or update the dedicated server with SteamCMD';
   InstallServerRadio.Checked := False;
   LayoutServerChoiceControl(InstallServerRadio, ScaleY(56));
+  InstallServerRadio.Height := ScaleY(26);
   InstallServerRadio.OnClick := @ServerChoiceChanged;
 
   ExistingServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
@@ -109,6 +110,7 @@ begin
   ExistingServerRadio.Caption := 'Use an existing dedicated server folder';
   ExistingServerRadio.Checked := True;
   LayoutServerChoiceControl(ExistingServerRadio, InstallServerRadio.Top + InstallServerRadio.Height + ScaleY(10));
+  ExistingServerRadio.Height := ScaleY(26);
   ExistingServerRadio.OnClick := @ServerChoiceChanged;
 
   InstallServerBox := TNewStaticText.Create(ServerChoicePage.Surface);
@@ -116,8 +118,8 @@ begin
   InstallServerBox.Caption :=
     'Choose an existing server folder, or let the installer download SteamCMD and install app {#SteamAppId}.';
   InstallServerBox.AutoSize := False;
-  InstallServerBox.Height := ScaleY(40);
   LayoutServerChoiceControl(InstallServerBox, ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(16));
+  InstallServerBox.Height := ScaleY(56);
 
   ServerDirPage := CreateInputDirPage(
     ServerChoicePage.ID,
