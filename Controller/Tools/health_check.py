@@ -280,8 +280,22 @@ def check_server_executable(cfg: Mapping[str, Any]) -> HealthCheckResult:
 
 
 def check_steamcmd(cfg: Mapping[str, Any]) -> HealthCheckResult:
+    features = cfg.get("features")
+    steam_updates_enabled = True
+    if isinstance(features, Mapping):
+        steam_updates_enabled = bool(features.get("enable_steam_update", True))
+
+    auto_update_on_start = bool(cfg.get("auto_update_on_start", True))
     steamcmd = str(cfg.get("steamcmd_path") or "").strip()
     if not steamcmd:
+        if not steam_updates_enabled:
+            return HealthCheckResult("steam.steamcmd", "PASS", "SteamCMD path is not set; Steam updates are disabled.")
+        if not auto_update_on_start:
+            return HealthCheckResult(
+                "steam.steamcmd",
+                "PASS",
+                "SteamCMD path is not set; startup Steam updates are disabled.",
+            )
         return HealthCheckResult("steam.steamcmd", "WARN", "SteamCMD path is not set.")
 
     path = Path(steamcmd).expanduser()

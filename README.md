@@ -91,6 +91,9 @@ discord:
 
 steam:
   steamcmd_path: "ENV:STEAMCMD_PATH"
+  auto_update_on_start: false
+features:
+  enable_steam_update: false
 ```
 
 Do not commit `.env` files, local config files, generated runtime state, logs, backups, or user-account files.

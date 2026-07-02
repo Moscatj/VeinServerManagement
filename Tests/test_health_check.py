@@ -137,6 +137,28 @@ class HealthCheckTests(unittest.TestCase):
 
         self.assertEqual(result.status, "PASS")
 
+    def test_steamcmd_missing_path_passes_when_steam_updates_disabled(self) -> None:
+        result = health_check.check_steamcmd(
+            {
+                "steamcmd_path": "",
+                "features": {"enable_steam_update": False},
+            }
+        )
+
+        self.assertEqual(result.status, "PASS")
+        self.assertIn("disabled", result.message)
+
+    def test_steamcmd_missing_path_passes_when_startup_updates_disabled(self) -> None:
+        result = health_check.check_steamcmd(
+            {
+                "steamcmd_path": "",
+                "auto_update_on_start": False,
+            }
+        )
+
+        self.assertEqual(result.status, "PASS")
+        self.assertIn("startup Steam updates are disabled", result.message)
+
     def test_json_main_reports_failures_with_nonzero_exit(self) -> None:
         result = health_check.HealthCheckResult("example", "FAIL", "bad")
         with mock.patch.object(health_check, "run_health_checks", return_value=[result]), mock.patch(

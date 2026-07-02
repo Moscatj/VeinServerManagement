@@ -120,7 +120,7 @@ See [management_logs.md](management_logs.md) for the full layout, archive behavi
 
 - auto_update_on_start  
   • Run SteamCMD before launch.  
-  • Current: true
+  • Current: false
 
 - steam_update_validate  
   • Use `validate` during update.  
@@ -238,7 +238,7 @@ See [management_logs.md](management_logs.md) for the full layout, archive behavi
 ## Feature Flags (features.*)
 
 - enable_backups → false  
-- enable_steam_update → true  
+- enable_steam_update → false
 - enable_crash_monitor → true  
 - enable_log_monitor → true  
 - log_monitor_auto_restart → true

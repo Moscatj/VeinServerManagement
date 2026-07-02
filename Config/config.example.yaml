@@ -82,7 +82,7 @@ lifecycle:
 steam:
   steamcmd_path: "ENV:STEAMCMD_PATH"
   app_id: 2131400
-  auto_update_on_start: true
+  auto_update_on_start: false
   steam_update_validate: true
   steam_update_beta: ""
   steam_update_beta_password: ""
@@ -232,6 +232,7 @@ discord:
           enabled: true
 
 features:
+  enable_steam_update: false
   enable_log_monitor: true
   enable_crash_monitor: true
 
