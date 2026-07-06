@@ -232,6 +232,13 @@ begin
   Result := Result and (ResultCode = 0);
 end;
 
+function PowerShellQuote(const Value: string): string;
+begin
+  Result := Value;
+  StringChangeEx(Result, '''', '''''', True);
+  Result := '''' + Result + '''';
+end;
+
 function NormalizePathForYaml(const Value: string): string;
 begin
   Result := Value;
@@ -331,8 +338,9 @@ begin
 
   SetStatus('Downloading SteamCMD from Valve...');
   DownloadCmd :=
-    '$ProgressPreference="SilentlyContinue"; Invoke-WebRequest -UseBasicParsing -Uri "{#SteamCmdUrl}" -OutFile "' + TempZip + '"; ' +
-    'if ((Get-Item "' + TempZip + '").Length -lt 1024) { throw "Downloaded SteamCMD archive is too small." }';
+    '$ProgressPreference=''SilentlyContinue''; ' +
+    'Invoke-WebRequest -UseBasicParsing -Uri ' + PowerShellQuote('{#SteamCmdUrl}') + ' -OutFile ' + PowerShellQuote(TempZip) + '; ' +
+    'if ((Get-Item ' + PowerShellQuote(TempZip) + ').Length -lt 1024) { throw ''Downloaded SteamCMD archive is too small.'' }';
   if not RunPowerShell(DownloadCmd) or (not FileExists(TempZip)) then
   begin
     MsgBox('Failed to download SteamCMD. Check your internet connection and try again.', mbError, MB_OK);
@@ -342,7 +350,7 @@ begin
   SetStatus('Extracting SteamCMD...');
   ExtractCmd :=
     'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
-    '[System.IO.Compression.ZipFile]::ExtractToDirectory("' + TempZip + '", "' + ExtractDir + '")';
+    '[System.IO.Compression.ZipFile]::ExtractToDirectory(' + PowerShellQuote(TempZip) + ', ' + PowerShellQuote(ExtractDir) + ')';
   ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';
   if (not RunPowerShell(ExtractCmd)) or (not FileExists(ExtractedSteamCmdExe)) then
   begin

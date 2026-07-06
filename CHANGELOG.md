@@ -20,6 +20,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Fixed release installer builds so PyInstaller has the GUI/runtime dependencies, including PySide6, available during packaging.
 - Hardened SteamCMD installer extraction by validating the downloaded archive and extracting to a temporary folder before copying `steamcmd.exe` into the app folder.
 - Fixed SteamCMD extraction by letting the ZIP extractor create its temporary destination folder.
+- Fixed SteamCMD installer PowerShell quoting so download and extraction paths are passed safely from Inno Setup.
 
 ## 2.3.4 - 2026-07-02
 
