@@ -340,7 +340,6 @@ begin
   end;
 
   SetStatus('Extracting SteamCMD...');
-  ForceDirectories(ExtractDir);
   ExtractCmd :=
     'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
     '[System.IO.Compression.ZipFile]::ExtractToDirectory("' + TempZip + '", "' + ExtractDir + '")';

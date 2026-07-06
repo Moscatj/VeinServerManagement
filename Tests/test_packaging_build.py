@@ -99,6 +99,7 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("[System.IO.Compression.ZipFile]::ExtractToDirectory", text)
         self.assertIn("ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';", text)
         self.assertIn("CopyFile(ExtractedSteamCmdExe, AddBackslash(SteamCmdDir) + 'steamcmd.exe', False);", text)
+        self.assertNotIn("ForceDirectories(ExtractDir);", text)
         self.assertNotIn("Expand-Archive -Path", text)
 
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
