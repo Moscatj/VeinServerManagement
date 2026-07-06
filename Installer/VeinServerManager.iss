@@ -18,7 +18,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={commonpf}\VeinServerManagement
 DefaultGroupName={#MyAppName}
 OutputDir=..\dist\installer
-OutputBaseFilename=VeinServerManagement-Setup
+OutputBaseFilename=VeinServerManagement-Setup-v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
@@ -371,7 +371,7 @@ begin
   SteamCmdLog := ExpandConstant('{app}\Logs\steamcmd-install.log');
   DeleteFile(SteamCmdLog);
   InstallCmd :=
-    '/C ""' + SteamCmdExe + '" +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} validate +quit > "' + SteamCmdLog + '" 2>&1"';
+    '/C ""' + SteamCmdExe + '" +@sSteamCmdForcePlatformType windows +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} -beta public validate +quit > "' + SteamCmdLog + '" 2>&1"';
   if not Exec(
     ExpandConstant('{cmd}'),
     InstallCmd,
@@ -381,13 +381,16 @@ begin
     ResultCode
   ) or (ResultCode <> 0) then
   begin
+    UpdateConfigPaths(ServerDir, SteamCmdExe);
+    SaveServerInstallPath(ServerDir);
     MsgBox(
-      'SteamCMD installation failed.'#13#10#13#10 +
+      'The management app was installed, but SteamCMD could not download the VEIN dedicated server.'#13#10#13#10 +
+      'You can continue by choosing an existing server folder or rerunning the server install later.'#13#10#13#10 +
       'Installer log:'#13#10 +
       SteamCmdLog + #13#10#13#10 +
       'SteamCMD internal logs:'#13#10 +
       AddBackslash(SteamCmdDir) + 'logs',
-      mbError,
+      mbInformation,
       MB_OK
     );
     exit;

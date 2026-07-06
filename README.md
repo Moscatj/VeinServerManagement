@@ -161,11 +161,11 @@ Python 3.11 or 3.12 is recommended for packaging; Python 3.13 may be unreliable 
 By default, `Scripts\BuildInstaller.bat` derives the installer version from the latest Git tag. Set `VEIN_PACKAGE_VERSION` to override it for a local test build. The output installer is written to:
 
 ```text
-dist\installer\VeinServerManagement-Setup.exe
+dist\installer\VeinServerManagement-Setup-vX.Y.Z.exe
 ```
 
 Generated installers and binaries should be published through GitHub Releases, not committed to the repository.
-Release tags run the installer workflow and attach `VeinServerManagement-Setup.exe` to the GitHub Release.
+Release tags run the installer workflow and attach a versioned installer, such as `VeinServerManagement-Setup-v2.3.12.exe`, to the GitHub Release.
 
 See [Docs/packaging_overview.md](Docs/packaging_overview.md) for the full packaging workflow.
 

@@ -87,7 +87,7 @@ helpers and runtime directories without additional configuration.
 ## 3. Installer plan (Inno Setup)
 
 An initial Inno Setup script lives at `Installer/VeinServerManager.iss`. Run it after
-staging the bundle to produce `VeinServerManager-Setup.exe`.
+staging the bundle to produce a versioned installer executable.
 
 Workflow:
 
@@ -97,14 +97,14 @@ Workflow:
 4. The build script stages the PyInstaller bundle, compiles the Inno installer, and passes the latest Git tag as `MyAppVersion`.
 5. Set `PYTHON_BIN` to choose the packaging runtime, for example `set "PYTHON_BIN=py -3.12"`.
 6. Set `VEIN_PACKAGE_VERSION` to override the installer version for local test builds.
-7. Output goes to `dist/installer/VeinServerManagement-Setup.exe`.
+7. Output goes to `dist/installer/VeinServerManagement-Setup-vX.Y.Z.exe`.
 
 GitHub release workflow:
 
 - `.github/workflows/release-installer.yml` runs on `vMAJOR.MINOR.PATCH` tags.
 - The workflow builds the PyInstaller bundle, compiles the Inno Setup installer,
   uploads the installer as an Actions artifact, and attaches
-  `VeinServerManagement-Setup.exe` to the GitHub Release.
+  a versioned installer such as `VeinServerManagement-Setup-v2.3.12.exe` to the GitHub Release.
 - Manual `workflow_dispatch` runs build a temporary Actions artifact without
   publishing a release asset.
 
@@ -148,7 +148,7 @@ Uninstall behavior:
 
 ## 4. Roadmap / Next Steps
 
-1. **Release artifact workflow** - publish `VeinServerManagement-Setup.exe` on GitHub Releases for each stable release tag.
+1. **Release artifact workflow** - publish versioned installer executables on GitHub Releases for each stable release tag.
 2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
 3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
 4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.

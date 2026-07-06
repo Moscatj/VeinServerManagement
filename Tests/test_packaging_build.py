@@ -34,6 +34,11 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*"', text)
 
+    def test_installer_filename_includes_version(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("OutputBaseFilename=VeinServerManagement-Setup-v{#MyAppVersion}", text)
+
     def test_installer_moves_default_uninstaller_files_out_of_app_root(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
@@ -112,6 +117,16 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn('> "\' + SteamCmdLog + \'" 2>&1"', text)
         self.assertIn("SteamCMD internal logs:", text)
         self.assertIn("AddBackslash(SteamCmdDir) + 'logs'", text)
+
+    def test_installer_uses_explicit_steamcmd_platform_and_preserves_config_on_failure(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("+@sSteamCmdForcePlatformType windows", text)
+        self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
+        self.assertIn("The management app was installed, but SteamCMD could not download", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
+        self.assertIn("SaveServerInstallPath(ServerDir);", text)
+        self.assertIn("mbInformation", text)
 
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

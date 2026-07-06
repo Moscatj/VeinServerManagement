@@ -22,6 +22,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Fixed SteamCMD extraction by letting the ZIP extractor create its temporary destination folder.
 - Fixed SteamCMD installer PowerShell quoting so download and extraction paths are passed safely from Inno Setup.
 - Captured installer-run SteamCMD output to `Logs\steamcmd-install.log` and included SteamCMD log paths in failure messages.
+- Added the release version to generated installer filenames and GitHub Release assets.
+- Made installer-run SteamCMD requests explicit for the Windows public branch and preserved installed config/logs when SteamCMD cannot download the dedicated server.
 
 ## 2.3.4 - 2026-07-02
 

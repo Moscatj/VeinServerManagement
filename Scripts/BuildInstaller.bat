@@ -57,7 +57,7 @@ if not defined ISCC_BIN (
 if errorlevel 1 goto :error
 
 echo(
-echo [SUCCESS] Installer available in dist\installer\VeinServerManagement-Setup.exe
+echo [SUCCESS] Installer available in dist\installer\VeinServerManagement-Setup-v%PACKAGE_VERSION%.exe
 goto :done
 
 :error

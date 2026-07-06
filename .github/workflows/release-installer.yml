@@ -42,12 +42,12 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
-          name: VeinServerManagement-Setup
-          path: dist/installer/VeinServerManagement-Setup.exe
+          name: VeinServerManagement-Setup-${{ github.ref_name }}
+          path: dist/installer/VeinServerManagement-Setup-v*.exe
           if-no-files-found: error
 
       - name: Publish installer to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/installer/VeinServerManagement-Setup.exe
+          files: dist/installer/VeinServerManagement-Setup-v*.exe

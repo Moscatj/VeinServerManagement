@@ -39,6 +39,18 @@ class ReleaseWorkflowTests(unittest.TestCase):
             text,
         )
 
+    def test_release_installer_workflow_uploads_versioned_installer_name(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        build_script = BUILD_INSTALLER.read_text(encoding="utf-8")
+
+        self.assertIn("name: VeinServerManagement-Setup-${{ github.ref_name }}", workflow)
+        self.assertIn("path: dist/installer/VeinServerManagement-Setup-v*.exe", workflow)
+        self.assertIn("files: dist/installer/VeinServerManagement-Setup-v*.exe", workflow)
+        self.assertIn(
+            "VeinServerManagement-Setup-v%PACKAGE_VERSION%.exe",
+            build_script,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
