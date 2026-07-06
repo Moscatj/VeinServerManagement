@@ -314,7 +314,7 @@ end;
 
 procedure InstallDedicatedServer;
 var
-  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, DownloadCmd, ExtractCmd, InstallCmd: string;
+  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, DownloadCmd, ExtractCmd, InstallCmd: string;
   ResultCode: Integer;
 begin
   ServerDir := ServerDirPage.Values[0];
@@ -325,11 +325,14 @@ begin
   ForceDirectories(SteamCmdDir);
 
   TempZip := ExpandConstant('{tmp}\steamcmd.zip');
+  ExtractDir := ExpandConstant('{tmp}\steamcmd_extract');
   DeleteFile(TempZip);
+  DelTree(ExtractDir, True, True, True);
 
   SetStatus('Downloading SteamCMD from Valve...');
   DownloadCmd :=
-    '$ProgressPreference="SilentlyContinue"; Invoke-WebRequest -Uri "{#SteamCmdUrl}" -OutFile "' + TempZip + '"';
+    '$ProgressPreference="SilentlyContinue"; Invoke-WebRequest -UseBasicParsing -Uri "{#SteamCmdUrl}" -OutFile "' + TempZip + '"; ' +
+    'if ((Get-Item "' + TempZip + '").Length -lt 1024) { throw "Downloaded SteamCMD archive is too small." }';
   if not RunPowerShell(DownloadCmd) or (not FileExists(TempZip)) then
   begin
     MsgBox('Failed to download SteamCMD. Check your internet connection and try again.', mbError, MB_OK);
@@ -337,12 +340,18 @@ begin
   end;
 
   SetStatus('Extracting SteamCMD...');
-  ExtractCmd := 'Expand-Archive -Path "' + TempZip + '" -DestinationPath "' + SteamCmdDir + '" -Force';
-  if not RunPowerShell(ExtractCmd) then
+  ForceDirectories(ExtractDir);
+  ExtractCmd :=
+    'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
+    '[System.IO.Compression.ZipFile]::ExtractToDirectory("' + TempZip + '", "' + ExtractDir + '")';
+  ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';
+  if (not RunPowerShell(ExtractCmd)) or (not FileExists(ExtractedSteamCmdExe)) then
   begin
-    MsgBox('Failed to extract SteamCMD archive.', mbError, MB_OK);
+    MsgBox('Failed to extract SteamCMD archive. The download may be blocked, incomplete, or not a valid ZIP file.', mbError, MB_OK);
     exit;
   end;
+
+  CopyFile(ExtractedSteamCmdExe, AddBackslash(SteamCmdDir) + 'steamcmd.exe', False);
 
   SteamCmdExe := AddBackslash(SteamCmdDir) + 'steamcmd.exe';
   if not FileExists(SteamCmdExe) then

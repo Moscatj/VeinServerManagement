@@ -92,6 +92,15 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("SteamCmdDir := ExpandConstant('{app}\\SteamCMD');", text)
         self.assertNotIn("SteamCmdDir := AddBackslash(ServerDir) + 'SteamCMD';", text)
 
+    def test_installer_extracts_steamcmd_to_temp_before_copying(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("ExtractDir := ExpandConstant('{tmp}\\steamcmd_extract');", text)
+        self.assertIn("[System.IO.Compression.ZipFile]::ExtractToDirectory", text)
+        self.assertIn("ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';", text)
+        self.assertIn("CopyFile(ExtractedSteamCmdExe, AddBackslash(SteamCmdDir) + 'steamcmd.exe', False);", text)
+        self.assertNotIn("Expand-Archive -Path", text)
+
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
