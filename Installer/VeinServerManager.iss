@@ -321,7 +321,7 @@ end;
 
 procedure InstallDedicatedServer;
 var
-  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, DownloadCmd, ExtractCmd, InstallCmd: string;
+  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, SteamCmdLog, DownloadCmd, ExtractCmd, InstallCmd: string;
   ResultCode: Integer;
 begin
   ServerDir := ServerDirPage.Values[0];
@@ -368,10 +368,12 @@ begin
   end;
 
   SetStatus('Installing Vein dedicated server via SteamCMD...');
+  SteamCmdLog := ExpandConstant('{app}\Logs\steamcmd-install.log');
+  DeleteFile(SteamCmdLog);
   InstallCmd :=
-    '+force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} validate +quit';
+    '/C ""' + SteamCmdExe + '" +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} validate +quit > "' + SteamCmdLog + '" 2>&1"';
   if not Exec(
-    SteamCmdExe,
+    ExpandConstant('{cmd}'),
     InstallCmd,
     '',
     SW_SHOW,
@@ -379,7 +381,15 @@ begin
     ResultCode
   ) or (ResultCode <> 0) then
   begin
-    MsgBox('SteamCMD installation failed. Check the log window for details.', mbError, MB_OK);
+    MsgBox(
+      'SteamCMD installation failed.'#13#10#13#10 +
+      'Installer log:'#13#10 +
+      SteamCmdLog + #13#10#13#10 +
+      'SteamCMD internal logs:'#13#10 +
+      AddBackslash(SteamCmdDir) + 'logs',
+      mbError,
+      MB_OK
+    );
     exit;
   end;
 

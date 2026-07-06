@@ -105,6 +105,14 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertNotIn("Expand-Archive -Path", text)
         self.assertNotIn('ExtractToDirectory("' + "' + TempZip", text)
 
+    def test_installer_captures_steamcmd_install_output_to_log(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("SteamCmdLog := ExpandConstant('{app}\\Logs\\steamcmd-install.log');", text)
+        self.assertIn('> "\' + SteamCmdLog + \'" 2>&1"', text)
+        self.assertIn("SteamCMD internal logs:", text)
+        self.assertIn("AddBackslash(SteamCmdDir) + 'logs'", text)
+
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
