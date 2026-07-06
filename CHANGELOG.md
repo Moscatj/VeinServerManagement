@@ -24,6 +24,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Captured installer-run SteamCMD output to `Logs\steamcmd-install.log` and included SteamCMD log paths in failure messages.
 - Added the release version to generated installer filenames and GitHub Release assets.
 - Made installer-run SteamCMD requests explicit for the Windows public branch and preserved installed config/logs when SteamCMD cannot download the dedicated server.
+- Hid the blank SteamCMD console during installer-run server downloads and clarified that the SteamCMD step may take several minutes.
+- Treated SteamCMD's "fully installed" output as a successful server install even if SteamCMD returns a misleading exit code.
+- Included dynamically loaded CLI subcommands in packaged `VeinTools.exe` builds.
 
 ## 2.3.4 - 2026-07-02
 

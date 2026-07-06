@@ -232,6 +232,15 @@ begin
   Result := Result and (ResultCode = 0);
 end;
 
+function FileContainsText(const FileName: string; const Needle: AnsiString): Boolean;
+var
+  Content: AnsiString;
+begin
+  Result := False;
+  if LoadStringFromFile(FileName, Content) then
+    Result := Pos(Needle, Content) > 0;
+end;
+
 function PowerShellQuote(const Value: string): string;
 begin
   Result := Value;
@@ -367,19 +376,19 @@ begin
     exit;
   end;
 
-  SetStatus('Installing Vein dedicated server via SteamCMD...');
+  SetStatus('Installing Vein dedicated server via SteamCMD. This can take several minutes...');
   SteamCmdLog := ExpandConstant('{app}\Logs\steamcmd-install.log');
   DeleteFile(SteamCmdLog);
   InstallCmd :=
     '/C ""' + SteamCmdExe + '" +@sSteamCmdForcePlatformType windows +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} -beta public validate +quit > "' + SteamCmdLog + '" 2>&1"';
-  if not Exec(
+  if (not Exec(
     ExpandConstant('{cmd}'),
     InstallCmd,
     '',
-    SW_SHOW,
+    SW_HIDE,
     ewWaitUntilTerminated,
     ResultCode
-  ) or (ResultCode <> 0) then
+  )) or ((ResultCode <> 0) and (not FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'))) then
   begin
     UpdateConfigPaths(ServerDir, SteamCmdExe);
     SaveServerInstallPath(ServerDir);

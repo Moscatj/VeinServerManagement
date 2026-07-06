@@ -116,6 +116,8 @@ def _cli_pyinstaller_args(*, dist: Path, build: Path) -> list[str]:
         str(build / "cli" / "spec"),
         "--paths",
         str(ENTRYPOINT.parent),
+        "--collect-submodules",
+        "Tools",
         "--console",
         "--onefile",
     ]

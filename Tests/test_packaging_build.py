@@ -118,15 +118,32 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("SteamCMD internal logs:", text)
         self.assertIn("AddBackslash(SteamCmdDir) + 'logs'", text)
 
+    def test_installer_hides_blank_steamcmd_console_and_sets_wait_status(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Installing Vein dedicated server via SteamCMD. This can take several minutes...",
+            text,
+        )
+        self.assertIn("SW_HIDE", text)
+
     def test_installer_uses_explicit_steamcmd_platform_and_preserves_config_on_failure(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("+@sSteamCmdForcePlatformType windows", text)
         self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
+        self.assertIn("FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.')", text)
         self.assertIn("The management app was installed, but SteamCMD could not download", text)
         self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
         self.assertIn("SaveServerInstallPath(ServerDir);", text)
         self.assertIn("mbInformation", text)
+
+    def test_cli_packaging_collects_dynamic_tools_subcommands(self) -> None:
+        module = _load_build_module()
+        args = module._cli_pyinstaller_args(dist=ROOT / "dist", build=ROOT / "build")
+
+        self.assertIn("--collect-submodules", args)
+        self.assertIn("Tools", args)
 
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
