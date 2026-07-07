@@ -51,6 +51,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
             build_script,
         )
 
+    def test_release_installer_workflow_publishes_changelog_notes(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("Extract release notes from changelog", workflow)
+        self.assertIn("CHANGELOG.md does not contain release notes", workflow)
+        self.assertIn("Set-Content -Path release-notes.md", workflow)
+        self.assertIn("body_path: release-notes.md", workflow)
+        self.assertIn("name: ${{ github.ref_name }}", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

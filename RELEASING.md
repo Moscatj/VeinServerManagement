@@ -45,13 +45,21 @@ When unsure, choose the smaller version impact and document the reason.
   - Docs
   - Tests
 - Release commits should move relevant `Unreleased` entries under a dated version heading.
+- Do not tag a release while the release notes still live only under `Unreleased`.
+- GitHub Release notes are generated from the matching `CHANGELOG.md` section, so each release tag must have a heading like:
+
+  ```markdown
+  ## X.Y.Z - YYYY-MM-DD
+  ```
+
+  `## vX.Y.Z - YYYY-MM-DD` is also accepted by the release workflow, but the unprefixed form is preferred in the changelog.
 
 ## Release Checklist
 
 Before creating a release tag:
 
 1. Confirm `main` is clean and up to date with `origin/main`.
-2. Confirm `CHANGELOG.md` contains the release notes.
+2. Move the relevant `Unreleased` entries in `CHANGELOG.md` into a dated release heading, for example `## X.Y.Z - YYYY-MM-DD`, and commit that changelog update before tagging.
 3. Run:
 
    ```powershell
@@ -61,10 +69,18 @@ Before creating a release tag:
    git diff --check
    ```
 
-4. Create an annotated tag:
+4. Create an annotated tag with a useful summary and the highest-signal release notes:
 
    ```powershell
-   git tag -a vX.Y.Z -m "Release vX.Y.Z - <short summary>"
+   git tag -a vX.Y.Z -m "vX.Y.Z - <short summary>" -m "- Added/changed/fixed ..."
+   ```
+
+   Example:
+
+   ```powershell
+   git tag -a v2.5.0 -m "v2.5.0 - Installer defaults and uninstall cleanup" -m "- Added app-managed SteamCMD/server install defaults.
+   - Added existing SteamCMD and save/log path installer options.
+   - Cleaned up transient app-owned uninstall folders."
    ```
 
 5. Push the tag:
@@ -73,10 +89,12 @@ Before creating a release tag:
    git push origin vX.Y.Z
    ```
 
-6. GitHub Actions will build the Windows installer from the tagged source and
-   attach a versioned installer such as `VeinServerManagement-Setup-vX.Y.Z.exe`
-   to the GitHub Release. The release installer workflow can also be run manually with `workflow_dispatch` to
-   produce a temporary Actions artifact without creating a release tag.
+6. GitHub Actions will build the Windows installer from the tagged source,
+   extract release notes from the matching `CHANGELOG.md` section, and attach a
+   versioned installer such as `VeinServerManagement-Setup-vX.Y.Z.exe` to the
+   GitHub Release. The release installer workflow can also be run manually with
+   `workflow_dispatch` to produce a temporary Actions artifact without creating
+   a release tag.
 
 Release installers are generated artifacts. Do not commit files from `dist/` or
 `build/` to the repository.

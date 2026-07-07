@@ -46,8 +46,49 @@ jobs:
           path: dist/installer/VeinServerManagement-Setup-v*.exe
           if-no-files-found: error
 
+      - name: Extract release notes from changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $escapedVersion = [regex]::Escape($version)
+          $lines = Get-Content CHANGELOG.md
+          $start = -1
+
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^##\s+v?$escapedVersion(\s+-.*)?\s*$") {
+              $start = $i
+              break
+            }
+          }
+
+          if ($start -lt 0) {
+            throw "CHANGELOG.md does not contain release notes for ${{ github.ref_name }}. Add a '## $version - YYYY-MM-DD' section before tagging."
+          }
+
+          $end = $lines.Count
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "^##\s+") {
+              $end = $i
+              break
+            }
+          }
+
+          $notes = @()
+          if (($start + 1) -lt $end) {
+            $notes = @($lines[($start + 1)..($end - 1)] | Where-Object { $_.Trim() -ne "" })
+          }
+          if ($notes.Count -eq 0) {
+            throw "Release notes for ${{ github.ref_name }} are empty in CHANGELOG.md."
+          }
+
+          $header = "# ${{ github.ref_name }}"
+          @($header, "", $notes) | Set-Content -Path release-notes.md -Encoding utf8
+
       - name: Publish installer to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           files: dist/installer/VeinServerManagement-Setup-v*.exe
+          body_path: release-notes.md
+          name: ${{ github.ref_name }}

@@ -363,6 +363,8 @@ Rules:
 - Do not create a release tag for every commit.
 - Do not create or push release tags unless the user explicitly asks for a release or tag.
 - Update `CHANGELOG.md` under `Unreleased` for user-facing changes.
+- Before creating a release tag, move the release's `CHANGELOG.md` entries out of `Unreleased` and into a dated `## X.Y.Z - YYYY-MM-DD` section.
+- Release tags must be annotated with a useful summary and short notes, not a generic `Release vX.Y.Z` message.
 - Follow `RELEASING.md` when preparing a release.
 - In final responses for committed work, state the release impact and whether a version tag is recommended.
 

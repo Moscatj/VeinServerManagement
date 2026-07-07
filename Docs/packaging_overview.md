@@ -103,6 +103,7 @@ GitHub release workflow:
 
 - `.github/workflows/release-installer.yml` runs on `vMAJOR.MINOR.PATCH` tags.
 - The workflow builds the PyInstaller bundle, compiles the Inno Setup installer,
+  extracts release notes from the matching `CHANGELOG.md` version section,
   uploads the installer as an Actions artifact, and attaches
   a versioned installer such as `VeinServerManagement-Setup-v2.3.12.exe` to the GitHub Release.
 - Manual `workflow_dispatch` runs build a temporary Actions artifact without
