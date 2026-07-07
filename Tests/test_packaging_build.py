@@ -112,6 +112,8 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("ExistingSteamCmdRadio.Caption := 'Use an existing SteamCMD folder';", text)
         self.assertIn("NoSteamCmdRadio.Caption := 'Do not configure SteamCMD now';", text)
+        self.assertIn("SteamCmdChoiceBox.Width := SteamCmdChoicePage.SurfaceWidth - ScaleX(12);", text)
+        self.assertIn("SteamCmdChoiceBox.Height := ScaleY(96);", text)
         self.assertIn("procedure UpdateSteamCmdChoiceAvailability;", text)
         self.assertIn("AppSteamCmdRadio.Enabled := InstallServer;", text)
         self.assertIn("function ValidateExistingSteamCmdDir: Boolean;", text)

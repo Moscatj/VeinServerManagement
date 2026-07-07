@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Fixed clipped SteamCMD installer page helper text.
+
 ## 2.5.1 - 2026-07-07
 
 - Fixed installer startup by avoiding `{app}` expansion before Inno Setup initializes the selected app directory.

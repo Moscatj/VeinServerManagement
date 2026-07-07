@@ -315,12 +315,12 @@ begin
   SteamCmdChoiceBox := TNewStaticText.Create(SteamCmdChoicePage.Surface);
   SteamCmdChoiceBox.Parent := SteamCmdChoicePage.Surface;
   SteamCmdChoiceBox.Caption :=
-    'SteamCMD is portable. App-managed SteamCMD is recommended for full package installs. Existing-server installs can skip SteamCMD or point to an existing folder.';
+    'SteamCMD is portable. Use the app-managed copy for full package installs, or select an existing SteamCMD folder to avoid duplicates.';
   SteamCmdChoiceBox.AutoSize := False;
   SteamCmdChoiceBox.Left := ScaleX(0);
-  SteamCmdChoiceBox.Top := NoSteamCmdRadio.Top + NoSteamCmdRadio.Height + ScaleY(16);
-  SteamCmdChoiceBox.Width := SteamCmdChoicePage.SurfaceWidth;
-  SteamCmdChoiceBox.Height := ScaleY(70);
+  SteamCmdChoiceBox.Top := NoSteamCmdRadio.Top + NoSteamCmdRadio.Height + ScaleY(20);
+  SteamCmdChoiceBox.Width := SteamCmdChoicePage.SurfaceWidth - ScaleX(12);
+  SteamCmdChoiceBox.Height := ScaleY(96);
 
   ExistingSteamCmdDirPage := CreateInputDirPage(
     SteamCmdChoicePage.ID,
