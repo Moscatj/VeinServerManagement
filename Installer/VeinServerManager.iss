@@ -43,6 +43,7 @@ Name: "{app}\Config"; Permissions: users-modify
 Name: "{app}\Logs"; Permissions: users-modify
 Name: "{app}\Runtime"; Permissions: users-modify
 Name: "{app}\SteamCMD"; Permissions: users-modify
+Name: "{app}\Server"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\Vein Server Manager"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"
@@ -60,16 +61,34 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch Vein Server Manager"; Fl
 [UninstallRun]
 Filename: "{app}\VeinTools.exe"; Parameters: "uninstall-cleanup"; WorkingDir: "{app}"; StatusMsg: "Stopping Vein server and monitors..."; Flags: runhidden skipifdoesntexist; RunOnceId: "VeinServerManagement.UninstallCleanup"
 
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\Logs"
+Type: filesandordirs; Name: "{app}\Runtime"
+Type: filesandordirs; Name: "{app}\SteamCMD"
+Type: dirifempty; Name: "{app}"
+
 [Code]
 var
   ServerChoicePage: TWizardPage;
   InstallServerRadio: TRadioButton;
   ExistingServerRadio: TRadioButton;
   ServerDirPage: TInputDirWizardPage;
+  DataDirPage: TInputDirWizardPage;
+  SteamCmdChoicePage: TWizardPage;
+  AppSteamCmdRadio: TRadioButton;
+  ExistingSteamCmdRadio: TRadioButton;
+  NoSteamCmdRadio: TRadioButton;
+  ExistingSteamCmdDirPage: TInputDirWizardPage;
   InstallServerBox: TNewStaticText;
+  SteamCmdChoiceBox: TNewStaticText;
   InstallServer: Boolean;
+  ConfigureSteamCmd: Boolean;
+  UseExistingSteamCmd: Boolean;
   RemoveAppManagedServer: Boolean;
   AppManagedServerDir: string;
+  LastManagedServerDefault: string;
+  LastSavesDefault: string;
+  LastLogsDefault: string;
 
 procedure LayoutServerChoiceControl(Control: TControl; Top: Integer);
 begin
@@ -83,10 +102,112 @@ begin
   InstallServer := InstallServerRadio.Checked;
 end;
 
+procedure UpdateSteamCmdChoiceState;
+begin
+  ConfigureSteamCmd := not NoSteamCmdRadio.Checked;
+  UseExistingSteamCmd := ExistingSteamCmdRadio.Checked;
+end;
+
+procedure UpdateSteamCmdChoiceAvailability;
+begin
+  if not Assigned(AppSteamCmdRadio) then
+    exit;
+
+  AppSteamCmdRadio.Enabled := InstallServer;
+  if (not InstallServer) and AppSteamCmdRadio.Checked then
+  begin
+    NoSteamCmdRadio.Checked := True;
+    UpdateSteamCmdChoiceState;
+  end;
+end;
+
 procedure ServerChoiceChanged(Sender: TObject);
 begin
   UpdateServerChoiceState;
+  if InstallServer and Assigned(AppSteamCmdRadio) then
+    AppSteamCmdRadio.Checked := True
+  else if Assigned(NoSteamCmdRadio) then
+    NoSteamCmdRadio.Checked := True;
+  UpdateSteamCmdChoiceState;
+  UpdateSteamCmdChoiceAvailability;
   WizardForm.NextButton.Enabled := True;
+end;
+
+procedure SteamCmdChoiceChanged(Sender: TObject);
+begin
+  UpdateSteamCmdChoiceState;
+  WizardForm.NextButton.Enabled := True;
+end;
+
+function DefaultManagedServerDir(): string;
+begin
+  Result := ExpandConstant('{app}\Server');
+end;
+
+function DefaultSavesDir(): string;
+begin
+  Result := AddBackslash(AddBackslash(ServerDirPage.Values[0]) + 'Vein') + 'Saved\SaveGames';
+end;
+
+function DefaultLogsDir(): string;
+begin
+  Result := AddBackslash(AddBackslash(ServerDirPage.Values[0]) + 'Vein') + 'Saved\Logs';
+end;
+
+function DefaultAppSteamCmdDir(): string;
+begin
+  Result := ExpandConstant('{app}\SteamCMD');
+end;
+
+function SelectedSteamCmdExe(): string;
+begin
+  Result := '';
+  if UseExistingSteamCmd then
+    Result := AddBackslash(ExistingSteamCmdDirPage.Values[0]) + 'steamcmd.exe';
+end;
+
+procedure SyncManagedServerDefault;
+var
+  Current, NextDefault: string;
+begin
+  if not Assigned(ServerDirPage) then
+    exit;
+
+  Current := ServerDirPage.Values[0];
+  NextDefault := DefaultManagedServerDir();
+
+  if (Current = '') or
+     ((LastManagedServerDefault <> '') and (CompareText(Current, LastManagedServerDefault) = 0)) or
+     (CompareText(Current, ExpandConstant('{sd}\VeinServer')) = 0) then
+  begin
+    ServerDirPage.Values[0] := NextDefault;
+  end;
+
+  LastManagedServerDefault := NextDefault;
+end;
+
+procedure SyncDataPathDefaults;
+var
+  CurrentSaves, CurrentLogs, NextSaves, NextLogs: string;
+begin
+  if not Assigned(DataDirPage) then
+    exit;
+
+  CurrentSaves := DataDirPage.Values[0];
+  CurrentLogs := DataDirPage.Values[1];
+  NextSaves := DefaultSavesDir();
+  NextLogs := DefaultLogsDir();
+
+  if (CurrentSaves = '') or
+     ((LastSavesDefault <> '') and (CompareText(CurrentSaves, LastSavesDefault) = 0)) then
+    DataDirPage.Values[0] := NextSaves;
+
+  if (CurrentLogs = '') or
+     ((LastLogsDefault <> '') and (CompareText(CurrentLogs, LastLogsDefault) = 0)) then
+    DataDirPage.Values[1] := NextLogs;
+
+  LastSavesDefault := NextSaves;
+  LastLogsDefault := NextLogs;
 end;
 
 procedure InitializeWizard;
@@ -125,18 +246,103 @@ begin
     ServerChoicePage.ID,
     'Server Install Location',
     'Choose where the Vein dedicated server is or should be installed.',
-    'Select the server root folder. Choose the parent folder that contains Vein\Binaries\Win64, not the Vein folder itself.',
+    'Select the server root folder. SteamCMD installs use the app-managed Server folder by default. Existing servers can stay outside the app folder.',
     False,
     ''
   );
   ServerDirPage.Add('');
-  ServerDirPage.Values[0] := ExpandConstant('{sd}\VeinServer');
+  LastManagedServerDefault := '';
+  ServerDirPage.Values[0] := DefaultManagedServerDir();
+  LastManagedServerDefault := ServerDirPage.Values[0];
+
+  DataDirPage := CreateInputDirPage(
+    ServerDirPage.ID,
+    'Server Data Locations',
+    'Choose where the management app should read saves and logs.',
+    'These paths are used for monitoring and backups. Changing them does not move existing game save files.',
+    False,
+    ''
+  );
+  DataDirPage.Add('SaveGames folder:');
+  DataDirPage.Add('Logs folder:');
+  LastSavesDefault := '';
+  LastLogsDefault := '';
+  SyncDataPathDefaults;
+
+  SteamCmdChoicePage := CreateCustomPage(
+    DataDirPage.ID,
+    'SteamCMD Location',
+    'Choose whether to use app-managed SteamCMD or an existing SteamCMD install.'
+  );
+
+  AppSteamCmdRadio := TNewRadioButton.Create(SteamCmdChoicePage.Surface);
+  AppSteamCmdRadio.Parent := SteamCmdChoicePage.Surface;
+  AppSteamCmdRadio.Caption := 'Install or use app-managed SteamCMD inside the app folder';
+  AppSteamCmdRadio.Checked := False;
+  AppSteamCmdRadio.Left := ScaleX(0);
+  AppSteamCmdRadio.Top := ScaleY(56);
+  AppSteamCmdRadio.Width := SteamCmdChoicePage.SurfaceWidth;
+  AppSteamCmdRadio.Height := ScaleY(26);
+  AppSteamCmdRadio.OnClick := @SteamCmdChoiceChanged;
+
+  ExistingSteamCmdRadio := TNewRadioButton.Create(SteamCmdChoicePage.Surface);
+  ExistingSteamCmdRadio.Parent := SteamCmdChoicePage.Surface;
+  ExistingSteamCmdRadio.Caption := 'Use an existing SteamCMD folder';
+  ExistingSteamCmdRadio.Checked := False;
+  ExistingSteamCmdRadio.Left := ScaleX(0);
+  ExistingSteamCmdRadio.Top := AppSteamCmdRadio.Top + AppSteamCmdRadio.Height + ScaleY(10);
+  ExistingSteamCmdRadio.Width := SteamCmdChoicePage.SurfaceWidth;
+  ExistingSteamCmdRadio.Height := ScaleY(26);
+  ExistingSteamCmdRadio.OnClick := @SteamCmdChoiceChanged;
+
+  NoSteamCmdRadio := TNewRadioButton.Create(SteamCmdChoicePage.Surface);
+  NoSteamCmdRadio.Parent := SteamCmdChoicePage.Surface;
+  NoSteamCmdRadio.Caption := 'Do not configure SteamCMD now';
+  NoSteamCmdRadio.Checked := True;
+  NoSteamCmdRadio.Left := ScaleX(0);
+  NoSteamCmdRadio.Top := ExistingSteamCmdRadio.Top + ExistingSteamCmdRadio.Height + ScaleY(10);
+  NoSteamCmdRadio.Width := SteamCmdChoicePage.SurfaceWidth;
+  NoSteamCmdRadio.Height := ScaleY(26);
+  NoSteamCmdRadio.OnClick := @SteamCmdChoiceChanged;
+
+  SteamCmdChoiceBox := TNewStaticText.Create(SteamCmdChoicePage.Surface);
+  SteamCmdChoiceBox.Parent := SteamCmdChoicePage.Surface;
+  SteamCmdChoiceBox.Caption :=
+    'SteamCMD is portable. App-managed SteamCMD is recommended for full package installs. Existing-server installs can skip SteamCMD or point to an existing folder.';
+  SteamCmdChoiceBox.AutoSize := False;
+  SteamCmdChoiceBox.Left := ScaleX(0);
+  SteamCmdChoiceBox.Top := NoSteamCmdRadio.Top + NoSteamCmdRadio.Height + ScaleY(16);
+  SteamCmdChoiceBox.Width := SteamCmdChoicePage.SurfaceWidth;
+  SteamCmdChoiceBox.Height := ScaleY(70);
+
+  ExistingSteamCmdDirPage := CreateInputDirPage(
+    SteamCmdChoicePage.ID,
+    'Existing SteamCMD Folder',
+    'Choose the folder that contains steamcmd.exe.',
+    'The installer will use this SteamCMD to download or update the Vein dedicated server and will write the path into config.yaml.',
+    False,
+    ''
+  );
+  ExistingSteamCmdDirPage.Add('');
   UpdateServerChoiceState;
+  UpdateSteamCmdChoiceState;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if Assigned(ServerDirPage) and (CurPageID = ServerDirPage.ID) and InstallServer then
+    SyncManagedServerDefault;
+  if Assigned(DataDirPage) and (CurPageID = DataDirPage.ID) then
+    SyncDataPathDefaults;
+  if Assigned(SteamCmdChoicePage) and (CurPageID = SteamCmdChoicePage.ID) then
+    UpdateSteamCmdChoiceAvailability;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
+  if Assigned(ExistingSteamCmdDirPage) and (PageID = ExistingSteamCmdDirPage.ID) then
+    Result := not UseExistingSteamCmd;
 end;
 
 function ValidateServerDir: Boolean;
@@ -198,6 +404,59 @@ begin
   end;
 end;
 
+function ValidateDataDirs: Boolean;
+begin
+  Result := True;
+  if Trim(DataDirPage.Values[0]) = '' then
+  begin
+    MsgBox('Please choose the SaveGames folder used by the management app.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+  if Trim(DataDirPage.Values[1]) = '' then
+  begin
+    MsgBox('Please choose the Logs folder used by the management app.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+end;
+
+function ValidateExistingSteamCmdDir: Boolean;
+var
+  SteamCmdExe: string;
+begin
+  Result := True;
+  SteamCmdExe := AddBackslash(ExistingSteamCmdDirPage.Values[0]) + 'steamcmd.exe';
+  if Trim(ExistingSteamCmdDirPage.Values[0]) = '' then
+  begin
+    MsgBox('Please choose the existing SteamCMD folder, or go Back and choose app-managed SteamCMD.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+  if not FileExists(SteamCmdExe) then
+  begin
+    MsgBox(
+      'steamcmd.exe was not found in the selected folder:'#13#10#13#10 +
+      SteamCmdExe,
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+end;
+
+function ValidateSteamCmdChoice: Boolean;
+begin
+  Result := True;
+  if InstallServer and (not ConfigureSteamCmd) then
+  begin
+    MsgBox('Choose app-managed SteamCMD or an existing SteamCMD folder to install the dedicated server.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
@@ -208,6 +467,19 @@ begin
   else if Assigned(ServerDirPage) and (CurPageID = ServerDirPage.ID) then
   begin
     Result := ValidateServerDir;
+  end
+  else if Assigned(DataDirPage) and (CurPageID = DataDirPage.ID) then
+  begin
+    Result := ValidateDataDirs;
+  end
+  else if Assigned(SteamCmdChoicePage) and (CurPageID = SteamCmdChoicePage.ID) then
+  begin
+    UpdateSteamCmdChoiceState;
+    Result := ValidateSteamCmdChoice;
+  end
+  else if Assigned(ExistingSteamCmdDirPage) and (CurPageID = ExistingSteamCmdDirPage.ID) then
+  begin
+    Result := ValidateExistingSteamCmdDir;
   end;
 end;
 
@@ -292,7 +564,7 @@ begin
   end;
 end;
 
-procedure UpdateConfigPaths(const ServerDir, SteamCmdExe: string);
+procedure UpdateConfigPaths(const ServerDir, SavesDir, LogsDir, SteamCmdExe: string);
 var
   RawContent: AnsiString;
   ConfigPath, Content: string;
@@ -304,9 +576,15 @@ begin
     Content := RawContent;
     ServerRoot := NormalizePathForYaml(ServerDir);
     VeinRoot := NormalizePathForYaml(AddBackslash(ServerDir) + 'Vein');
-    SavesPath := NormalizePathForYaml(AddBackslash(AddBackslash(ServerDir) + 'Vein') + 'Saved\SaveGames');
-    LogsPath := NormalizePathForYaml(AddBackslash(AddBackslash(ServerDir) + 'Vein') + 'Saved\Logs');
-    LogFile := NormalizePathForYaml(AddBackslash(AddBackslash(ServerDir) + 'Vein') + 'Saved\Logs\Vein.log');
+    if SavesDir <> '' then
+      SavesPath := NormalizePathForYaml(SavesDir)
+    else
+      SavesPath := NormalizePathForYaml(DefaultSavesDir());
+    if LogsDir <> '' then
+      LogsPath := NormalizePathForYaml(LogsDir)
+    else
+      LogsPath := NormalizePathForYaml(DefaultLogsDir());
+    LogFile := LogsPath + '/Vein.log';
     SteamCmdPath := NormalizePathForYaml(SteamCmdExe);
 
     ReplaceConfigValue(Content, '  server_root: ".."', '  server_root: "' + ServerRoot + '"');
@@ -337,42 +615,54 @@ begin
   if ServerDir = '' then
     exit;
   ForceDirectories(ServerDir);
-  SteamCmdDir := ExpandConstant('{app}\SteamCMD');
-  ForceDirectories(SteamCmdDir);
 
-  TempZip := ExpandConstant('{tmp}\steamcmd.zip');
-  ExtractDir := ExpandConstant('{tmp}\steamcmd_extract');
-  DeleteFile(TempZip);
-  DelTree(ExtractDir, True, True, True);
-
-  SetStatus('Downloading SteamCMD from Valve...');
-  DownloadCmd :=
-    '$ProgressPreference=''SilentlyContinue''; ' +
-    'Invoke-WebRequest -UseBasicParsing -Uri ' + PowerShellQuote('{#SteamCmdUrl}') + ' -OutFile ' + PowerShellQuote(TempZip) + '; ' +
-    'if ((Get-Item ' + PowerShellQuote(TempZip) + ').Length -lt 1024) { throw ''Downloaded SteamCMD archive is too small.'' }';
-  if not RunPowerShell(DownloadCmd) or (not FileExists(TempZip)) then
+  if UseExistingSteamCmd then
   begin
-    MsgBox('Failed to download SteamCMD. Check your internet connection and try again.', mbError, MB_OK);
-    exit;
+    SteamCmdDir := ExistingSteamCmdDirPage.Values[0];
+    SteamCmdExe := AddBackslash(SteamCmdDir) + 'steamcmd.exe';
+  end
+  else
+  begin
+    SteamCmdDir := DefaultAppSteamCmdDir();
+    ForceDirectories(SteamCmdDir);
+    SteamCmdExe := AddBackslash(SteamCmdDir) + 'steamcmd.exe';
+
+    if not FileExists(SteamCmdExe) then
+    begin
+      TempZip := ExpandConstant('{tmp}\steamcmd.zip');
+      ExtractDir := ExpandConstant('{tmp}\steamcmd_extract');
+      DeleteFile(TempZip);
+      DelTree(ExtractDir, True, True, True);
+
+      SetStatus('Downloading SteamCMD from Valve...');
+      DownloadCmd :=
+        '$ProgressPreference=''SilentlyContinue''; ' +
+        'Invoke-WebRequest -UseBasicParsing -Uri ' + PowerShellQuote('{#SteamCmdUrl}') + ' -OutFile ' + PowerShellQuote(TempZip) + '; ' +
+        'if ((Get-Item ' + PowerShellQuote(TempZip) + ').Length -lt 1024) { throw ''Downloaded SteamCMD archive is too small.'' }';
+      if not RunPowerShell(DownloadCmd) or (not FileExists(TempZip)) then
+      begin
+        MsgBox('Failed to download SteamCMD. Check your internet connection and try again.', mbError, MB_OK);
+        exit;
+      end;
+
+      SetStatus('Extracting SteamCMD...');
+      ExtractCmd :=
+        'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
+        '[System.IO.Compression.ZipFile]::ExtractToDirectory(' + PowerShellQuote(TempZip) + ', ' + PowerShellQuote(ExtractDir) + ')';
+      ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';
+      if (not RunPowerShell(ExtractCmd)) or (not FileExists(ExtractedSteamCmdExe)) then
+      begin
+        MsgBox('Failed to extract SteamCMD archive. The download may be blocked, incomplete, or not a valid ZIP file.', mbError, MB_OK);
+        exit;
+      end;
+
+      CopyFile(ExtractedSteamCmdExe, SteamCmdExe, False);
+    end;
   end;
 
-  SetStatus('Extracting SteamCMD...');
-  ExtractCmd :=
-    'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
-    '[System.IO.Compression.ZipFile]::ExtractToDirectory(' + PowerShellQuote(TempZip) + ', ' + PowerShellQuote(ExtractDir) + ')';
-  ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';
-  if (not RunPowerShell(ExtractCmd)) or (not FileExists(ExtractedSteamCmdExe)) then
-  begin
-    MsgBox('Failed to extract SteamCMD archive. The download may be blocked, incomplete, or not a valid ZIP file.', mbError, MB_OK);
-    exit;
-  end;
-
-  CopyFile(ExtractedSteamCmdExe, AddBackslash(SteamCmdDir) + 'steamcmd.exe', False);
-
-  SteamCmdExe := AddBackslash(SteamCmdDir) + 'steamcmd.exe';
   if not FileExists(SteamCmdExe) then
   begin
-    MsgBox('SteamCMD executable not found after extraction.', mbError, MB_OK);
+    MsgBox('SteamCMD executable not found: ' + SteamCmdExe, mbError, MB_OK);
     exit;
   end;
 
@@ -390,7 +680,7 @@ begin
     ResultCode
   )) or ((ResultCode <> 0) and (not FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'))) then
   begin
-    UpdateConfigPaths(ServerDir, SteamCmdExe);
+    UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);
     SaveServerInstallPath(ServerDir);
     MsgBox(
       'The management app was installed, but SteamCMD could not download the VEIN dedicated server.'#13#10#13#10 +
@@ -406,19 +696,20 @@ begin
   end;
 
   SetStatus('Updating config paths to match the installed server...');
-  UpdateConfigPaths(ServerDir, SteamCmdExe);
+  UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);
   SaveServerInstallPath(ServerDir);
 end;
 
 procedure ConfigureExistingServer;
 var
-  ServerDir: string;
+  ServerDir, SteamCmdExe: string;
 begin
   ServerDir := ServerDirPage.Values[0];
   if ServerDir = '' then
     exit;
   SetStatus('Updating config paths to match the selected server...');
-  UpdateConfigPaths(ServerDir, '');
+  SteamCmdExe := SelectedSteamCmdExe();
+  UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);
   SaveServerInstallPath(ServerDir);
 end;
 

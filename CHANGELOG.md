@@ -28,6 +28,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Treated SteamCMD's "fully installed" output as a successful server install even if SteamCMD returns a misleading exit code.
 - Included dynamically loaded CLI subcommands in packaged `VeinTools.exe` builds.
 - Added a responsive GUI About dialog that shows the installed app version, runtime details, license, repository, and config path.
+- Expanded installer defaults so full-package installs use app-managed `SteamCMD` and `Server` folders, while existing installs can reuse an external SteamCMD folder and override SaveGames/log paths.
+- Cleaned up app-owned `Logs`, `Runtime`, and app-managed `SteamCMD` folders during uninstall while preserving server data and external installs.
 
 ## 2.3.4 - 2026-07-02
 

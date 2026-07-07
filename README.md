@@ -107,6 +107,8 @@ For normal users, use the Windows installer from the GitHub Releases page when a
 - `VeinManager.exe` for the GUI.
 - `VeinTools.exe` for command-line operations such as health checks, server start/stop, monitor control, and backups.
 - A local `Config/config.yaml` copied from the sanitized template.
+- Optional full-package setup that keeps app-managed SteamCMD under `SteamCMD\` and installs a new dedicated server under `Server\` by default.
+- Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and override the SaveGames/log folders used by monitoring and backups.
 
 The repository itself is the developer/source workflow. Clone it when you want to inspect code, run tests, or build the installer locally.
 

@@ -27,7 +27,7 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_grants_modify_permissions_to_writable_app_dirs(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        for folder in ("Backups", "Config", "Logs", "Runtime", "SteamCMD"):
+        for folder in ("Backups", "Config", "Logs", "Runtime", "SteamCMD", "Server"):
             self.assertIn(f'Name: "{{app}}\\{folder}"; Permissions: users-modify', text)
 
     def test_installer_excludes_runtime_folder_contents(self) -> None:
@@ -56,6 +56,14 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn('StatusMsg: "Stopping Vein server and monitors..."', text)
         self.assertIn('RunOnceId: "VeinServerManagement.UninstallCleanup"', text)
 
+    def test_uninstaller_removes_transient_app_owned_dirs(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("[UninstallDelete]", text)
+        for folder in ("Logs", "Runtime", "SteamCMD"):
+            self.assertIn(f'Type: filesandordirs; Name: "{{app}}\\{folder}"', text)
+        self.assertIn('Type: dirifempty; Name: "{app}"', text)
+
     def test_installer_server_choice_controls_have_explicit_heights(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
@@ -83,8 +91,42 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("ExistingServerRadio.Caption := 'Use an existing dedicated server folder';", text)
         self.assertIn("procedure ConfigureExistingServer;", text)
-        self.assertIn("UpdateConfigPaths(ServerDir, '');", text)
+        self.assertIn("SteamCmdExe := SelectedSteamCmdExe();", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
         self.assertIn("if CurStep = ssPostInstall then", text)
+
+    def test_installer_defaults_steamcmd_server_to_app_managed_folder(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function DefaultManagedServerDir(): string;", text)
+        self.assertIn("Result := ExpandConstant('{app}\\Server');", text)
+        self.assertIn("procedure SyncManagedServerDefault;", text)
+        self.assertIn("CurPageID = ServerDirPage.ID", text)
+        self.assertIn("SteamCMD installs use the app-managed Server folder by default", text)
+        self.assertNotIn("ServerDirPage.Values[0] := ExpandConstant('{sd}\\VeinServer');", text)
+
+    def test_installer_supports_existing_steamcmd_for_server_install(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("ExistingSteamCmdRadio.Caption := 'Use an existing SteamCMD folder';", text)
+        self.assertIn("NoSteamCmdRadio.Caption := 'Do not configure SteamCMD now';", text)
+        self.assertIn("procedure UpdateSteamCmdChoiceAvailability;", text)
+        self.assertIn("AppSteamCmdRadio.Enabled := InstallServer;", text)
+        self.assertIn("function ValidateExistingSteamCmdDir: Boolean;", text)
+        self.assertIn("SteamCmdExe := AddBackslash(ExistingSteamCmdDirPage.Values[0]) + 'steamcmd.exe';", text)
+        self.assertIn("if UseExistingSteamCmd then", text)
+        self.assertIn("Result := not UseExistingSteamCmd;", text)
+        self.assertIn("function ValidateSteamCmdChoice: Boolean;", text)
+
+    def test_installer_supports_save_and_log_path_overrides(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("DataDirPage := CreateInputDirPage", text)
+        self.assertIn("DataDirPage.Add('SaveGames folder:');", text)
+        self.assertIn("DataDirPage.Add('Logs folder:');", text)
+        self.assertIn("procedure SyncDataPathDefaults;", text)
+        self.assertIn("function ValidateDataDirs: Boolean;", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
 
     def test_installer_validates_existing_server_executable_candidates(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -96,7 +138,7 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_keeps_steamcmd_out_of_server_root(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("SteamCmdDir := ExpandConstant('{app}\\SteamCMD');", text)
+        self.assertIn("SteamCmdDir := DefaultAppSteamCmdDir();", text)
         self.assertNotIn("SteamCmdDir := AddBackslash(ServerDir) + 'SteamCMD';", text)
 
     def test_installer_extracts_steamcmd_to_temp_before_copying(self) -> None:
@@ -107,7 +149,7 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("[System.IO.Compression.ZipFile]::ExtractToDirectory", text)
         self.assertIn("PowerShellQuote(TempZip) + ', ' + PowerShellQuote(ExtractDir)", text)
         self.assertIn("ExtractedSteamCmdExe := AddBackslash(ExtractDir) + 'steamcmd.exe';", text)
-        self.assertIn("CopyFile(ExtractedSteamCmdExe, AddBackslash(SteamCmdDir) + 'steamcmd.exe', False);", text)
+        self.assertIn("CopyFile(ExtractedSteamCmdExe, SteamCmdExe, False);", text)
         self.assertNotIn("ForceDirectories(ExtractDir);", text)
         self.assertNotIn("Expand-Archive -Path", text)
         self.assertNotIn('ExtractToDirectory("' + "' + TempZip", text)
@@ -136,7 +178,7 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
         self.assertIn("FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.')", text)
         self.assertIn("The management app was installed, but SteamCMD could not download", text)
-        self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
         self.assertIn("SaveServerInstallPath(ServerDir);", text)
         self.assertIn("mbInformation", text)
 

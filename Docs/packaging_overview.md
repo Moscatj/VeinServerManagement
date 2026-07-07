@@ -28,7 +28,7 @@ What happens:
   - `Controller/`, `Config/`, `Scripts/`, and `Docs/`
   - empty `Backups/`, `Logs/`, and `Runtime/` directories
   - README/AGENTS/docs_for_codex for reference
-- `Config/config.yaml` is staged from the public template. During install, the installer asks for the Vein dedicated server root and rewrites the installed runtime config paths to match that folder.
+- `Config/config.yaml` is staged from the public template. During install, the installer asks for the Vein dedicated server root, SaveGames folder, log folder, and optional SteamCMD path, then rewrites the installed runtime config paths to match those choices. SteamCMD installs default to the app-managed `Server\` folder.
 - During staging the builder copies `Config/config.example.yaml` into the bundle as `Config/config.yaml`, ensuring secrets from your live config never leak. Customize the installed copy after deployment.
 
 - A console-friendly launcher (`VeinTools.exe`) is built alongside the GUI so you can trigger helper scripts without installing Python.
@@ -112,9 +112,11 @@ Installer responsibilities:
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`
 - Create Start Menu/Desktop shortcuts (`VeinManager`, docs, log folder)
-- Create writable app-owned `Config\`, `Logs\`, `Backups\`, and `Runtime\` folders
+- Create writable app-owned `Config\`, `Logs\`, `Backups\`, `Runtime\`, `SteamCMD\`, and `Server\` folders
 - Ask whether to install/update the dedicated server with SteamCMD or use an existing server folder
-- Store SteamCMD in the management app folder, separate from the dedicated server install folder
+- Store SteamCMD in the management app folder and install new SteamCMD-managed server files under the app-managed `Server\` folder by default
+- Allow an existing `steamcmd.exe` folder to be selected instead of downloading a duplicate app-managed SteamCMD copy
+- Allow SaveGames and log folder overrides for users who keep server data outside the default `Vein\Saved\...` layout
 - Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
 - Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
 - Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
@@ -128,21 +130,38 @@ Recommended folder layout:
 C:\Program Files\VeinServerManagement\
 |-- VeinManager.exe
 |-- VeinTools.exe
-`-- SteamCMD\
-    `-- steamcmd.exe
+|-- SteamCMD\
+|   `-- steamcmd.exe
+`-- Server\
+    `-- Vein\
+        `-- Binaries\
+            `-- Win64\
+                `-- VeinServer.exe
 
-D:\VeinServer\
+D:\VeinServer\        # Optional external server root selected by the user
 `-- Vein\
     `-- Binaries\
         `-- Win64\
             `-- VeinServer.exe
+
+C:\steamcmd\          # Optional existing SteamCMD folder selected by the user
+`-- steamcmd.exe
 ```
+
+SteamCMD note:
+
+- SteamCMD is portable; there is no single required Windows install location.
+- For packaged installs, the recommended default is app-managed SteamCMD under `C:\Program Files\VeinServerManagement\SteamCMD` because it is predictable and self-contained.
+- Users who already maintain SteamCMD elsewhere can select that folder to avoid duplicate downloads.
+- The selected SteamCMD path is used for server install/update commands; it is separate from the dedicated server root and save/log locations.
 
 Uninstall behavior:
 
 - The uninstaller stops management monitors and shuts down a running Vein server before removing app files.
+- App-owned transient folders such as `Logs\`, `Runtime\`, and app-managed `SteamCMD\` are removed during uninstall.
 - Server roots outside the app folder, such as `D:\VeinServer` or `<external drive>\Servers\VeinServer`, are preserved.
 - Server roots inside the app folder can be deleted only after an explicit warning prompt. The default answer preserves saves and server data.
+- Backups, local config changes, external SteamCMD folders, and external server data are not deleted by the transient cleanup rule.
 
 ---
 
