@@ -98,8 +98,10 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_defaults_steamcmd_server_to_app_managed_folder(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
+        self.assertIn("function CurrentAppDir(): string;", text)
+        self.assertIn("Result := WizardDirValue();", text)
         self.assertIn("function DefaultManagedServerDir(): string;", text)
-        self.assertIn("Result := ExpandConstant('{app}\\Server');", text)
+        self.assertIn("Result := AddBackslash(CurrentAppDir()) + 'Server';", text)
         self.assertIn("procedure SyncManagedServerDefault;", text)
         self.assertIn("CurPageID = ServerDirPage.ID", text)
         self.assertIn("SteamCMD installs use the app-managed Server folder by default", text)
@@ -138,6 +140,7 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_keeps_steamcmd_out_of_server_root(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
+        self.assertIn("Result := AddBackslash(CurrentAppDir()) + 'SteamCMD';", text)
         self.assertIn("SteamCmdDir := DefaultAppSteamCmdDir();", text)
         self.assertNotIn("SteamCmdDir := AddBackslash(ServerDir) + 'SteamCMD';", text)
 

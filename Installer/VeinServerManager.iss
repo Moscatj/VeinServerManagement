@@ -139,9 +139,16 @@ begin
   WizardForm.NextButton.Enabled := True;
 end;
 
+function CurrentAppDir(): string;
+begin
+  Result := WizardDirValue();
+  if Result = '' then
+    Result := ExpandConstant('{commonpf}\VeinServerManagement');
+end;
+
 function DefaultManagedServerDir(): string;
 begin
-  Result := ExpandConstant('{app}\Server');
+  Result := AddBackslash(CurrentAppDir()) + 'Server';
 end;
 
 function DefaultSavesDir(): string;
@@ -156,7 +163,7 @@ end;
 
 function DefaultAppSteamCmdDir(): string;
 begin
-  Result := ExpandConstant('{app}\SteamCMD');
+  Result := AddBackslash(CurrentAppDir()) + 'SteamCMD';
 end;
 
 function SelectedSteamCmdExe(): string;

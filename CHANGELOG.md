@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.1 - 2026-07-07
+
+- Fixed installer startup by avoiding `{app}` expansion before Inno Setup initializes the selected app directory.
+- Added future code-signing and release checksum goals to the roadmap.
 - Added release workflow enforcement that publishes GitHub Release notes from the matching `CHANGELOG.md` version section and documents meaningful annotated tag messages.
 
 ## 2.5.0 - 2026-07-07

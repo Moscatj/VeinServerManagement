@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.3.4`:
+Released through `v2.5.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -18,6 +18,8 @@ Released through `v2.3.4`:
 - Public config safety improvements: local `Config/config.yaml` is ignored,
   the tracked example config is used for CI, and Steam updates are disabled by
   default until the operator configures SteamCMD.
+- Packaged installer releases are published through GitHub Releases with
+  versioned installer assets and release notes.
 
 ## Near-Term Priorities
 
@@ -49,6 +51,14 @@ Near-term installer hardening:
   CLI, docs, scripts, and sanitized config.
 - Validate a fresh installer run on a clean Windows profile or VM before major
   public releases.
+- Future code-signing hardening:
+  - Sign `VeinManager.exe`, `VeinTools.exe`, and the final installer before
+    publishing release assets.
+  - Prefer a CI-compatible signing service such as Azure Artifact Signing /
+    Trusted Signing when the project is ready for the identity validation and
+    operating cost.
+  - Timestamp signatures and verify them in CI before release publication.
+  - Publish SHA256 checksums and the expected publisher name with each release.
 
 ## Stability Goals
 

@@ -168,7 +168,7 @@ Uninstall behavior:
 
 ## 4. Roadmap / Next Steps
 
-1. **Release artifact workflow** - publish versioned installer executables on GitHub Releases for each stable release tag.
+1. **Code signing** - eventually sign `VeinManager.exe`, `VeinTools.exe`, and the final installer, then verify signatures and publish checksums with releases.
 2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
 3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
 4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.
