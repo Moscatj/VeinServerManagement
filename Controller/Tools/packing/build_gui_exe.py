@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -53,6 +55,7 @@ EXTRA_FILES: tuple[Path, ...] = tuple(
 )
 CONFIG_TEMPLATE = Path("Config/config.example.yaml")
 ICON_PATH = REPO_ROOT / "Installer" / "assets" / "VeinServerManager.ico"
+VERSION_FILE = "version.txt"
 
 
 def _ensure_pyinstaller():
@@ -167,6 +170,7 @@ def _stage_bundle(pyinstaller_dir: Path, bundle_dir: Path) -> None:
             shutil.copy2(src, bundle_dir / src.name)
     if ICON_PATH.exists():
         shutil.copy2(ICON_PATH, bundle_dir / ICON_PATH.name)
+    _write_version_file(bundle_dir)
 
 
 def _copy_config_dir(src: Path, dst: Path) -> None:
@@ -187,6 +191,36 @@ def _copy_config_dir(src: Path, dst: Path) -> None:
         fallback = src / "config.yaml"
         if fallback.exists():
             shutil.copy2(fallback, dst_cfg)
+
+
+def _resolve_package_version() -> str:
+    for key in ("VEIN_PACKAGE_VERSION", "PACKAGE_VERSION", "VEIN_APP_VERSION"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value[1:] if value.lower().startswith("v") else value
+    try:
+        proc = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "0.0.0-dev"
+    value = (proc.stdout or "").strip()
+    if not value:
+        return "0.0.0-dev"
+    return value[1:] if value.lower().startswith("v") else value
+
+
+def _write_version_file(bundle_dir: Path) -> None:
+    (bundle_dir / VERSION_FILE).write_text(
+        _resolve_package_version() + "\n",
+        encoding="utf-8",
+    )
 
 
 def _parse_args(argv: Iterable[str]) -> argparse.Namespace:

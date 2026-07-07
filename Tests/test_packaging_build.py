@@ -5,6 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ class PackagingBuildTests(unittest.TestCase):
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("OutputBaseFilename=VeinServerManagement-Setup-v{#MyAppVersion}", text)
+        self.assertIn("SaveStringToFile(ExpandConstant('{app}\\version.txt'), '{#MyAppVersion}', False);", text)
 
     def test_installer_moves_default_uninstaller_files_out_of_app_root(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -222,6 +224,31 @@ class PackagingBuildTests(unittest.TestCase):
             self.assertEqual((bundle / "Config" / "config.yaml").read_text(encoding="utf-8"), "secret: false\n")
             self.assertTrue((bundle / "Scripts" / "StartServer.bat").exists())
             self.assertFalse((bundle / "Scripts" / "TestSuite.bat").exists())
+
+    def test_stage_bundle_writes_package_version_file(self) -> None:
+        module = _load_build_module()
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            pyinstaller_dir = root / "PyInstallerOutput"
+            pyinstaller_dir.mkdir()
+            (pyinstaller_dir / "VeinManager.exe").write_text("exe", encoding="utf-8")
+            for name in ("Controller", "Config", "Docs", "Scripts"):
+                (root / name).mkdir()
+            (root / "Config" / "config.example.yaml").write_text("version: 2\n", encoding="utf-8")
+
+            bundle = root / "Bundle"
+            original_root = module.REPO_ROOT
+            original_template = module.CONFIG_TEMPLATE
+            try:
+                module.REPO_ROOT = root
+                module.CONFIG_TEMPLATE = Path("Config/config.example.yaml")
+                with mock.patch.dict(module.os.environ, {"VEIN_PACKAGE_VERSION": "v9.8.7"}):
+                    module._stage_bundle(pyinstaller_dir, bundle)
+            finally:
+                module.REPO_ROOT = original_root
+                module.CONFIG_TEMPLATE = original_template
+
+            self.assertEqual((bundle / "version.txt").read_text(encoding="utf-8"), "9.8.7\n")
 
 
 if __name__ == "__main__":

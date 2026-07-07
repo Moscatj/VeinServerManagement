@@ -426,6 +426,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    SaveStringToFile(ExpandConstant('{app}\version.txt'), '{#MyAppVersion}', False);
     if InstallServer then
       InstallDedicatedServer
     else

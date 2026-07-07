@@ -70,7 +70,15 @@ Dialog for customizing script paths and log file overrides without editing the m
 
 ---
 
-### 4. **Configuration Editing**
+### 4. **About Dialog**
+The `Help > About Vein Server Manager` menu opens a copyable version/runtime dialog.
+- Shows the installed app version from `version.txt` when packaged.
+- Falls back to environment or Git metadata during source/development runs.
+- Includes commit, Python, PySide6, Qt, OS, license, repository, app root, and active config path.
+
+---
+
+### 5. **Configuration Editing**
 - JSON configs are loaded, parsed, and displayed in a scrollable tabbed editor.
 - `KVRow` widgets dynamically adapt input fields (checkboxes, numeric inputs, or text fields).
 - Users can filter keys or validate syntax before saving.
@@ -79,7 +87,7 @@ Dialog for customizing script paths and log file overrides without editing the m
 
 ---
 
-### 5. **Status Polling (`StatusPoller`)**
+### 6. **Status Polling (`StatusPoller`)**
 Background worker thread that reads runtime JSON and PID data to determine:
 - Whether server, log monitor, and crash monitor are running.
 - If log monitor data is fresh or stale.
@@ -88,7 +96,7 @@ Background worker thread that reads runtime JSON and PID data to determine:
 
 ---
 
-### 6. **Live Log Tailer (`FileTail`)**
+### 7. **Live Log Tailer (`FileTail`)**
 Watches the selected log file and streams content into the GUI in real time:
 - Polls every 1 second, appending new bytes since last position.
 - Flushes buffer to UI every 250 ms for smooth scrolling.
@@ -96,7 +104,7 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ---
 
-### 7. **Utilities**
+### 8. **Utilities**
 | Function | Description |
 |-----------|--------------|
 | `_runtime_paths()` | Builds paths to runtime JSONs, flags, and state files. |
@@ -108,7 +116,7 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ---
 
-### 8. **UI Experience**
+### 9. **UI Experience**
 - Three-way splitter layout: left navigation column (shortcuts + config picker + `NavigationPanel`), center content stack (monitor dashboard + config editor), right live log tail (collapsible but tailer keeps running).
 - Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
@@ -122,7 +130,7 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ---
 
-### 9. **Integration Points**
+### 10. **Integration Points**
 | Module | Used For |
 |---------|-----------|
 | `utils.py` | File creation, PID management, and subprocess consistency. |
@@ -133,7 +141,7 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ---
 
-### 10. **Design Notes**
+### 11. **Design Notes**
 - Fully Windows-oriented (uses `tasklist`, `os.startfile`, PowerShell).
 - Atomic JSON writes prevent corruption on save.
 - GUI never blocks during heavy operations (threads + timers).

@@ -16,6 +16,7 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from GUI.kvrow import KVRow  # noqa: E402
 from GUI.navigation import NavigationItem, NavigationPanel  # noqa: E402
+from GUI.about import about_text  # noqa: E402
 from GUI.player_details import populate_json_tree  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
@@ -94,6 +95,27 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(obj.text(0), "object")
         self.assertEqual(obj.child(0).text(0), "player")
         self.assertEqual(obj.child(1).text(0), "items [2]")
+
+    def test_about_text_includes_version_runtime_and_paths(self) -> None:
+        text = about_text(
+            {
+                "suite": "Vein Server Management Suite",
+                "version": "2.3.14",
+                "commit": "abc1234",
+                "mode": "Packaged",
+                "python": "3.12.0",
+                "os": "Windows 11",
+                "license": "Non-Commercial Source Available",
+                "repository": "https://example.invalid/repo",
+                "app_root": "C:/Program Files/VeinServerManagement",
+                "config": "C:/Program Files/VeinServerManagement/Config/config.yaml",
+            }
+        )
+
+        self.assertIn("Version: 2.3.14", text)
+        self.assertIn("Commit: abc1234", text)
+        self.assertIn("Mode: Packaged", text)
+        self.assertIn("Config:", text)
 
 
 if __name__ == "__main__":

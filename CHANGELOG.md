@@ -27,6 +27,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Hid the blank SteamCMD console during installer-run server downloads and clarified that the SteamCMD step may take several minutes.
 - Treated SteamCMD's "fully installed" output as a successful server install even if SteamCMD returns a misleading exit code.
 - Included dynamically loaded CLI subcommands in packaged `VeinTools.exe` builds.
+- Added a responsive GUI About dialog that shows the installed app version, runtime details, license, repository, and config path.
 
 ## 2.3.4 - 2026-07-02
 

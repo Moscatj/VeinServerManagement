@@ -32,6 +32,7 @@ from .widgets import CollapsibleBox
 from .kvrow import KVRow
 from .player_details import handle_player_tree_double_click, show_json_dialog
 from .status import StatusBus, StatusPoller
+from .about import about_text, show_about_dialog
 
 __all__ = [
     "NavigationItem",
@@ -58,4 +59,6 @@ __all__ = [
     "show_json_dialog",
     "StatusBus",
     "StatusPoller",
+    "about_text",
+    "show_about_dialog",
 ]

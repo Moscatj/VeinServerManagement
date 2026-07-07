@@ -57,7 +57,7 @@ if str(CTRL_DIR) not in sys.path:
 # Now it is safe to import Tools modules
 try:
     from Tools.config_io import load_and_validate_config
-    from Tools import mgmt_logs
+    from Tools import app_info, mgmt_logs
 except Exception as e:
     print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
     sys.exit(1)
@@ -83,6 +83,7 @@ try:
         NavigationController,
         ConfigController,
         StatusRenderer,
+        show_about_dialog,
     )
 except Exception as e:
     print(f"[FATAL] Could not import Controller.GUI components: {e}")
@@ -1453,6 +1454,17 @@ class Main(QtWidgets.QMainWindow):
         )
         shortcuts.addSeparator()
         shortcuts.addAction("Advanced...", self._open_advanced)
+
+        help_menu = bar.addMenu("Help")
+        help_menu.addAction("About Vein Server Manager", self._show_about)
+
+    def _show_about(self):
+        info = app_info.build_about_info(
+            ROOT,
+            config_path=self.config_path,
+            frozen=bool(getattr(sys, "frozen", False)),
+        )
+        show_about_dialog(self, info)
 
     def _set_left_panel_visible(self, visible: bool):
         panel = getattr(self, "left_panel", None)
