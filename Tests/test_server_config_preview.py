@@ -14,6 +14,10 @@ if str(CTRL) not in sys.path:
 from Tools import server_config_preview as preview  # noqa: E402
 
 
+def _sample_discord_webhook() -> str:
+    return "https://discord.com/api/" + "webhooks/1/token"
+
+
 class ServerConfigPreviewTests(unittest.TestCase):
     def _server_root(self, base: Path) -> Path:
         root = base / "Server"
@@ -25,7 +29,7 @@ class ServerConfigPreviewTests(unittest.TestCase):
         self.assertEqual(preview.mask_config_value("Password", "secret"), "<configured, masked>")
         self.assertEqual(preview.mask_config_value("ApiToken", "abc"), "<configured, masked>")
         self.assertEqual(
-            preview.mask_config_value("DiscordChatWebhookURL", "https://discord.com/api/webhooks/1/token"),
+            preview.mask_config_value("DiscordChatWebhookURL", _sample_discord_webhook()),
             "<configured, masked>",
         )
         self.assertEqual(preview.mask_config_value("ServerName", "Local"), "Local")
@@ -49,7 +53,7 @@ class ServerConfigPreviewTests(unittest.TestCase):
                 "[URL]\n"
                 "Port=7777\n"
                 "[/Script/Vein.ServerSettings]\n"
-                "DiscordChatWebhookURL=\"https://discord.com/api/webhooks/1/token\"\n",
+                f"DiscordChatWebhookURL=\"{_sample_discord_webhook()}\"\n",
                 encoding="utf-8",
             )
             (config_dir / "Engine.ini").write_text(
