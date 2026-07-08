@@ -72,3 +72,7 @@ Config/*.local.yaml
 Config/*.local.json
 Controller/Legacy/WebAdmin/user_accounts.json
 Controller/Legacy/WebAdmin/server_state.json
+
+# Local third-party reference material
+Reference/
+Refrence/

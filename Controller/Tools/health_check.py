@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from Tools.server_config_validator import validate_server_config
+
 
 HERE = Path(__file__).resolve().parent
 CTRL = HERE.parent
@@ -336,6 +338,8 @@ def run_health_checks(
     results.append(_check_file("paths.absolute_log_file", cfg.get("absolute_log_file")))
     results.append(check_server_executable(cfg))
     results.append(check_steamcmd(cfg))
+    for check in validate_server_config(cfg):
+        results.append(HealthCheckResult(check.name, check.status, check.message))
     results.extend(check_discord_config(raw_cfg, cfg))
 
     return sorted(results, key=lambda item: (_status_rank(item.status), item.name))

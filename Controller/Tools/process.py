@@ -447,9 +447,9 @@ def start_server(
         if max_players and int(max_players) > 0:
             args.append(f"-MaxPlayers={int(max_players)}")
         if ip and ip != "0.0.0.0":
-            args.append(f"-MultiHome={ip}")
+            args.append(f"-multihome={ip}")
         if GAME_PORT:
-            args.append(f"-port={int(GAME_PORT)}")
+            args.append(f"-Port={int(GAME_PORT)}")
         if ENABLE_QUERY_PORT and QUERY_PORT:
             args.append(f"-QueryPort={int(QUERY_PORT)}")
         if abs_log_file:

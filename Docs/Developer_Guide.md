@@ -26,7 +26,7 @@ This guide explains the internal design of the v2.1 system, covering environment
 | **Controller/crash_monitor.py** | Detects server crashes, respects quiet/restart windows, and automatically restarts. |
 | **Controller/nightly_backup.py** | Creates scheduled Nightly backups and prunes by count/age. |
 | **Controller/vein_manager.py** | PySide6 GUI for controlling the server, viewing logs, and editing config. |
-| **Controller/utils.py** | Shared logic for process management, backups, Steam updates, and Discord messaging. |
+| **Controller/Tools/** | Shared helper modules for process management, backups, Steam updates, Discord messaging, diagnostics, runtime state, and server config validation. |
 | **Controller/config.py** | Loads, validates, and normalizes the active local config (`Config/config.yaml` by default). Handles defaults and environment overrides. |
 | **Controller/config_helper.py** | Provides typed getters and feature gate logic (`is_feature_enabled`, etc.). |
 | **Scripts/env_setup.bat** | Initializes all environment variables required by the suite. |
@@ -285,7 +285,7 @@ Copy code
 - [Docs/config_reference.md](config_reference.md) — All config keys explained
 - [Docs/start_server_summary.md](start_server_summary.md) — Startup controller details
 - [Docs/vein_manager_summary.md](vein_manager_summary.md) — GUI documentation
-- [Docs/utils_summary.md](utils_summary.md) — Utility function reference
+- [Docs/tools_summary.md](tools_summary.md) — Shared Tools module reference
 
 ---
 

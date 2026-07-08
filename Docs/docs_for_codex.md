@@ -104,6 +104,10 @@ Key folders and files:
    - The actual game install (for example `<VEIN_INSTALL>\`) is outside this repo.
    - Do **not** write to game binaries or Steam files.
    - Only touch game dirs/saves/logs in ways already supported by config + backup logic.
+   - Narrow exception: the planned management-tool game-config editor may write
+     only `Vein\Saved\Config\WindowsServer\Game.ini` and `Engine.ini`, only after
+     a user action, preview/validation, and a timestamped backup under
+     `Backups\ConfigEdits\`.
 
 4. **GUI must stay responsive**
    - Heavy work (disk, process polling, log tailing) stays in:
@@ -212,6 +216,8 @@ These are examples of the kinds of work you’ll likely be asked to perform and 
 AI tools should **NOT**:
 
 - Touch the external Vein game install directory (binaries, Steam files).
+- Add arbitrary game-file writes. The only approved future write surface is the
+  guarded Game.ini/Engine.ini config editor described above.
 - Introduce new destructive operations on save files or backups.
 - Change the shutdown order or default behavior silently.
 - Remove or bypass Discord notifications around crashes/shutdowns/startups.

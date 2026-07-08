@@ -104,6 +104,11 @@ COMMANDS: dict[str, CommandSpec] = {
     "health-check": CommandSpec(
         "Tools.health_check", "main", "Run project health diagnostics"
     ),
+    "server-config-check": CommandSpec(
+        "Tools.server_config_validator",
+        "main",
+        "Run read-only Vein server install and config diagnostics",
+    ),
     "nightly-backup": CommandSpec(
         "nightly_backup", "main", "Run the nightly backup routine once"
     ),

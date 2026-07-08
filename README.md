@@ -20,6 +20,7 @@ This is a personal source-available portfolio project. It is suitable for experi
 - Discord notifications through environment-backed webhook configuration.
 - PySide6 GUI for local administration.
 - Unit test and coverage foundation for hardening future changes.
+- Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
 
 ## Repository Layout
 
@@ -109,6 +110,7 @@ For normal users, use the Windows installer from the GitHub Releases page when a
 - A local `Config/config.yaml` copied from the sanitized app-managed template.
 - Optional full-package setup that keeps app-managed SteamCMD under `SteamCMD\` and installs a new dedicated server under `Server\` by default.
 - Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and override the SaveGames/log folders used by monitoring and backups.
+- Read-only diagnostics through `VeinTools.exe health-check` and `VeinTools.exe server-config-check`.
 
 The repository itself is the developer/source workflow. Clone it when you want to inspect code, run tests, or build the installer locally.
 

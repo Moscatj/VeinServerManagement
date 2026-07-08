@@ -59,6 +59,10 @@ AI MUST NOT:
 - Reading log files
 - Reading save files
 - Copying save files (for backups only)
+- User-approved management-tool writes to
+  `<VEIN_INSTALL>\Vein\Saved\Config\WindowsServer\Game.ini` and
+  `<VEIN_INSTALL>\Vein\Saved\Config\WindowsServer\Engine.ini`. These writes are
+  only allowed for a guarded game-config editor feature.
 
 ### ❌ Prohibited actions in Vein/:
 - Editing files
@@ -68,6 +72,24 @@ AI MUST NOT:
 - Changing permissions
 - Renaming directories
 - Writing ANYTHING
+
+### Game config editor exception
+
+The user has approved a narrow future exception for editing Vein dedicated server
+configuration from the management tool. This does **not** permit arbitrary game
+file writes.
+
+Any implementation that writes `Game.ini` or `Engine.ini` must:
+
+- Be explicitly user-initiated from the management tool.
+- Limit writes to dedicated server config files under
+  `Vein\Saved\Config\WindowsServer\`.
+- Show or generate a preview of intended settings before writing.
+- Create a timestamped backup under repo-owned `Backups\ConfigEdits\` before
+  every write.
+- Validate the resulting config after write and report failures clearly.
+- Never edit saves, logs, binaries, content, SteamCMD files, or arbitrary game
+  files.
 
 If an AI ever believes an external write is required, the AI must respond:
 
@@ -95,6 +117,7 @@ If an AI ever believes an external write is required, the AI must respond:
 - Creating files in the parent directory outside the repository
 - Creating temporary files outside the repo
 - Writing anywhere inside `Vein/`
+- Writing `Game.ini` or `Engine.ini` outside the current read-only validator
 
 ### Always forbidden:
 - Deleting folders outside the repo
@@ -148,7 +171,7 @@ Copy code
 
 ---
 
-# 4. DEPRECATION OF utils.py (IMPORTANT)
+# 4. REMOVAL OF utils.py (IMPORTANT)
 
 The file:
 
@@ -157,13 +180,13 @@ Controller/utils.py
 markdown
 Copy code
 
-is **deprecated**.
+has been removed after the Tools module split.
 
 ### New rules:
-- ❌ No new functionality may be added to `utils.py`
-- ❌ No major new logic should be placed in `utils.py`
-- ✔ Small bug fixes or compatibility patches are allowed temporarily
-- ✔ New functionality must be implemented in the appropriate module under:
+- Do not recreate `utils.py`
+- Do not add new imports that depend on `utils.py`
+- Compatibility fixes must be made in the appropriate `Controller/Tools/` module
+- New functionality must be implemented in the appropriate module under:
 
 Controller/Tools/
 
@@ -196,8 +219,9 @@ Copy code
 These files define the canonical safe shutdown pipeline:
 
 Controller/shutdown_server.py
-Controller/utils.py (only for legacy shutdown helpers)
 Controller/Tools/backups.py
+Controller/Tools/process.py
+Controller/Tools/runtime.py
 
 yaml
 Copy code
@@ -316,6 +340,8 @@ Codex must ask for explicit confirmation before:
 - File creation **outside** `VeinServerManagement`
 - Deleting any file
 - Writing into `Vein/`
+- Adding or changing game-config write behavior without the backup/preview
+  safeguards documented above
 - Running shell commands that alter system state
 - Changing shutdown or backup behavior
 

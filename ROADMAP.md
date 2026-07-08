@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.5.0`:
+Released through `v2.5.6`, with the next unreleased checkpoint in progress:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -20,15 +20,27 @@ Released through `v2.5.0`:
   default until the operator configures SteamCMD.
 - Packaged installer releases are published through GitHub Releases with
   versioned installer assets and release notes.
+- Packaged installs support an app-managed default layout with `SteamCMD\` and
+  `Server\` under the app folder, while still allowing existing external server
+  and SteamCMD paths.
+- Uninstall cleanup stops management monitors/server processes and can remove
+  app-owned logs, runtime state, SteamCMD, server files, config, and backups
+  only through explicit user prompts.
+- The management suite now includes read-only diagnostics for dedicated server
+  layout and key Vein `Game.ini` / `Engine.ini` settings.
 
 ## Near-Term Priorities
 
 - Improve README presentation with current GUI screenshots.
-- Add GitHub Release pages with release notes and installer artifacts.
+- Keep GitHub Release pages populated with meaningful release notes and
+  versioned installer artifacts.
 - Enable branch protection on `main` after release workflows are stable.
 - Continue focused unit coverage for non-GUI controller and Tools modules.
 - Review legacy modules and document what is retained for reference versus
   still supported.
+- Build a first-run setup/config validation flow in the GUI so users can see
+  missing SteamCMD, server executable, port, and game-config issues before
+  starting the server.
 
 ## Installer And Binary Distribution Goals
 
@@ -65,9 +77,36 @@ Near-term installer hardening:
 - Keep all server lifecycle actions routed through shared Tools modules.
 - Preserve safe shutdown markers and backup behavior.
 - Avoid writes to the external Vein game install except supported save-copy
-  backup operations.
+  backup operations, SteamCMD install/update flows, and the guarded
+  `Game.ini` / `Engine.ini` editor described below.
 - Keep CI passing before merges or releases.
 - Add regression tests for bug fixes when practical.
+- Keep read-only `health-check` and `server-config-check` useful as release and
+  first-run validation gates.
+
+## Game Config Management Goals
+
+The management tool should eventually edit Vein dedicated server config files
+for operators who do not want to hand-edit Unreal INI files.
+
+Allowed future scope:
+
+- Read, preview, validate, and write only:
+  - `Vein\Saved\Config\WindowsServer\Game.ini`
+  - `Vein\Saved\Config\WindowsServer\Engine.ini`
+- Cover documented settings such as server name, description, public/private
+  visibility, admin Steam IDs, max players, gameplay/query/HTTP ports, Discord
+  chat webhooks, whitelist entries, and common console variables.
+- Create a timestamped backup under `Backups\ConfigEdits\` before every write.
+- Show a clear preview/diff before saving changes.
+- Re-run validation after writing and surface any mismatches in the GUI.
+
+Out of scope:
+
+- Editing saves, logs, binaries, content files, or arbitrary Steam/game files.
+- Silent automatic rewrites during startup.
+- Exposing the unauthenticated Vein HTTP API publicly without an explicit
+  operator-controlled intermediary.
 
 ## Product Polish Goals
 
@@ -77,6 +116,8 @@ Near-term installer hardening:
   Discord webhook setup.
 - Package a cleaner Windows launch/install workflow with downloadable release
   artifacts.
+- Add first-run diagnostics that make installed version, config path, server
+  root, and validation status easy to verify.
 
 ## Multi-Server Hosting Goals
 
@@ -126,6 +167,7 @@ Open design questions:
   - log parsing and summarization
   - Steam update/version helper behavior
   - config validation and fallback behavior
+  - server config validation and future guarded INI write behavior
 - Keep GUI testing focused on controller/helper seams unless a stable UI test
   harness is added later.
 

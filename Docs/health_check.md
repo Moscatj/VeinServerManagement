@@ -11,6 +11,7 @@ python Controller\health_check.py
 Scripts\HealthCheck.bat
 python Controller\health_check.py --json
 python Controller\vein_tools.py health-check
+python Controller\vein_tools.py server-config-check
 ```
 
 The command reports `PASS`, `WARN`, and `FAIL` results:
@@ -34,9 +35,15 @@ Current checks include:
 - Management runtime, log, and backup directories.
 - Save and game-log paths.
 - Configured server executable candidates.
+- Dedicated server layout checks, including expected executable files,
+  `steam_api64.dll`, and documented `Game.ini` / `Engine.ini` settings.
 - SteamCMD path availability.
 - Discord webhook safety, including detection of raw Discord webhook URLs in
   committed config. Webhooks should use `ENV:...` references.
 
 Use this command as a stability gate alongside the unit test and coverage checks
 documented in [testing.md](testing.md).
+
+`server-config-check` runs the dedicated-server portion by itself. It is useful
+after installer setup, after changing local ports/admin settings, or before
+adding future GUI-based game-config editing.

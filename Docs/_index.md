@@ -31,6 +31,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
 - [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
+- [../ROADMAP.md](../ROADMAP.md) - Current maturity, installer, stability, and future game-config goals
 
 ---
 
@@ -48,7 +49,7 @@ This folder contains all **developer** and **system-level** documentation.
 ### 💾 Supporting Modules
 | Module | Summary |
 |--------|----------|
-| [utils_summary.md](utils_summary.md) | Shared utility library (processes, backups, Discord) |
+| [tools_summary.md](tools_summary.md) | Shared Tools modules for processes, backups, Discord, diagnostics, and runtime helpers |
 | [vein_manager_summary.md](vein_manager_summary.md) | PySide6 GUI for managing the suite |
 
 ---
@@ -65,7 +66,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Release Process | [../RELEASING.md](../RELEASING.md) |
 | Roadmap | [../ROADMAP.md](../ROADMAP.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |
-| Backup System | [nightly_backup_summary.md](nightly_backup_summary.md) + [utils_summary.md](utils_summary.md) |
+| Backup System | [nightly_backup_summary.md](nightly_backup_summary.md) + [tools_summary.md](tools_summary.md) |
 
 ---
 
@@ -108,7 +109,7 @@ Each summary file uses consistent section headers so you can quickly find:
 3. [start_server_summary.md](start_server_summary.md)
 4. [crash_monitor_summary.md](crash_monitor_summary.md)
 5. [monitor_log_summary.md](monitor_log_summary.md)
-6. [utils_summary.md](utils_summary.md)
+6. [tools_summary.md](tools_summary.md)
 7. [vein_manager_summary.md](vein_manager_summary.md)
 8. [nightly_backup_summary.md](nightly_backup_summary.md)
 

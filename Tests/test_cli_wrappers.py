@@ -171,6 +171,12 @@ class CliWrapperTests(unittest.TestCase):
             self.assertEqual(command.run(), 0)
         health_main.assert_called_once()
 
+    def test_vein_tools_server_config_check_command_dispatches(self) -> None:
+        command = vein_tools.COMMANDS["server-config-check"]
+        with mock.patch("Tools.server_config_validator.main", return_value=0) as check_main:
+            self.assertEqual(command.run(), 0)
+        check_main.assert_called_once()
+
     def test_vein_tools_subcommand_does_not_leak_wrapper_argv(self) -> None:
         seen: list[list[str]] = []
 

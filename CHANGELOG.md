@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added read-only Vein server install/config diagnostics for expected executable files, Steam API DLLs, and documented `Game.ini` / `Engine.ini` settings.
+- Updated dedicated server launch arguments to use documented `-multihome` and `-Port` casing.
+- Documented the future guarded Game.ini/Engine.ini editor exception with required preview, validation, and backup safeguards.
+
 ## 2.5.6 - 2026-07-08
 
 - Added CI fixture directories for the app-managed server layout so health checks can validate a clean source checkout without requiring real dedicated server files.
