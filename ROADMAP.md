@@ -47,6 +47,8 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
   instead of only seeing diagnostics.
 - Build the guarded game-config editor on top of the read-only preview, with
   backup, diff/preview, validation, and rollback guidance before any writes.
+- Wire the tested backend game-config edit engine into GUI controls after the
+  preview/diff and backup flow is manually reviewed.
 
 ## Installer And Binary Distribution Goals
 

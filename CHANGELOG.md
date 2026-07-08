@@ -11,6 +11,7 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Clarified server preflight severity by treating optional `Core.Log` guidance as `INFO` instead of a warning.
 - Added a read-only GUI Server Config preview for key `Game.ini` and `Engine.ini` settings with secret masking.
 - Expanded the Server Config preview to include all additional keys already present in the actual server config files.
+- Added a tested backend edit engine for allowlisted `Game.ini` and `Engine.ini` changes with preview diffs, backups, atomic writes, and post-write validation.
 - Updated dedicated server launch arguments to use documented `-multihome` and `-Port` casing.
 - Documented the future guarded Game.ini/Engine.ini editor exception with required preview, validation, and backup safeguards.
 
