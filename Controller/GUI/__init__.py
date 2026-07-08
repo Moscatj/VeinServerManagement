@@ -34,8 +34,10 @@ from .player_details import handle_player_tree_double_click, show_json_dialog
 from .status import StatusBus, StatusPoller
 from .preflight import PreflightWorker, summarize_preflight
 from .server_config_view import (
+    ServerConfigEditWorker,
     ServerConfigPreviewWorker,
     build_server_config_preview_view,
+    edit_values_from_text,
 )
 from .about import about_text, show_about_dialog
 
@@ -67,7 +69,9 @@ __all__ = [
     "PreflightWorker",
     "summarize_preflight",
     "ServerConfigPreviewWorker",
+    "ServerConfigEditWorker",
     "build_server_config_preview_view",
+    "edit_values_from_text",
     "about_text",
     "show_about_dialog",
 ]

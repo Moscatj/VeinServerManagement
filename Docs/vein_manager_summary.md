@@ -129,8 +129,9 @@ Watches the selected log file and streams content into the GUI in real time:
   in the actual server config files are included. Passwords, webhook URLs, and
   token-like values are masked.
 - Game-config write support currently lives only in the tested backend edit
-  engine. GUI editing should be added only after the preview/diff and backup
-  flow is reviewed.
+  engine and the Server Config view. GUI editing requires selecting a setting,
+  previewing the diff, and confirming Apply; writes create backups first and
+  refresh validation afterward.
 - Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.

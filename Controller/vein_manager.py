@@ -78,6 +78,7 @@ try:
         StatusBus,
         StatusPoller,
         PreflightWorker,
+        ServerConfigEditWorker,
         ServerConfigPreviewWorker,
         build_server_config_preview_view,
         ConfigRenderer,
@@ -1613,6 +1614,18 @@ class Main(QtWidgets.QMainWindow):
         self.btnPreflightRefresh.clicked.connect(self._kick_preflight_check)
         if hasattr(self, "btnServerConfigPreviewRefresh"):
             self.btnServerConfigPreviewRefresh.clicked.connect(self._refresh_server_config_preview)
+        if hasattr(self, "treeServerConfigPreview"):
+            self.treeServerConfigPreview.itemSelectionChanged.connect(self._server_config_selection_changed)
+        if hasattr(self, "btnServerConfigEditPreview"):
+            self.btnServerConfigEditPreview.clicked.connect(self._preview_server_config_edit)
+        if hasattr(self, "btnServerConfigEditApply"):
+            self.btnServerConfigEditApply.clicked.connect(self._confirm_apply_server_config_edit)
+        if hasattr(self, "txtServerConfigEditValue"):
+            self.txtServerConfigEditValue.textChanged.connect(
+                lambda: self.btnServerConfigEditApply.setEnabled(False)
+                if hasattr(self, "btnServerConfigEditApply")
+                else None
+            )
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -2765,6 +2778,96 @@ class Main(QtWidgets.QMainWindow):
             tree.addTopLevelItem(row)
         for idx in range(tree.columnCount()):
             tree.resizeColumnToContents(idx)
+        self._server_config_selection_changed()
+
+    def _selected_server_config_item(self):
+        tree = getattr(self, "treeServerConfigPreview", None)
+        if tree is None:
+            return None
+        items = tree.selectedItems()
+        return items[0] if items else None
+
+    def _server_config_selection_changed(self):
+        item = self._selected_server_config_item()
+        if item is None:
+            if hasattr(self, "lblServerConfigEditTarget"):
+                self.lblServerConfigEditTarget.setText("Select a setting to edit.")
+            return
+        source, section, key, value = [item.text(i) for i in range(4)]
+        if hasattr(self, "lblServerConfigEditTarget"):
+            self.lblServerConfigEditTarget.setText(f"{source} [{section}] {key}")
+        if hasattr(self, "txtServerConfigEditValue"):
+            if value.startswith("<") and value.endswith(">"):
+                self.txtServerConfigEditValue.setPlainText("")
+                self.txtServerConfigEditValue.setPlaceholderText("Sensitive value is masked. Enter the replacement value.")
+            else:
+                self.txtServerConfigEditValue.setPlainText("" if value == "(not set)" else value)
+        if hasattr(self, "txtServerConfigEditDiff"):
+            self.txtServerConfigEditDiff.clear()
+        if hasattr(self, "btnServerConfigEditApply"):
+            self.btnServerConfigEditApply.setEnabled(False)
+
+    def _start_server_config_edit_worker(self, action: str):
+        item = self._selected_server_config_item()
+        if item is None or getattr(self, "_server_config_edit_running", False):
+            return
+        self._server_config_edit_running = True
+        self.btnServerConfigEditApply.setEnabled(False)
+        source, section, key = [item.text(i) for i in range(3)]
+        value_text = self.txtServerConfigEditValue.toPlainText()
+        worker = ServerConfigEditWorker(
+            self.config_path,
+            action=action,
+            source=source,
+            section=section,
+            key=key,
+            value_text=value_text,
+        )
+        worker.signals.ready.connect(self._apply_server_config_edit_result)
+        self._pool.start(worker)
+
+    def _preview_server_config_edit(self):
+        if hasattr(self, "txtServerConfigEditDiff"):
+            self.txtServerConfigEditDiff.setPlainText("Building diff preview.")
+        self._start_server_config_edit_worker("preview")
+
+    def _confirm_apply_server_config_edit(self):
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Apply Server Config Change",
+            "This will back up and modify the selected Vein server config file. Continue?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer == QtWidgets.QMessageBox.Yes:
+            self._start_server_config_edit_worker("apply")
+
+    def _apply_server_config_edit_result(self, payload: dict):
+        self._server_config_edit_running = False
+        ok = bool(payload.get("ok"))
+        action = payload.get("action") or "preview"
+        if not ok:
+            message = f"Edit {action} failed: {payload.get('error') or 'unknown error'}"
+            if hasattr(self, "txtServerConfigEditDiff"):
+                self.txtServerConfigEditDiff.setPlainText(message)
+            self._status(message)
+            return
+
+        diffs = payload.get("diffs") or {}
+        diff_text = "\n".join(str(value) for value in diffs.values()).strip()
+        if not diff_text:
+            diff_text = "No file changes required."
+        if hasattr(self, "txtServerConfigEditDiff"):
+            self.txtServerConfigEditDiff.setPlainText(diff_text)
+        if hasattr(self, "btnServerConfigEditApply"):
+            self.btnServerConfigEditApply.setEnabled(action == "preview" and bool(payload.get("changed_files")))
+        if action == "apply":
+            backups = payload.get("backups") or []
+            self._status(f"Server config saved. Backup file(s): {len(backups)}")
+            self._refresh_server_config_preview()
+            self._kick_preflight_check()
+        else:
+            self._status("Server config diff preview ready.")
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:

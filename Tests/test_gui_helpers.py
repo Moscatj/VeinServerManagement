@@ -18,7 +18,7 @@ from GUI.kvrow import KVRow  # noqa: E402
 from GUI.navigation import NavigationItem, NavigationPanel  # noqa: E402
 from GUI.about import about_text  # noqa: E402
 from GUI.player_details import populate_json_tree  # noqa: E402
-from GUI.server_config_view import build_server_config_preview_view  # noqa: E402
+from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 
@@ -129,6 +129,13 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIsInstance(owner.treeServerConfigPreview, QtWidgets.QTreeWidget)
         self.assertEqual(owner.treeServerConfigPreview.columnCount(), 5)
         self.assertEqual(owner.btnServerConfigPreviewRefresh.text(), "Refresh")
+        self.assertEqual(owner.btnServerConfigEditPreview.text(), "Preview Diff")
+        self.assertFalse(owner.btnServerConfigEditApply.isEnabled())
+
+    def test_edit_values_from_text_supports_scalar_and_lists(self) -> None:
+        self.assertEqual(edit_values_from_text("One"), "One")
+        self.assertEqual(edit_values_from_text("111\n222\n"), ["111", "222"])
+        self.assertEqual(edit_values_from_text(" \n "), "")
 
 
 if __name__ == "__main__":
