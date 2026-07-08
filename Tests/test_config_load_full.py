@@ -76,18 +76,52 @@ backups:
         self.assertEqual(loaded["backup_root"], str((mgmt / "Backups").resolve()))
         self.assertEqual(loaded["game_port"], 7777)
 
-    def test_load_config_raises_for_missing_server_dir(self) -> None:
+    def test_load_config_uses_fallback_when_server_dir_is_missing(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
+            mgmt = Path(tmp)
             cfg = Path(tmp) / "bad.yaml"
             cfg.write_text("version: 2\n", encoding="utf-8")
             config_module._CONFIG_CACHE = None
             with mock.patch.dict(os.environ, {"VEIN_CONFIG": str(cfg)}, clear=False), mock.patch.object(
                 config_module,
                 "_mgmt_root",
-                return_value=Path(tmp),
+                return_value=mgmt,
             ):
-                with self.assertRaisesRegex(ValueError, "server_dir"):
-                    config_module.load_config()
+                loaded = config_module.load_config()
+
+        self.assertEqual(loaded["server_dir"], str((mgmt.parent / "VeinServer").resolve()))
+
+    def test_load_config_allows_configured_server_dir_that_is_not_installed_yet(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            mgmt = Path(tmp)
+            cfg = mgmt / "config.yaml"
+            cfg.write_text(
+                """
+version: 2
+paths:
+  server_root: Server
+  runtime_dir: Runtime
+  mgmt_log_dir: Logs
+  backup_root: Backups
+server:
+  executables:
+    - Vein/Binaries/Win64/VeinServer.exe
+backups:
+  enabled: true
+  root: Backups
+""",
+                encoding="utf-8",
+            )
+
+            config_module._CONFIG_CACHE = None
+            with mock.patch.dict(os.environ, {"VEIN_CONFIG": str(cfg)}, clear=False), mock.patch.object(
+                config_module,
+                "_mgmt_root",
+                return_value=mgmt,
+            ):
+                loaded = config_module.load_config()
+
+        self.assertEqual(loaded["server_dir"], str((mgmt / "Server").resolve()))
 
 
 if __name__ == "__main__":

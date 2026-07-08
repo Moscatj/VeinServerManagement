@@ -499,7 +499,10 @@ def _validate(cfg: Dict[str, Any]) -> None:
 
     sd = cfg.get("server_dir")
     if sd and not os.path.isdir(sd):
-        problems.append(f"server_dir does not exist: {sd}")
+        print(
+            f"[Config] server_dir does not exist yet: {sd}. "
+            "Run the installer SteamCMD step, select an existing server, or use health-check before starting."
+        )
 
     br = cfg.get("backup_root")
     if br and not os.path.isdir(br):

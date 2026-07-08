@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.5 - 2026-07-08
+
+- Allowed config loading before the app-managed `Server\` folder exists so fresh installs and CI can run setup checks before the dedicated server is installed.
+
 ## 2.5.4 - 2026-07-08
 
 - Aligned packaged default config paths with the app-managed `Server\` and `SteamCMD\` install layout and documented the fresh-install health-check flow.
