@@ -160,9 +160,10 @@ Uninstall behavior:
 
 - The uninstaller stops management monitors and shuts down a running Vein server before removing app files.
 - App-owned transient folders such as `Logs\`, `Runtime\`, and app-managed `SteamCMD\` are removed during uninstall.
+- The uninstaller prompts before deleting local `Backups\` and `Config\` folders, then attempts to remove the now-empty app install folder.
 - Server roots outside the app folder, such as `D:\VeinServer` or `<external drive>\Servers\VeinServer`, are preserved.
 - Server roots inside the app folder can be deleted only after an explicit warning prompt. The default answer preserves saves and server data.
-- Backups, local config changes, external SteamCMD folders, and external server data are not deleted by the transient cleanup rule.
+- External SteamCMD folders and external server data are not deleted by app-owned cleanup rules.
 
 ---
 

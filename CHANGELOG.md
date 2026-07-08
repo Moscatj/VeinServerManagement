@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.3 - 2026-07-08
+
+- Added uninstall prompts for removing local backups and config files so full uninstall can leave no app-owned folders behind.
+
 ## 2.5.2 - 2026-07-08
 
 - Fixed clipped SteamCMD installer page helper text.

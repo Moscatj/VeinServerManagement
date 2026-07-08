@@ -85,6 +85,8 @@ var
   ConfigureSteamCmd: Boolean;
   UseExistingSteamCmd: Boolean;
   RemoveAppManagedServer: Boolean;
+  RemoveBackups: Boolean;
+  RemoveLocalConfig: Boolean;
   AppManagedServerDir: string;
   LastManagedServerDefault: string;
   LastSavesDefault: string;
@@ -738,7 +740,33 @@ var
 begin
   Result := True;
   RemoveAppManagedServer := False;
+  RemoveBackups := False;
+  RemoveLocalConfig := False;
   AppManagedServerDir := '';
+
+  if DirExists(ExpandConstant('{app}\Backups')) then
+  begin
+    RemoveBackups :=
+      MsgBox(
+        'Remove local Vein Server Management backups too?'#13#10#13#10 +
+        ExpandConstant('{app}\Backups') + #13#10#13#10 +
+        'Choose No to preserve backup files.',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON2
+      ) = IDYES;
+  end;
+
+  if DirExists(ExpandConstant('{app}\Config')) then
+  begin
+    RemoveLocalConfig :=
+      MsgBox(
+        'Remove local Vein Server Management config files too?'#13#10#13#10 +
+        ExpandConstant('{app}\Config') + #13#10#13#10 +
+        'Choose No to preserve local settings for a future reinstall.',
+        mbConfirmation,
+        MB_YESNO or MB_DEFBUTTON2
+      ) = IDYES;
+  end;
 
   if LoadInstalledServerPath(ServerDir) then
   begin
@@ -771,9 +799,24 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  if (CurUninstallStep = usPostUninstall) and RemoveBackups then
+  begin
+    Log('Removing local backup folder: ' + ExpandConstant('{app}\Backups'));
+    DelTree(ExpandConstant('{app}\Backups'), True, True, True);
+  end;
+
+  if (CurUninstallStep = usPostUninstall) and RemoveLocalConfig then
+  begin
+    Log('Removing local config folder: ' + ExpandConstant('{app}\Config'));
+    DelTree(ExpandConstant('{app}\Config'), True, True, True);
+  end;
+
   if (CurUninstallStep = usPostUninstall) and RemoveAppManagedServer and (AppManagedServerDir <> '') then
   begin
     Log('Removing app-managed Vein dedicated server folder: ' + AppManagedServerDir);
     DelTree(AppManagedServerDir, True, True, True);
   end;
+
+  if CurUninstallStep = usPostUninstall then
+    RemoveDir(ExpandConstant('{app}'));
 end;

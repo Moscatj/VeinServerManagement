@@ -64,6 +64,18 @@ class PackagingBuildTests(unittest.TestCase):
             self.assertIn(f'Type: filesandordirs; Name: "{{app}}\\{folder}"', text)
         self.assertIn('Type: dirifempty; Name: "{app}"', text)
 
+    def test_uninstaller_prompts_before_removing_backups_and_config(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("RemoveBackups: Boolean;", text)
+        self.assertIn("RemoveLocalConfig: Boolean;", text)
+        self.assertIn("Remove local Vein Server Management backups too?", text)
+        self.assertIn("Remove local Vein Server Management config files too?", text)
+        self.assertIn("MB_YESNO or MB_DEFBUTTON2", text)
+        self.assertIn("DelTree(ExpandConstant('{app}\\Backups'), True, True, True);", text)
+        self.assertIn("DelTree(ExpandConstant('{app}\\Config'), True, True, True);", text)
+        self.assertIn("RemoveDir(ExpandConstant('{app}'));", text)
+
     def test_installer_server_choice_controls_have_explicit_heights(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
