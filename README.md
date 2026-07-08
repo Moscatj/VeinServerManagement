@@ -5,7 +5,7 @@
 
 A Python and PySide6 toolkit for hosting and supervising a Vein dedicated server on Windows.
 
-This repository does not contain the game server. It is a management layer that lives alongside a Steam-installed Vein dedicated server and handles startup, shutdown, monitoring, backups, and local GUI control.
+This repository does not contain the game server. It is a management layer that can either install/manage a Vein dedicated server under the packaged app folder or point at an existing Steam-installed server elsewhere on disk.
 
 ## Project Status
 
@@ -43,14 +43,14 @@ Logs/                     Generated management logs, ignored
 Backups/                  Generated backup output, ignored
 ```
 
-The actual Vein game install should be outside this repository, for example:
+For source/developer runs, the actual Vein game install should stay outside this repository, for example:
 
 ```text
 <VEIN_INSTALL>\       Game server install
 <VEIN_MGMT_ROOT>\     This repository
 ```
 
-The management suite may read game logs and saves as configured, but it should not modify game install files.
+Packaged installs default to an app-managed layout under the install folder, with `SteamCMD\` and `Server\` beside `VeinManager.exe`. The management suite may read game logs and saves as configured, but it should not modify external game install files outside supported SteamCMD install/update flows.
 
 ## Configuration
 
@@ -106,7 +106,7 @@ For normal users, use the Windows installer from the GitHub Releases page when a
 
 - `VeinManager.exe` for the GUI.
 - `VeinTools.exe` for command-line operations such as health checks, server start/stop, monitor control, and backups.
-- A local `Config/config.yaml` copied from the sanitized template.
+- A local `Config/config.yaml` copied from the sanitized app-managed template.
 - Optional full-package setup that keeps app-managed SteamCMD under `SteamCMD\` and installs a new dedicated server under `Server\` by default.
 - Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and override the SaveGames/log folders used by monitoring and backups.
 
@@ -148,6 +148,8 @@ VeinTools.exe start-server
 VeinTools.exe stop-server
 VeinTools.exe stop-all-monitors
 ```
+
+After a fresh install, run `VeinTools.exe health-check` or use the GUI preflight/status output to confirm the selected server root, `SaveGames`, logs, SteamCMD path, and server executable are all available before starting the server.
 
 ## Building The Installer
 

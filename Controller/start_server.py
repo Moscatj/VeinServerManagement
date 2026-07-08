@@ -30,10 +30,10 @@ from Tools.config_io import load_and_validate_config
 
 # --- Config path resolution (shared by this module & spawned children) ---
 def _default_config_path() -> Path:
-    # Prefer explicit env first (your BATs set VEIN_CONFIG); otherwise fall back to repo default
+    # Prefer explicit env first; otherwise use the YAML runtime config.
     return Path(
         os.environ.get("VEIN_CONFIG")
-        or (Path(__file__).parents[1] / "Config" / "config.json")
+        or (Path(__file__).parents[1] / "Config" / "config.yaml")
     )
 
 
@@ -205,9 +205,7 @@ def main() -> int:
     # 0) Load + validate config once (paths, exe choice, hb knobs)
     from Tools.config_io import load_and_validate_config
 
-    vcfg = load_and_validate_config(
-        CONFIG_PATH
-    )  # CONFIG_PATH should already point to Config/config.json
+    vcfg = load_and_validate_config(CONFIG_PATH)
 
     SERVER_DIR_PATH: Path = vcfg.server_dir
     RUNTIME_DIR_PATH: Path = vcfg.runtime_dir

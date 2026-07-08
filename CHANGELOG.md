@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.4 - 2026-07-08
+
+- Aligned packaged default config paths with the app-managed `Server\` and `SteamCMD\` install layout and documented the fresh-install health-check flow.
+
 ## 2.5.3 - 2026-07-08
 
 - Added uninstall prompts for removing local backups and config files so full uninstall can leave no app-owned folders behind.

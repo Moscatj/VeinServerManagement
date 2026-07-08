@@ -4,11 +4,11 @@
 version: "2.2"
 
 paths:
-  server_root: ".."                               # Folder that contains the Vein dedicated server
+  server_root: "Server"                           # Folder that contains the Vein dedicated server
   runtime_dir: "Runtime"
-  saves_dir: "../Vein/Saved/SaveGames"
-  logs_dir: "../Vein/Saved/Logs"
-  absolute_log_file: "../Vein/Saved/Logs/Vein.log"
+  saves_dir: "Server/Vein/Saved/SaveGames"
+  logs_dir: "Server/Vein/Saved/Logs"
+  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"
   mgmt_log_dir: "Logs"
 
 management_logs:
@@ -80,7 +80,7 @@ lifecycle:
       after: []
 
 steam:
-  steamcmd_path: "ENV:STEAMCMD_PATH"
+  steamcmd_path: "SteamCMD/steamcmd.exe"
   app_id: 2131400
   auto_update_on_start: false
   steam_update_validate: true

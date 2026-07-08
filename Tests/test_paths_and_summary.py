@@ -50,7 +50,7 @@ class PathsAndSummaryTests(unittest.TestCase):
             ):
                 self.assertEqual(
                     paths.resolve_save_file(),
-                    base / "Server" / "Vein" / "Saved" / "Server.vns",
+                    base / "Server" / "Vein" / "Saved" / "SaveGames" / "Server.vns",
                 )
 
     def test_summarize_config_projects_core_fields(self) -> None:

@@ -11,6 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_SCRIPT = ROOT / "Controller" / "Tools" / "packing" / "build_gui_exe.py"
 INSTALLER_SCRIPT = ROOT / "Installer" / "VeinServerManager.iss"
+CONFIG_TEMPLATE = ROOT / "Config" / "config.example.yaml"
 
 
 def _load_build_module():
@@ -118,6 +119,25 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("CurPageID = ServerDirPage.ID", text)
         self.assertIn("SteamCMD installs use the app-managed Server folder by default", text)
         self.assertNotIn("ServerDirPage.Values[0] := ExpandConstant('{sd}\\VeinServer');", text)
+
+    def test_config_template_defaults_to_app_managed_install_layout(self) -> None:
+        text = CONFIG_TEMPLATE.read_text(encoding="utf-8")
+
+        self.assertIn('  server_root: "Server"', text)
+        self.assertIn('  saves_dir: "Server/Vein/Saved/SaveGames"', text)
+        self.assertIn('  logs_dir: "Server/Vein/Saved/Logs"', text)
+        self.assertIn('  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"', text)
+        self.assertIn('  steamcmd_path: "SteamCMD/steamcmd.exe"', text)
+
+    def test_installer_rewrites_app_managed_template_paths(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('ReplaceConfigValue(Content, \'  server_root: "Server"\'', text)
+        self.assertIn('ReplaceConfigValue(Content, \'  saves_dir: "Server/Vein/Saved/SaveGames"\'', text)
+        self.assertIn('ReplaceConfigValue(Content, \'  logs_dir: "Server/Vein/Saved/Logs"\'', text)
+        self.assertIn('ReplaceConfigValue(Content, \'  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"\'', text)
+        self.assertIn('ReplaceConfigValue(Content, \'  steamcmd_path: "SteamCMD/steamcmd.exe"\'', text)
+        self.assertIn('\'  steamcmd_path: ""\'', text)
 
     def test_installer_supports_existing_steamcmd_for_server_install(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

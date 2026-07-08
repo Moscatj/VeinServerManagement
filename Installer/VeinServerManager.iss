@@ -596,12 +596,14 @@ begin
     LogFile := LogsPath + '/Vein.log';
     SteamCmdPath := NormalizePathForYaml(SteamCmdExe);
 
-    ReplaceConfigValue(Content, '  server_root: ".."', '  server_root: "' + ServerRoot + '"');
-    ReplaceConfigValue(Content, '  saves_dir: "../Vein/Saved/SaveGames"', '  saves_dir: "' + SavesPath + '"');
-    ReplaceConfigValue(Content, '  logs_dir: "../Vein/Saved/Logs"', '  logs_dir: "' + LogsPath + '"');
-    ReplaceConfigValue(Content, '  absolute_log_file: "../Vein/Saved/Logs/Vein.log"', '  absolute_log_file: "' + LogFile + '"');
+    ReplaceConfigValue(Content, '  server_root: "Server"', '  server_root: "' + ServerRoot + '"');
+    ReplaceConfigValue(Content, '  saves_dir: "Server/Vein/Saved/SaveGames"', '  saves_dir: "' + SavesPath + '"');
+    ReplaceConfigValue(Content, '  logs_dir: "Server/Vein/Saved/Logs"', '  logs_dir: "' + LogsPath + '"');
+    ReplaceConfigValue(Content, '  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"', '  absolute_log_file: "' + LogFile + '"');
     if SteamCmdExe <> '' then
-      ReplaceConfigValue(Content, '  steamcmd_path: "ENV:STEAMCMD_PATH"', '  steamcmd_path: "' + SteamCmdPath + '"');
+      ReplaceConfigValue(Content, '  steamcmd_path: "SteamCMD/steamcmd.exe"', '  steamcmd_path: "' + SteamCmdPath + '"')
+    else
+      ReplaceConfigValue(Content, '  steamcmd_path: "SteamCMD/steamcmd.exe"', '  steamcmd_path: ""');
     SaveStringToFile(ConfigPath, Content, False);
   end;
 end;

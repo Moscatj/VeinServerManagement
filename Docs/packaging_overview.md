@@ -28,7 +28,7 @@ What happens:
   - `Controller/`, `Config/`, `Scripts/`, and `Docs/`
   - empty `Backups/`, `Logs/`, and `Runtime/` directories
   - README/AGENTS/docs_for_codex for reference
-- `Config/config.yaml` is staged from the public template. During install, the installer asks for the Vein dedicated server root, SaveGames folder, log folder, and optional SteamCMD path, then rewrites the installed runtime config paths to match those choices. SteamCMD installs default to the app-managed `Server\` folder.
+- `Config/config.yaml` is staged from the public app-managed template. During install, the installer asks for the Vein dedicated server root, SaveGames folder, log folder, and optional SteamCMD path, then rewrites the installed runtime config paths to match those choices. SteamCMD installs default to the app-managed `Server\` folder.
 - During staging the builder copies `Config/config.example.yaml` into the bundle as `Config/config.yaml`, ensuring secrets from your live config never leak. Customize the installed copy after deployment.
 
 - A console-friendly launcher (`VeinTools.exe`) is built alongside the GUI so you can trigger helper scripts without installing Python.
@@ -47,6 +47,7 @@ The packaged CLI lives next to the GUI and mirrors the common BAT entrypoints:
 .\VeinTools.exe stop-crash-monitor    # stop the crash monitor
 .\VeinTools.exe stop-all-monitors     # stop both monitors
 .\VeinTools.exe nightly-backup        # run the nightly backup routine immediately
+.\VeinTools.exe health-check          # validate config, paths, SteamCMD, and server executable
 ```
 
 Add `--config <path>` if you need to point at a non-default configuration file; the default is `Config/config.yaml` under the install root.
@@ -76,6 +77,8 @@ VeinServerManager/
 |-- Docs/                         # Reference docs
 |-- Backups/                      # Empty placeholder; created on first run
 |-- Logs/                         # Empty placeholder
+|-- SteamCMD/                     # App-managed SteamCMD when selected
+|-- Server/                       # App-managed Vein dedicated server root
 `-- Runtime/                      # Empty placeholder
 ```
 
@@ -118,7 +121,7 @@ Installer responsibilities:
 - Store SteamCMD in the management app folder and install new SteamCMD-managed server files under the app-managed `Server\` folder by default
 - Allow an existing `steamcmd.exe` folder to be selected instead of downloading a duplicate app-managed SteamCMD copy
 - Allow SaveGames and log folder overrides for users who keep server data outside the default `Vein\Saved\...` layout
-- Write the installed `Config\config.yaml` paths from the selected server root so first launch does not point at `C:\Program Files\Vein`
+- Write the installed `Config\config.yaml` paths from the selected server root so first launch points at the app-managed `Server\Vein\...` layout or the chosen external server
 - Validate that the selected server root is the parent folder that contains `Vein\Binaries\Win64`, not the inner `Vein` folder itself
 - Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
 - Run a best-effort uninstall cleanup that stops log/crash monitors first and then performs a controlled server shutdown only when a Vein server process is running
@@ -155,6 +158,12 @@ SteamCMD note:
 - For packaged installs, the recommended default is app-managed SteamCMD under `C:\Program Files\VeinServerManagement\SteamCMD` because it is predictable and self-contained.
 - Users who already maintain SteamCMD elsewhere can select that folder to avoid duplicate downloads.
 - The selected SteamCMD path is used for server install/update commands; it is separate from the dedicated server root and save/log locations.
+
+Fresh install check:
+
+- For a full-package install, the expected active paths are `SteamCMD\steamcmd.exe`, `Server\Vein\Binaries\Win64\...`, `Server\Vein\Saved\SaveGames`, and `Server\Vein\Saved\Logs` under the app install folder.
+- For an existing-server install, those paths should point to the selected external server root and data folders.
+- Run `VeinTools.exe health-check` after install to verify the config loads, writable app folders are available, SteamCMD exists when configured, and at least one configured server executable is present.
 
 Uninstall behavior:
 

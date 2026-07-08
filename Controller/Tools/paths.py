@@ -26,7 +26,7 @@ def logs_dir() -> Path:
 
 def save_dir() -> Path:
     sd = server_dir()
-    return Path(config.get("save_dir") or (sd / "Vein" / "Saved"))
+    return Path(config.get("save_dir") or (sd / "Vein" / "Saved" / "SaveGames"))
 
 
 def absolute_log_file() -> str:

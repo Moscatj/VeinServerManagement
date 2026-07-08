@@ -17,7 +17,7 @@ backups, Discord routing, and Steam update settings.
 
 - server_dir  
   • Folder that contains the Vein server executables.  
-  • Current: ..
+  • Current: Server
 
 - server_executables (list)  
   • Executable names to try in order when starting the server.  
@@ -29,7 +29,7 @@ backups, Discord routing, and Steam update settings.
 
 - save_dir  
   • Game save directory used for backup/restore.  
-  • Current: ../Vein/Saved/SaveGames
+  • Current: Server/Vein/Saved/SaveGames
 
 - save_filenames (list)  
   • Candidate save file names in `save_dir`.  
@@ -37,11 +37,11 @@ backups, Discord routing, and Steam update settings.
 
 - logs_dir  
   • Directory where Vein writes rolling logs.  
-  • Current: ../Vein/Saved/Logs
+  • Current: Server/Vein/Saved/Logs
 
 - absolute_log_file  
   • If set, the log monitor tails this specific file instead of auto-picking the newest log.  
-  • Current: ../Vein/Saved/Logs/Vein.log
+  • Current: Server/Vein/Saved/Logs/Vein.log
 - mgmt_log_dir  
   • Root folder for management-suite stdout/stderr logs (VeinManager, monitors, helpers).  
   • Current: Logs
@@ -119,7 +119,7 @@ See [management_logs.md](management_logs.md) for the full layout, archive behavi
 
 - steamcmd_path  
   • Path to SteamCMD executable.  
-  • Current: ENV:STEAMCMD_PATH
+  • Current: SteamCMD/steamcmd.exe
 
 - app_id  
   • Steam App ID for Vein server.  
