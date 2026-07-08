@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.2 - 2026-07-08
+
 - Fixed clipped SteamCMD installer page helper text.
 
 ## 2.5.1 - 2026-07-07
