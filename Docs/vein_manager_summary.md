@@ -123,6 +123,11 @@ Watches the selected log file and streams content into the GUI in real time:
   `Game.ini` / `Engine.ini` settings off the UI thread. It runs after config
   saves and when the user presses Refresh; it does not run at startup or
   continuously poll static server config files.
+- The Server Config navigation view shows a read-only table of important
+  `Game.ini` and `Engine.ini` values from the selected server root. Documented
+  settings are shown even when missing, and any additional keys already present
+  in the actual server config files are included. Passwords, webhook URLs, and
+  token-like values are masked.
 - Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.

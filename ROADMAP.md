@@ -30,6 +30,8 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
   layout and key Vein `Game.ini` / `Engine.ini` settings.
 - The GUI dashboard surfaces a read-only server preflight summary so operators
   can spot missing files or mismatched ports before starting the server.
+- The GUI includes a read-only server config preview for key `Game.ini` and
+  `Engine.ini` values, with secrets masked.
 
 ## Near-Term Priorities
 
@@ -43,6 +45,8 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
 - Expand the first-run setup/config validation flow so users can fix missing
   SteamCMD, server executable, port, and game-config issues from guided actions
   instead of only seeing diagnostics.
+- Build the guarded game-config editor on top of the read-only preview, with
+  backup, diff/preview, validation, and rollback guidance before any writes.
 
 ## Installer And Binary Distribution Goals
 

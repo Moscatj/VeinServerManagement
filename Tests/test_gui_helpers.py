@@ -18,6 +18,7 @@ from GUI.kvrow import KVRow  # noqa: E402
 from GUI.navigation import NavigationItem, NavigationPanel  # noqa: E402
 from GUI.about import about_text  # noqa: E402
 from GUI.player_details import populate_json_tree  # noqa: E402
+from GUI.server_config_view import build_server_config_preview_view  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 
@@ -116,6 +117,18 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("Commit: abc1234", text)
         self.assertIn("Mode: Packaged", text)
         self.assertIn("Config:", text)
+
+    def test_server_config_preview_view_builds_expected_widgets(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_server_config_preview_view(owner)
+
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertIsInstance(owner.treeServerConfigPreview, QtWidgets.QTreeWidget)
+        self.assertEqual(owner.treeServerConfigPreview.columnCount(), 5)
+        self.assertEqual(owner.btnServerConfigPreviewRefresh.text(), "Refresh")
 
 
 if __name__ == "__main__":

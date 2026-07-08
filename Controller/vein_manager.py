@@ -78,6 +78,8 @@ try:
         StatusBus,
         StatusPoller,
         PreflightWorker,
+        ServerConfigPreviewWorker,
+        build_server_config_preview_view,
         ConfigRenderer,
         LogPanelController,
         ProcessController,
@@ -1185,6 +1187,11 @@ class Main(QtWidgets.QMainWindow):
                 "Config editor",
             ),
             NavigationItem(
+                "monitor.server_config",
+                "Server Config",
+                "Read-only Game.ini and Engine.ini preview",
+            ),
+            NavigationItem(
                 "monitor.discord",
                 "Discord",
                 "Discord chat and webhook status (placeholder)",
@@ -1278,6 +1285,12 @@ class Main(QtWidgets.QMainWindow):
             "monitor.config",
             config_stub,
             lambda: self._select_side_tab("Config"),
+        )
+        server_config_view = build_server_config_preview_view(self)
+        self._register_view(
+            "monitor.server_config",
+            server_config_view,
+            self._refresh_server_config_preview,
         )
 
         diag_placeholder = build_placeholder_view(
@@ -1598,6 +1611,8 @@ class Main(QtWidgets.QMainWindow):
         self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
         self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
         self.btnPreflightRefresh.clicked.connect(self._kick_preflight_check)
+        if hasattr(self, "btnServerConfigPreviewRefresh"):
+            self.btnServerConfigPreviewRefresh.clicked.connect(self._refresh_server_config_preview)
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -2705,6 +2720,51 @@ class Main(QtWidgets.QMainWindow):
             )
         if hasattr(self, "lblPreflightDetails"):
             self.lblPreflightDetails.setText("\n".join(lines) if lines else "No preflight issues found.")
+
+    def _refresh_server_config_preview(self):
+        if getattr(self, "_server_config_preview_running", False):
+            return
+        if not getattr(self, "config_path", ""):
+            return
+        self._server_config_preview_running = True
+        if hasattr(self, "lblServerConfigPreviewStatus"):
+            self.lblServerConfigPreviewStatus.setText("Loading Game.ini and Engine.ini.")
+        worker = ServerConfigPreviewWorker(self.config_path)
+        worker.signals.ready.connect(self._apply_server_config_preview)
+        self._pool.start(worker)
+
+    def _apply_server_config_preview(self, payload: dict):
+        self._server_config_preview_running = False
+        tree = getattr(self, "treeServerConfigPreview", None)
+        if tree is None:
+            return
+        tree.clear()
+        error = payload.get("error") or ""
+        missing = payload.get("missing_files") or []
+        items = payload.get("items") or []
+        if error:
+            status = f"Preview failed: {error}"
+        elif missing:
+            status = f"Loaded {len(items)} setting(s); missing file(s): {len(missing)}"
+        else:
+            status = f"Loaded {len(items)} setting(s)."
+        if hasattr(self, "lblServerConfigPreviewStatus"):
+            self.lblServerConfigPreviewStatus.setText(status)
+
+        for item in items:
+            state = "set" if item.get("present") else "not set"
+            row = QtWidgets.QTreeWidgetItem(
+                [
+                    str(item.get("source") or ""),
+                    str(item.get("section") or ""),
+                    str(item.get("key") or ""),
+                    str(item.get("value") or ""),
+                    state,
+                ]
+            )
+            tree.addTopLevelItem(row)
+        for idx in range(tree.columnCount()):
+            tree.resizeColumnToContents(idx)
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:
