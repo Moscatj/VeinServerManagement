@@ -21,6 +21,7 @@ This is a personal source-available portfolio project. It is suitable for experi
 - PySide6 GUI for local administration.
 - Unit test and coverage foundation for hardening future changes.
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
+- GUI server preflight summary for install/config readiness before starting the server.
 
 ## Repository Layout
 

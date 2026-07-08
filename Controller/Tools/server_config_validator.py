@@ -149,7 +149,7 @@ def _check_expected_int(
             ServerConfigCheck(
                 name,
                 "WARN",
-                f"{label} is not configured in Game.ini section [{section}] as {key}.",
+                f"Recommended explicit setting missing: {label} is not configured in Game.ini section [{section}] as {key}. The server may still use its default value.",
             )
         )
         return
@@ -167,7 +167,7 @@ def _check_expected_int(
             ServerConfigCheck(
                 name,
                 "WARN",
-                f"{label} is {actual_int}, but management config expects {expected}.",
+                f"{label} is {actual_int}, but management config expects {expected}. Update either Game.ini or the management config so they match.",
             )
         )
 
@@ -281,8 +281,8 @@ def validate_server_config(cfg: Mapping[str, Any]) -> list[ServerConfigCheck]:
         checks.append(
             ServerConfigCheck(
                 "server.config.core_log",
-                "WARN",
-                "Optional Core.Log noise controls are not configured; EOS log spam may be noisy.",
+                "INFO",
+                "Optional: Core.Log noise controls are not configured; EOS log spam may be noisy.",
             )
         )
 
@@ -290,7 +290,7 @@ def validate_server_config(cfg: Mapping[str, Any]) -> list[ServerConfigCheck]:
 
 
 def summarize(results: Iterable[ServerConfigCheck]) -> dict[str, int]:
-    counts = {"PASS": 0, "WARN": 0, "FAIL": 0}
+    counts = {"PASS": 0, "INFO": 0, "WARN": 0, "FAIL": 0}
     for result in results:
         counts[result.status] = counts.get(result.status, 0) + 1
     return counts
@@ -304,7 +304,7 @@ def format_text_report(results: list[ServerConfigCheck]) -> str:
     lines.extend(
         [
             "",
-            f"Summary: {counts['PASS']} passed, {counts['WARN']} warning(s), {counts['FAIL']} failure(s).",
+            f"Summary: {counts['PASS']} passed, {counts.get('INFO', 0)} info, {counts['WARN']} warning(s), {counts['FAIL']} failure(s).",
         ]
     )
     return "\n".join(lines)

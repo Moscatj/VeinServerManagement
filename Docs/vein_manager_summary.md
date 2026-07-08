@@ -118,6 +118,11 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ### 9. **UI Experience**
 - Three-way splitter layout: left navigation column (shortcuts + config picker + `NavigationPanel`), center content stack (monitor dashboard + config editor), right live log tail (collapsible but tailer keeps running).
+- The monitor dashboard includes a read-only Server Preflight card that checks
+  the selected server root, executable files, Steam API DLL, and key
+  `Game.ini` / `Engine.ini` settings off the UI thread. It runs after config
+  saves and when the user presses Refresh; it does not run at startup or
+  continuously poll static server config files.
 - Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.

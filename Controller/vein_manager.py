@@ -77,6 +77,7 @@ try:
         handle_player_tree_double_click,
         StatusBus,
         StatusPoller,
+        PreflightWorker,
         ConfigRenderer,
         LogPanelController,
         ProcessController,
@@ -1596,6 +1597,7 @@ class Main(QtWidgets.QMainWindow):
 
         self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
         self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
+        self.btnPreflightRefresh.clicked.connect(self._kick_preflight_check)
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -1907,6 +1909,7 @@ class Main(QtWidgets.QMainWindow):
                 f.write(self.json.toPlainText())
             os.replace(tmp, path)
             self._status("Saved atomically.")
+            QtCore.QTimer.singleShot(250, self._kick_preflight_check)
         except Exception as e:
             self._status(f"Save failed: {e}")
         finally:
@@ -2673,6 +2676,35 @@ class Main(QtWidgets.QMainWindow):
         worker = StatusPoller(self.config_path, _load_any_config)
         worker.signals.ready.connect(self._apply_status_snapshot)
         self._pool.start(worker)
+
+    def _kick_preflight_check(self):
+        if getattr(self, "_preflight_running", False):
+            return
+        if not getattr(self, "config_path", ""):
+            return
+        self._preflight_running = True
+        if hasattr(self, "lblPreflightSummary"):
+            self.lblPreflightSummary.setText("Checking server install and config.")
+        worker = PreflightWorker(self.config_path)
+        worker.signals.ready.connect(self._apply_preflight_snapshot)
+        self._pool.start(worker)
+
+    def _apply_preflight_snapshot(self, payload: dict):
+        self._preflight_running = False
+        counts = payload.get("summary") or {}
+        headline = payload.get("headline") or "Preflight complete"
+        if hasattr(self, "lblPreflightSummary"):
+            self.lblPreflightSummary.setText(
+                f"{headline} | PASS={counts.get('PASS', 0)} INFO={counts.get('INFO', 0)} WARN={counts.get('WARN', 0)} FAIL={counts.get('FAIL', 0)}"
+            )
+        problems = payload.get("problems") or []
+        lines = []
+        for item in problems[:5]:
+            lines.append(
+                f"[{item.get('status', '?')}] {item.get('name', 'check')}: {item.get('message', '')}"
+            )
+        if hasattr(self, "lblPreflightDetails"):
+            self.lblPreflightDetails.setText("\n".join(lines) if lines else "No preflight issues found.")
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:

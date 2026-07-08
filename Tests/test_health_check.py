@@ -172,14 +172,14 @@ class HealthCheckTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["name"], "example")
 
     def test_text_main_returns_success_when_no_failures(self) -> None:
-        result = health_check.HealthCheckResult("example", "WARN", "check this")
+        result = health_check.HealthCheckResult("example", "INFO", "check this")
         with mock.patch.object(health_check, "run_health_checks", return_value=[result]), mock.patch(
             "builtins.print"
         ) as printed:
             code = health_check.main([])
 
         self.assertEqual(code, 0)
-        self.assertIn("[WARN] example", printed.call_args.args[0])
+        self.assertIn("[INFO] example", printed.call_args.args[0])
 
     def test_within_repo_boundary_helper(self) -> None:
         self.assertTrue(health_check._is_within(ROOT / "Runtime", ROOT))

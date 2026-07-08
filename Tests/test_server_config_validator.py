@@ -115,6 +115,31 @@ class ServerConfigValidatorTests(unittest.TestCase):
         self.assertEqual(statuses["server.config.admins"], "WARN")
         self.assertEqual(statuses["server.config.engine_ini"], "WARN")
 
+    def test_optional_core_log_noise_controls_are_info(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = self._server_root(Path(tmp))
+            config_dir = root / "Vein" / "Saved" / "Config" / "WindowsServer"
+            (config_dir / "Game.ini").write_text(
+                "[/Script/Engine.GameSession]\n"
+                "MaxPlayers=8\n"
+                "[/Script/Vein.VeinGameSession]\n"
+                "HTTPPort=8080\n"
+                "ServerName=Local Test\n"
+                "+AdminSteamIDs=123\n"
+                "[OnlineSubsystemSteam]\n"
+                "GameServerQueryPort=27015\n"
+                "[URL]\n"
+                "Port=7777\n",
+                encoding="utf-8",
+            )
+            (config_dir / "Engine.ini").write_text("[ConsoleVariables]\nvein.PvP=True\n", encoding="utf-8")
+
+            results = validator.validate_server_config(self._config(root))
+
+        statuses = {result.name: result.status for result in results}
+        self.assertEqual(statuses["server.config.core_log"], "INFO")
+        self.assertEqual(validator.summarize(results)["INFO"], 1)
+
     def test_main_emits_json_without_failures(self) -> None:
         result = validator.ServerConfigCheck("example", "WARN", "check this")
         with mock.patch.object(validator, "validate_server_config", return_value=[result]), mock.patch(
@@ -126,6 +151,7 @@ class ServerConfigValidatorTests(unittest.TestCase):
         self.assertEqual(code, 0)
         payload = json.loads(printed.call_args.args[0])
         self.assertEqual(payload["summary"]["WARN"], 1)
+        self.assertEqual(payload["summary"]["INFO"], 0)
 
 
 if __name__ == "__main__":

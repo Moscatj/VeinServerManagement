@@ -7,6 +7,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 ## Unreleased
 
 - Added read-only Vein server install/config diagnostics for expected executable files, Steam API DLLs, and documented `Game.ini` / `Engine.ini` settings.
+- Added a GUI Server Preflight dashboard card that runs read-only server install/config validation on manual refresh and after config saves.
+- Clarified server preflight severity by treating optional `Core.Log` guidance as `INFO` instead of a warning.
 - Updated dedicated server launch arguments to use documented `-multihome` and `-Port` casing.
 - Documented the future guarded Game.ini/Engine.ini editor exception with required preview, validation, and backup safeguards.
 

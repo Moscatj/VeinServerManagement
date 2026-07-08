@@ -36,7 +36,7 @@ def repo_root() -> Path:
 
 
 def _status_rank(status: str) -> int:
-    return {"PASS": 0, "WARN": 1, "FAIL": 2}.get(status, 2)
+    return {"PASS": 0, "INFO": 1, "WARN": 2, "FAIL": 3}.get(status, 3)
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -346,7 +346,7 @@ def run_health_checks(
 
 
 def summarize(results: Iterable[HealthCheckResult]) -> dict[str, int]:
-    counts = {"PASS": 0, "WARN": 0, "FAIL": 0}
+    counts = {"PASS": 0, "INFO": 0, "WARN": 0, "FAIL": 0}
     for result in results:
         counts[result.status] = counts.get(result.status, 0) + 1
     return counts
@@ -360,7 +360,7 @@ def format_text_report(results: list[HealthCheckResult]) -> str:
     lines.extend(
         [
             "",
-            f"Summary: {counts['PASS']} passed, {counts['WARN']} warning(s), {counts['FAIL']} failure(s).",
+            f"Summary: {counts['PASS']} passed, {counts.get('INFO', 0)} info, {counts['WARN']} warning(s), {counts['FAIL']} failure(s).",
         ]
     )
     return "\n".join(lines)

@@ -28,6 +28,8 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
   only through explicit user prompts.
 - The management suite now includes read-only diagnostics for dedicated server
   layout and key Vein `Game.ini` / `Engine.ini` settings.
+- The GUI dashboard surfaces a read-only server preflight summary so operators
+  can spot missing files or mismatched ports before starting the server.
 
 ## Near-Term Priorities
 
@@ -38,9 +40,9 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
 - Continue focused unit coverage for non-GUI controller and Tools modules.
 - Review legacy modules and document what is retained for reference versus
   still supported.
-- Build a first-run setup/config validation flow in the GUI so users can see
-  missing SteamCMD, server executable, port, and game-config issues before
-  starting the server.
+- Expand the first-run setup/config validation flow so users can fix missing
+  SteamCMD, server executable, port, and game-config issues from guided actions
+  instead of only seeing diagnostics.
 
 ## Installer And Binary Distribution Goals
 

@@ -32,6 +32,7 @@ from .widgets import CollapsibleBox
 from .kvrow import KVRow
 from .player_details import handle_player_tree_double_click, show_json_dialog
 from .status import StatusBus, StatusPoller
+from .preflight import PreflightWorker, summarize_preflight
 from .about import about_text, show_about_dialog
 
 __all__ = [
@@ -59,6 +60,8 @@ __all__ = [
     "show_json_dialog",
     "StatusBus",
     "StatusPoller",
+    "PreflightWorker",
+    "summarize_preflight",
     "about_text",
     "show_about_dialog",
 ]

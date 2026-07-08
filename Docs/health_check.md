@@ -14,13 +14,14 @@ python Controller\vein_tools.py health-check
 python Controller\vein_tools.py server-config-check
 ```
 
-The command reports `PASS`, `WARN`, and `FAIL` results:
+The command reports `PASS`, `INFO`, `WARN`, and `FAIL` results:
 
 - `FAIL` means a required project dependency, config load, path, or secret-safety
   check failed. The command exits with code `1`.
 - `WARN` means the project can still run, but an optional or environment-specific
   item is missing. Warnings do not fail the command.
 - `PASS` means the check completed successfully.
+- `INFO` means optional guidance is available, but no action is required.
 
 The health check may write a tiny temporary probe file only inside existing
 management-repo directories such as `Runtime`, `Logs`, or `Backups`, then removes
