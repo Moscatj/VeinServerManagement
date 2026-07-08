@@ -26,6 +26,15 @@ jobs:
       - name: Run unit tests
         run: py -3 -m unittest discover -s Tests
 
+      - name: Prepare health-check fixture paths
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path `
+            Server, `
+            Server\Vein\Saved\SaveGames, `
+            Server\Vein\Saved\Logs `
+            | Out-Null
+
       - name: Run health check
         run: py -3 Controller\health_check.py
 

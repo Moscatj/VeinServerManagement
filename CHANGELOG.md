@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.5.6 - 2026-07-08
+
+- Added CI fixture directories for the app-managed server layout so health checks can validate a clean source checkout without requiring real dedicated server files.
+
 ## 2.5.5 - 2026-07-08
 
 - Allowed config loading before the app-managed `Server\` folder exists so fresh installs and CI can run setup checks before the dedicated server is installed.
