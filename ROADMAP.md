@@ -45,6 +45,9 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
 - Expand the first-run setup/config validation flow so users can fix missing
   SteamCMD, server executable, port, and game-config issues from guided actions
   instead of only seeing diagnostics.
+- Build the Server Quick Start GUI on top of the preview-only backend planner
+  so users can review management config updates and guarded INI edits before
+  applying first-run setup changes.
 - Build the guarded game-config editor on top of the read-only preview, with
   backup, diff/preview, validation, and rollback guidance before any writes.
 - Continue hardening GUI server-config editing with better field-specific

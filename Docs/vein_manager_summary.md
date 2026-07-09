@@ -132,6 +132,10 @@ Watches the selected log file and streams content into the GUI in real time:
   engine and the Server Config view. GUI editing requires selecting a setting,
   previewing the diff, and confirming Apply; writes create backups first and
   refresh validation afterward.
+- The Quick Start navigation view provides a preview-only first-run setup form
+  for key server identity, networking, SteamCMD, admin, whitelist, Discord chat,
+  and gameplay settings. It generates a copyable plan but does not write files
+  until a later guarded apply flow is added.
 - Command ribbon condenses all process buttons and exposes a copy-friendly status label.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.

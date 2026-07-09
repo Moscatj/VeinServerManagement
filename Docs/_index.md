@@ -31,6 +31,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
 - [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
+- [quick_start.md](quick_start.md) - Server Quick Start planning and future guided setup flow
 - [../ROADMAP.md](../ROADMAP.md) - Current maturity, installer, stability, and future game-config goals
 
 ---
@@ -62,6 +63,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Testing and CI | [testing.md](testing.md) |
 | Coverage Strategy | [coverage_strategy.md](coverage_strategy.md) |
 | Health Check | [health_check.md](health_check.md) |
+| Server Quick Start | [quick_start.md](quick_start.md) |
 | Management Logs | [management_logs.md](management_logs.md) |
 | Release Process | [../RELEASING.md](../RELEASING.md) |
 | Roadmap | [../ROADMAP.md](../ROADMAP.md) |

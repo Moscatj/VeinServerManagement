@@ -6,6 +6,16 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a tested backend Server Quick Start planner that previews first-run
+  management config updates and guarded `Game.ini` / `Engine.ini` edits without
+  writing files.
+- Expanded the Server Quick Start planner to cover developer-documented setup
+  fields including bind address, VAC, heartbeat, whitelist, scoreboard badges,
+  Discord chat webhooks, and HTTP API safety warnings.
+- Added a preview-only GUI Server Quick Start view for entering first-run
+  settings and reviewing generated management config updates and guarded
+  `Game.ini` / `Engine.ini` edits before any apply workflow is exposed.
+
 ## 2.6.0 - 2026-07-08
 
 - Added read-only Vein server install/config diagnostics for expected executable files, Steam API DLLs, and documented `Game.ini` / `Engine.ini` settings.

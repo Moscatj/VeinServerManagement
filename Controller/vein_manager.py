@@ -80,6 +80,8 @@ try:
         PreflightWorker,
         ServerConfigEditWorker,
         ServerConfigPreviewWorker,
+        build_quick_start_preview,
+        build_quick_start_view,
         build_server_config_preview_view,
         ConfigRenderer,
         LogPanelController,
@@ -1193,6 +1195,11 @@ class Main(QtWidgets.QMainWindow):
                 "Read-only Game.ini and Engine.ini preview",
             ),
             NavigationItem(
+                "monitor.quick_start",
+                "Quick Start",
+                "Preview first-run server setup values",
+            ),
+            NavigationItem(
                 "monitor.discord",
                 "Discord",
                 "Discord chat and webhook status (placeholder)",
@@ -1293,6 +1300,8 @@ class Main(QtWidgets.QMainWindow):
             server_config_view,
             self._refresh_server_config_preview,
         )
+        quick_start_view = build_quick_start_view(self)
+        self._register_view("monitor.quick_start", quick_start_view)
 
         diag_placeholder = build_placeholder_view(
             "Monitor diagnostics view is under construction."
@@ -1626,6 +1635,8 @@ class Main(QtWidgets.QMainWindow):
                 if hasattr(self, "btnServerConfigEditApply")
                 else None
             )
+        if hasattr(self, "btnQuickStartPreview"):
+            self.btnQuickStartPreview.clicked.connect(self._build_quick_start_preview)
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -2868,6 +2879,17 @@ class Main(QtWidgets.QMainWindow):
             self._kick_preflight_check()
         else:
             self._status("Server config diff preview ready.")
+
+    def _build_quick_start_preview(self):
+        try:
+            preview = build_quick_start_preview(self)
+        except Exception as exc:
+            preview = f"Quick Start preview failed:\n{exc}"
+            self._status(f"Quick Start preview failed: {exc}")
+        else:
+            self._status("Quick Start preview ready.")
+        if hasattr(self, "txtQuickStartPreview"):
+            self.txtQuickStartPreview.setPlainText(preview)
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:

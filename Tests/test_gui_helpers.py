@@ -18,6 +18,7 @@ from GUI.kvrow import KVRow  # noqa: E402
 from GUI.navigation import NavigationItem, NavigationPanel  # noqa: E402
 from GUI.about import about_text  # noqa: E402
 from GUI.player_details import populate_json_tree  # noqa: E402
+from GUI.quickstart import build_quick_start_preview, build_quick_start_view, collect_quick_start_values  # noqa: E402
 from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
@@ -136,6 +137,25 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(edit_values_from_text("One"), "One")
         self.assertEqual(edit_values_from_text("111\n222\n"), ["111", "222"])
         self.assertEqual(edit_values_from_text(" \n "), "")
+
+    def test_quick_start_view_collects_values_and_builds_preview(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        owner.edQuickServerName.setText("Preview Server")
+        owner.txtQuickAdmins.setPlainText("111\n222")
+
+        values = collect_quick_start_values(owner)
+        preview = build_quick_start_preview(owner)
+
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertEqual(values["server_name"], "Preview Server")
+        self.assertEqual(values["admin_steam_ids"], ["111", "222"])
+        self.assertIn("Server Quick Start Preview", preview)
+        self.assertIn("Preview Server", preview)
+        self.assertIn("AdminSteamIDs", preview)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,12 @@ from .server_config_view import (
     build_server_config_preview_view,
     edit_values_from_text,
 )
+from .quickstart import (
+    build_quick_start_preview,
+    build_quick_start_view,
+    collect_quick_start_values,
+    format_quick_start_plan,
+)
 from .about import about_text, show_about_dialog
 
 __all__ = [
@@ -72,6 +78,10 @@ __all__ = [
     "ServerConfigEditWorker",
     "build_server_config_preview_view",
     "edit_values_from_text",
+    "build_quick_start_view",
+    "build_quick_start_preview",
+    "collect_quick_start_values",
+    "format_quick_start_plan",
     "about_text",
     "show_about_dialog",
 ]
