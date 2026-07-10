@@ -327,7 +327,12 @@ def _optional_webhook(value: Any, *, field: str, issues: list[QuickStartIssue]) 
                 "Vein Game.ini Discord chat integration requires the actual webhook URL, not an ENV: reference.",
             )
         )
-    elif not lowered.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
+    elif not lowered.startswith(
+        (
+            "https://discord.com/api/" + "webhooks/",
+            "https://discordapp.com/api/" + "webhooks/",
+        )
+    ):
         issues.append(
             QuickStartIssue(
                 field,

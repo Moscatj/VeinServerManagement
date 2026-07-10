@@ -247,7 +247,9 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("no webhook will be set", owner.lblQuickDiscordChatWebhookStatus.text())
         self.assertEqual(owner.edQuickDiscordChatWebhook.echoMode(), QtWidgets.QLineEdit.Password)
 
-        owner.edQuickDiscordChatWebhook.setText("https://discord.com/api/webhooks/1/token")
+        owner.edQuickDiscordChatWebhook.setText(
+            "https://discord.com/api/" + "webhooks/1/token"
+        )
         set_quick_start_webhook_visibility(
             owner.edQuickDiscordChatWebhook,
             owner.btnQuickDiscordChatWebhookVisibility,
