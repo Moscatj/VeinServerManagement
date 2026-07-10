@@ -31,7 +31,9 @@ This folder contains all **developer** and **system-level** documentation.
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
 - [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
+- [linux_wsl_support.md](linux_wsl_support.md) - Future native Linux packages, installers, and WSL2 hosting
 - [quick_start.md](quick_start.md) - Guarded New Server and Existing Server Quick Start flow
+- [gui_modernization.md](gui_modernization.md) - Phased usability, navigation, architecture, and polish plan
 - [../ROADMAP.md](../ROADMAP.md) - Current maturity, installer, stability, and future game-config goals
 
 ---
@@ -67,6 +69,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Management Logs | [management_logs.md](management_logs.md) |
 | Release Process | [../RELEASING.md](../RELEASING.md) |
 | Roadmap | [../ROADMAP.md](../ROADMAP.md) |
+| Linux and WSL2 direction | [linux_wsl_support.md](linux_wsl_support.md) |
 | Runtime Files | Documented inside [Developer_Guide.md](Developer_Guide.md) |
 | Backup System | [nightly_backup_summary.md](nightly_backup_summary.md) + [tools_summary.md](tools_summary.md) |
 

@@ -182,6 +182,12 @@ Uninstall behavior:
 2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
 3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
 4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.
+5. **Native Linux and WSL2 packaging** - after the backend is platform-neutral,
+   publish versioned x86-64 `.deb` and `.tar.gz` assets with checksums from the
+   same tags that build the Windows installer. The Linux first-run installer
+   should optionally install/reuse SteamCMD, download VEIN app `2131400`, run
+   health checks, and install reviewed `systemd` services. VEIN binaries must
+   never be bundled. See [linux_wsl_support.md](linux_wsl_support.md).
 
 ---
 

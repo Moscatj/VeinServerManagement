@@ -33,6 +33,17 @@ from Tools.server_quickstart import ExistingServerSettings, ServerRootInspection
 from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
+from GUI.design_system import (  # noqa: E402
+    BUTTON_DANGER,
+    BUTTON_PRIMARY,
+    InlineNotice,
+    PageHeader,
+    StatusBadge,
+    application_stylesheet,
+    set_button_role,
+)
+from GUI.dashboard import build_dashboard  # noqa: E402
+from GUI.panels import build_command_bar  # noqa: E402
 
 
 def app() -> QtWidgets.QApplication:
@@ -67,6 +78,61 @@ class GuiHelperTests(unittest.TestCase):
         box.toggle.setChecked(False)
         self.assertFalse(box.container.isVisible())
         self.assertEqual(box.toggle.arrowType(), QtCore.Qt.RightArrow)
+
+    def test_design_system_components_expose_semantic_state(self) -> None:
+        header = PageHeader("Home", "Server overview")
+        notice = InlineNotice("Check configuration", "warning")
+        badge = StatusBadge("Stopped")
+        button = QtWidgets.QPushButton("Start")
+
+        set_button_role(button, BUTTON_PRIMARY)
+        badge.set_state("healthy", "Running")
+
+        self.assertEqual(header.title_label.text(), "Home")
+        self.assertEqual(header.subtitle_label.text(), "Server overview")
+        self.assertEqual(notice.property("noticeKind"), "warning")
+        self.assertEqual(badge.property("statusState"), "healthy")
+        self.assertEqual(badge.text(), "Running")
+        self.assertEqual(button.property("buttonRole"), BUTTON_PRIMARY)
+
+    def test_design_system_stylesheet_targets_roles_without_global_colors(self) -> None:
+        css = application_stylesheet()
+
+        self.assertIn('buttonRole="primary"', css)
+        self.assertIn('buttonRole="danger"', css)
+        self.assertIn('noticeKind="error"', css)
+        self.assertIn('statusState="healthy"', css)
+        self.assertIn('pageSubtitle="true"] { color: palette(text)', css)
+        self.assertNotIn('pageSubtitle="true"] { color: palette(mid)', css)
+
+        button = QtWidgets.QPushButton("Stop")
+        set_button_role(button, BUTTON_DANGER)
+        self.assertEqual(button.property("buttonRole"), BUTTON_DANGER)
+
+    def test_dashboard_uses_scrollable_minimum_size_content(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        dashboard = build_dashboard(owner, lambda *_: "")
+        content = owner.dashboardScroll.widget()
+
+        self.assertIsInstance(dashboard, QtWidgets.QWidget)
+        self.assertTrue(owner.dashboardScroll.widgetResizable())
+        self.assertEqual(owner.dashboardScroll.frameShape(), QtWidgets.QFrame.NoFrame)
+        self.assertEqual(content.objectName(), "dashboardContent")
+        self.assertEqual(content.layout().sizeConstraint(), QtWidgets.QLayout.SetMinimumSize)
+
+    def test_command_bar_reserves_readable_status_width(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        bar = build_command_bar(owner, lambda *_: "")
+
+        self.assertIsInstance(bar, QtWidgets.QWidget)
+        self.assertGreaterEqual(owner.status_label.minimumWidth(), 260)
+        self.assertTrue(owner.status_label.wordWrap())
 
     def test_navigation_panel_emits_selected_view(self) -> None:
         panel = NavigationPanel(
@@ -162,6 +228,8 @@ class GuiHelperTests(unittest.TestCase):
         preview = build_quick_start_preview(owner)
 
         self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertIsInstance(owner.lblQuickStartStatus, InlineNotice)
+        self.assertEqual(owner.btnQuickStartApply.property("buttonRole"), BUTTON_PRIMARY)
         self.assertEqual(values["setup_mode"], "new")
         self.assertFalse(owner.btnQuickStartApply.isEnabled())
         self.assertEqual(owner.btnQuickStartBrowseRoot.text(), "Browse…")

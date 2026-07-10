@@ -11,6 +11,7 @@ from .navigation import NavigationItem, NavigationPanel
 from .config_editor import build_config_editor
 from .config_renderer import ConfigRenderer
 from .dashboard import build_dashboard
+from .dashboard_state import normalize_player_snapshot, server_runtime_labels
 from .panels import (
     build_command_bar,
     build_left_panel,
@@ -29,6 +30,13 @@ from .nav_control import NavigationController
 from .config_controller import ConfigController
 from .panels import build_log_panel
 from .widgets import CollapsibleBox
+from .design_system import (
+    InlineNotice,
+    PageHeader,
+    StatusBadge,
+    apply_design_system,
+    set_button_role,
+)
 from .kvrow import KVRow
 from .player_details import handle_player_tree_double_click, show_json_dialog
 from .status import StatusBus, StatusPoller
@@ -59,6 +67,8 @@ __all__ = [
     "build_config_editor",
     "ConfigRenderer",
     "build_dashboard",
+    "normalize_player_snapshot",
+    "server_runtime_labels",
     "build_command_bar",
     "build_left_panel",
     "build_log_panel",
@@ -73,6 +83,11 @@ __all__ = [
     "LogErrorWorker",
     "ArchiveLogsWorker",
     "CollapsibleBox",
+    "InlineNotice",
+    "PageHeader",
+    "StatusBadge",
+    "apply_design_system",
+    "set_button_role",
     "KVRow",
     "handle_player_tree_double_click",
     "show_json_dialog",

@@ -9,6 +9,13 @@ from typing import TYPE_CHECKING, Callable
 from PySide6 import QtCore, QtWidgets
 
 from .widgets import CollapsibleBox
+from .design_system import (
+    BUTTON_DANGER,
+    BUTTON_PRIMARY,
+    BUTTON_QUIET,
+    BUTTON_SECONDARY,
+    set_button_role,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from Controller.vein_manager import Main
@@ -40,6 +47,12 @@ def build_command_bar(
     owner.b_cm_on = QtWidgets.QPushButton("Start Crash Monitor")
     owner.b_cm_off = QtWidgets.QPushButton("Stop Crash Monitor")
 
+    set_button_role(owner.b_start, BUTTON_PRIMARY)
+    set_button_role(owner.b_stop, BUTTON_DANGER)
+    set_button_role(owner.b_restart, BUTTON_SECONDARY)
+    for button in (owner.b_lm_on, owner.b_lm_off, owner.b_cm_on, owner.b_cm_off):
+        set_button_role(button, BUTTON_QUIET)
+
     def build_cluster(label: str, dot: QtWidgets.QLabel, buttons: list[QtWidgets.QWidget]):
         layout.addWidget(QtWidgets.QLabel(label))
         layout.addWidget(dot)
@@ -54,6 +67,9 @@ def build_command_bar(
     layout.addStretch(1)
     owner.status_label = QtWidgets.QLabel("Status: Idle")
     owner.status_label.setWordWrap(True)
+    owner.status_label.setMinimumWidth(260)
+    owner.status_label.setMaximumWidth(420)
+    owner.status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
     owner.status_label.setTextInteractionFlags(
         QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard
     )

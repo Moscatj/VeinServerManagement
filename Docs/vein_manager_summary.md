@@ -117,6 +117,10 @@ Watches the selected log file and streams content into the GUI in real time:
 ---
 
 ### 9. **UI Experience**
+- Phase 1 of the GUI modernization plan introduces shared semantic components
+  for page headers, inline notices, status badges, and primary/secondary/danger
+  action roles. Styling is narrowly targeted so it follows the active Qt
+  palette instead of replacing server workflows or backend behavior.
 - Three-way splitter layout: left navigation column (shortcuts + config picker + `NavigationPanel`), center content stack (monitor dashboard + config editor), right live log tail (collapsible but tailer keeps running).
 - The monitor dashboard includes a read-only Server Preflight card that checks
   the selected server root, executable files, Steam API DLL, and key

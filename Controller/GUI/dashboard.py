@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PySide6 import QtCore, QtWidgets
 
 from .player_details import handle_player_tree_double_click
+from .design_system import PAGE_MARGIN, SECTION_SPACING, PageHeader
 
 if TYPE_CHECKING:  # pragma: no cover
     from Controller.vein_manager import Main
@@ -16,9 +17,24 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def build_dashboard(owner: "Main", dot_style) -> QtWidgets.QWidget:
     dashboard = QtWidgets.QWidget()
-    layout = QtWidgets.QVBoxLayout(dashboard)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(8)
+    outer = QtWidgets.QVBoxLayout(dashboard)
+    outer.setContentsMargins(0, 0, 0, 0)
+
+    owner.dashboardScroll = QtWidgets.QScrollArea()
+    owner.dashboardScroll.setWidgetResizable(True)
+    owner.dashboardScroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+    content = QtWidgets.QWidget()
+    content.setObjectName("dashboardContent")
+    layout = QtWidgets.QVBoxLayout(content)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(SECTION_SPACING)
+    layout.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
+    layout.addWidget(
+        PageHeader(
+            "Home",
+            "Server health, players, safeguards, and the actions that need attention.",
+        )
+    )
 
     logCard = QtWidgets.QGroupBox("Log Monitor")
     logLay = QtWidgets.QGridLayout(logCard)
@@ -146,5 +162,8 @@ def build_dashboard(owner: "Main", dot_style) -> QtWidgets.QWidget:
     placeholder.setWordWrap(True)
     discordLay.addWidget(placeholder)
     layout.addWidget(discordCard)
+
+    owner.dashboardScroll.setWidget(content)
+    outer.addWidget(owner.dashboardScroll)
 
     return dashboard

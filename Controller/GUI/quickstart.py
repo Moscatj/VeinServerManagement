@@ -19,6 +19,15 @@ from Tools.server_quickstart import (
     build_quick_start_plan,
     load_existing_server_settings,
 )
+from .design_system import (
+    BUTTON_PRIMARY,
+    BUTTON_SECONDARY,
+    PAGE_MARGIN,
+    SECTION_SPACING,
+    InlineNotice,
+    PageHeader,
+    set_button_role,
+)
 
 
 class ExistingServerLoadSignals(QtCore.QObject):
@@ -232,14 +241,22 @@ def quick_start_config_path(owner) -> str | None:
 def build_quick_start_view(owner) -> QtWidgets.QWidget:
     widget = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(widget)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(8)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(SECTION_SPACING)
+
+    layout.addWidget(
+        PageHeader(
+            "Quick Start",
+            "Configure a new server or safely import and update an existing installation.",
+        )
+    )
 
     owner._quick_start_dirty_fields = set()
     owner._quick_start_loading_existing = False
     owner._quick_start_existing_loaded_root = ""
-    owner.lblQuickStartStatus = QtWidgets.QLabel("Choose whether to configure a new or existing server.")
-    owner.lblQuickStartStatus.setWordWrap(True)
+    owner.lblQuickStartStatus = InlineNotice(
+        "Choose whether to configure a new or existing server."
+    )
     layout.addWidget(owner.lblQuickStartStatus)
 
     form = QtWidgets.QGroupBox("Server Quick Start")
@@ -375,6 +392,9 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner.btnQuickStartPreview = QtWidgets.QPushButton("Build Preview")
     owner.btnQuickStartApply = QtWidgets.QPushButton("Apply Setup")
     owner.btnQuickStartApply.setEnabled(False)
+    set_button_role(owner.btnQuickStartLoadExisting, BUTTON_SECONDARY)
+    set_button_role(owner.btnQuickStartPreview, BUTTON_SECONDARY)
+    set_button_role(owner.btnQuickStartApply, BUTTON_PRIMARY)
     actions.addWidget(owner.btnQuickStartLoadExisting)
     actions.addWidget(owner.btnQuickStartPreview)
     actions.addWidget(owner.btnQuickStartApply)
@@ -463,6 +483,7 @@ def set_quick_start_mode(owner, mode: str) -> None:
         if existing
         else "Enter settings for a new server, then build and review the complete preview."
     )
+    owner.lblQuickStartStatus.set_kind("info")
     update_quick_start_password_status(owner)
     update_quick_start_webhook_statuses(owner)
 
@@ -479,6 +500,7 @@ def enforce_quick_start_root_mode(owner, inspection: ServerRootInspection) -> bo
     owner.lblQuickStartStatus.setText(
         "Existing Vein server files were detected. Existing Server mode is required and current settings are being loaded."
     )
+    owner.lblQuickStartStatus.set_kind("warning")
     return True
 
 
@@ -518,6 +540,7 @@ def populate_existing_server_settings(owner, settings: ExistingServerSettings) -
     owner._quick_start_existing_admin_webhook_configured = settings.discord_admin_webhook_configured
     update_quick_start_password_status(owner)
     update_quick_start_webhook_statuses(owner)
+    owner.lblQuickStartStatus.set_kind("success")
     owner.btnQuickStartApply.setEnabled(False)
 
 

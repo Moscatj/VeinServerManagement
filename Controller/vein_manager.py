@@ -68,9 +68,12 @@ try:
         NavigationItem,
         NavigationPanel,
         ExistingServerLoadWorker,
+        apply_design_system,
         apply_quick_start,
         build_config_editor,
         build_dashboard,
+        normalize_player_snapshot,
+        server_runtime_labels,
         build_command_bar,
         build_left_panel,
         build_log_panel,
@@ -1154,6 +1157,7 @@ class Main(QtWidgets.QMainWindow):
         # ------------------------------- UI --------------------------------------
     def _ui(self):
         container = QtWidgets.QWidget()
+        apply_design_system(container)
         self.setCentralWidget(container)
         root = QtWidgets.QVBoxLayout(container)
         root.setContentsMargins(8, 8, 8, 8)
@@ -2170,7 +2174,8 @@ class Main(QtWidgets.QMainWindow):
             return _dot(on, warn)
 
         # Server
-        self.dot_srv.setStyleSheet(dot(snap.get("server", False)))
+        server_on = bool(snap.get("server", False))
+        self.dot_srv.setStyleSheet(dot(server_on))
         # Log monitor: green if alive+fresh; yellow if alive but stale
         lm_on = snap.get("logmon", False)
         lm_fresh = snap.get("logmon_fresh", False)
@@ -2196,24 +2201,19 @@ class Main(QtWidgets.QMainWindow):
         )
         self.lblLogStatus.setText("running" if lm_on else "stopped")
         self.lblLogLast.setText(f"Last update: {_age_str(last)}")
-        self.lblLogJoin.setText(f"Joinable: {st.get('server_joinable') if st else '-'}")
-        self.lblLogPlayers.setText(f"Players: {st.get('player_count') if st else '-'}")
-        if st and isinstance(st.get("uptime_seconds"), int):
-            up = st["uptime_seconds"]
-            self.lblLogUptime.setText(
-                f"Uptime: {up//3600:02d}:{(up%3600)//60:02d}:{up%60:02d}"
-            )
-        else:
-            self.lblLogUptime.setText("Uptime: -")
+        runtime_labels = server_runtime_labels(server_on, st)
+        self.lblLogJoin.setText(runtime_labels["joinable"])
+        self.lblLogPlayers.setText(runtime_labels["players"])
+        self.lblLogUptime.setText(runtime_labels["uptime"])
 
         http_state = lms.get("http_api") if isinstance(lms, dict) else None
 
-        self._update_http_api_summary(http_state)
+        self._update_http_api_summary(http_state, server_online=server_on)
         player_snapshot = {}
         snap_path = rt.get("player_snapshot")
         if snap_path:
             player_snapshot = self._safe_json(snap_path)
-        self._render_player_tree(player_snapshot)
+        self._render_player_tree(player_snapshot, server_online=server_on)
 
         # Hint the tailer in case path switched (next poll will re-open)
         tail_game = getattr(getattr(self, "logs", None), "tail_game", None)
@@ -2281,7 +2281,6 @@ class Main(QtWidgets.QMainWindow):
         if not hasattr(self, "_lm_autostart_last"):
             self._lm_autostart_last = 0.0
         try:
-            server_on = bool(snap.get("server", False))
             lm_on = bool(snap.get("logmon", False))
             lm_fresh = bool(snap.get("logmon_fresh", False))
             now = time.time()
@@ -2306,7 +2305,9 @@ class Main(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    def _update_http_api_summary(self, http_state: Optional[dict]) -> None:
+    def _update_http_api_summary(
+        self, http_state: Optional[dict], *, server_online: bool = True
+    ) -> None:
         if not hasattr(self, "lblLogHttpStatus"):
             return
 
@@ -2314,6 +2315,13 @@ class Main(QtWidgets.QMainWindow):
         players_text = "API Players: -"
         world_text = "World Time: -"
         weather_text = "Weather: -"
+
+        if not server_online:
+            self.lblLogHttpStatus.setText("HTTP API: unavailable (server offline)")
+            self.lblLogHttpPlayers.setText("API Players: 0 (server offline)")
+            self.lblLogHttpWorld.setText("World Time: unavailable (server offline)")
+            self.lblLogHttpWeather.setText("Weather: unavailable (server offline)")
+            return
 
         if isinstance(http_state, dict):
             enabled = bool(http_state.get("enabled", False))
@@ -2343,15 +2351,19 @@ class Main(QtWidgets.QMainWindow):
         self.lblLogHttpWorld.setText(world_text)
         self.lblLogHttpWeather.setText(weather_text)
 
-    def _render_player_tree(self, snapshot: Optional[dict]) -> None:
+    def _render_player_tree(
+        self, snapshot: Optional[dict], *, server_online: bool = True
+    ) -> None:
         if not hasattr(self, "playerTree"):
             return
-        data = snapshot or {}
+        data = normalize_player_snapshot(snapshot, server_online)
         self._player_snapshot_raw = data
         cache_entries = self._update_player_cache(data)
 
         admins = data.get("admins") or []
-        if admins:
+        if not server_online:
+            self.lblAdminList.setText("Admins online: none (server offline)")
+        elif admins:
             admin_text = ", ".join(
                 f"{(a.get('name') or a.get('steam_id') or '').strip()} ({a.get('steam_id')})"
                 for a in admins
@@ -2370,7 +2382,8 @@ class Main(QtWidgets.QMainWindow):
         ts = data.get("last_updated")
         if ts:
             age = _age_str(ts)
-            self.lblPlayerSnapshotTs.setText(f"Players refreshed: {age} ago")
+            prefix = "Players refreshed" if server_online else "Last known player data"
+            self.lblPlayerSnapshotTs.setText(f"{prefix}: {age} ago")
         else:
             self.lblPlayerSnapshotTs.setText("Players refreshed: -")
 
@@ -2912,10 +2925,16 @@ class Main(QtWidgets.QMainWindow):
         except Exception as exc:
             preview = f"Quick Start preview failed:\n{exc}"
             self._status(f"Quick Start preview failed: {exc}")
+            self.lblQuickStartStatus.setText(f"Preview failed: {exc}")
+            self.lblQuickStartStatus.set_kind("error")
             if hasattr(self, "btnQuickStartApply"):
                 self.btnQuickStartApply.setEnabled(False)
         else:
             self._status("Quick Start preview ready.")
+            self.lblQuickStartStatus.setText(
+                "Preview ready. Review every proposed change before applying setup."
+            )
+            self.lblQuickStartStatus.set_kind("info")
             if hasattr(self, "btnQuickStartApply"):
                 self.btnQuickStartApply.setEnabled("Can apply: yes" in preview)
         if hasattr(self, "txtQuickStartPreview"):
@@ -2976,6 +2995,7 @@ class Main(QtWidgets.QMainWindow):
             self.lblQuickStartStatus.setText(
                 "New Server requires a missing or empty destination folder. Choose another folder."
             )
+            self.lblQuickStartStatus.set_kind("warning")
 
     def _quick_start_mode_changed(self, *_):
         mode = self.cmbQuickSetupMode.currentData()
@@ -3008,6 +3028,7 @@ class Main(QtWidgets.QMainWindow):
         self._quick_start_load_running = True
         self.btnQuickStartLoadExisting.setEnabled(False)
         self.lblQuickStartStatus.setText("Loading existing Game.ini and Engine.ini settings.")
+        self.lblQuickStartStatus.set_kind("info")
         worker = ExistingServerLoadWorker(
             self.edQuickServerRoot.text().strip(),
             getattr(self, "_quick_start_existing_executables", None),
@@ -3021,6 +3042,7 @@ class Main(QtWidgets.QMainWindow):
         if not payload.get("ok"):
             message = f"Existing server load failed: {payload.get('error') or 'unknown error'}"
             self.lblQuickStartStatus.setText(message)
+            self.lblQuickStartStatus.set_kind("error")
             self._status(message)
             return
 
@@ -3039,6 +3061,7 @@ class Main(QtWidgets.QMainWindow):
         if missing:
             status += f"; {missing} config file(s) not found"
         self.lblQuickStartStatus.setText(status + ". Edit only the values you want to change, then build a preview.")
+        self.lblQuickStartStatus.set_kind("success")
         self._status(status + ".")
 
     def _confirm_apply_quick_start(self):
@@ -3056,8 +3079,14 @@ class Main(QtWidgets.QMainWindow):
         except Exception as exc:
             result = f"Quick Start apply failed:\n{exc}"
             self._status(f"Quick Start apply failed: {exc}")
+            self.lblQuickStartStatus.setText(f"Setup failed: {exc}")
+            self.lblQuickStartStatus.set_kind("error")
         else:
             self._status("Quick Start setup applied.")
+            self.lblQuickStartStatus.setText(
+                "Setup applied successfully. Preflight and server configuration are refreshing."
+            )
+            self.lblQuickStartStatus.set_kind("success")
             QtCore.QTimer.singleShot(300, self.load_config_text)
             self._refresh_server_config_preview()
             self._kick_preflight_check()

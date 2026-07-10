@@ -6,6 +6,19 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added the phased GUI modernization plan and the first shared visual component
+  foundation for consistent page headers, notices, status badges, and actions.
+- Fixed dark-theme subtitle contrast and prevented Home dashboard cards and the
+  global status message from being compressed into unreadable text.
+- Fixed persisted log-monitor and player snapshots being presented as live when
+  the server process is offline; offline now forces zero online players and
+  labels cached details as last-known data.
+- Documented future native Linux and WSL2 support goals, including versioned
+  GitHub `.deb` and portable Linux packages, guided SteamCMD/VEIN installation,
+  an Ubuntu WSL2 deployment model, platform-portability phases, networking,
+  services, validation criteria, and the WSL versus Windows-VM licensing
+  distinction.
+
 ## 2.7.0 - 2026-07-10
 
 - Added explicit New Server and Existing Server Quick Start modes. Existing

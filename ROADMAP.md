@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.5.6`, with the next unreleased checkpoint in progress:
+Released through `v2.7.0`, with the next unreleased checkpoint in progress:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -32,6 +32,8 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
   can spot missing files or mismatched ports before starting the server.
 - The GUI includes a read-only server config preview for key `Game.ini` and
   `Engine.ini` values, with secrets masked.
+- Server Quick Start supports guarded New Server and Existing Server setup,
+  including existing-install detection and protected secret replacement fields.
 
 ## Near-Term Priorities
 
@@ -45,9 +47,7 @@ Released through `v2.5.6`, with the next unreleased checkpoint in progress:
 - Expand the first-run setup/config validation flow so users can fix missing
   SteamCMD, server executable, port, and game-config issues from guided actions
   instead of only seeing diagnostics.
-- Build the Server Quick Start GUI on top of the preview-only backend planner
-  so users can review management config updates and guarded INI edits before
-  applying first-run setup changes.
+- Continue hardening Server Quick Start after packaged fresh-install testing.
 - Build the guarded game-config editor on top of the read-only preview, with
   backup, diff/preview, validation, and rollback guidance before any writes.
 - Continue hardening GUI server-config editing with better field-specific
@@ -82,6 +82,63 @@ Near-term installer hardening:
     operating cost.
   - Timestamp signatures and verify them in CI before release publication.
   - Publish SHA256 checksums and the expected publisher name with each release.
+
+## Native Linux And WSL2 Support Goals
+
+Native Ubuntu/Debian Linux and Ubuntu hosted by WSL2 are both first-class
+targets. The same Linux backend should run the VEIN dedicated server and the
+management suite without requiring Windows APIs. WSL2 is one deployment option,
+not a prerequisite for Linux support.
+
+Native Linux release model:
+
+- Every supported release publishes versioned Linux assets through the same
+  GitHub Release as the Windows installer.
+- The initial package target is an x86-64 Debian/Ubuntu `.deb`, accompanied by a
+  portable `.tar.gz` fallback and SHA256 checksums.
+- The Linux installer installs the management GUI and CLI, then offers an
+  explicit first-run flow to install/reuse Linux SteamCMD and download/update
+  VEIN Dedicated Server app `2131400` into an operator-selected server root.
+- VEIN binaries are downloaded from Steam by SteamCMD and are never bundled in
+  this repository or management package.
+- Headless Linux hosts can use the CLI and `systemd` services without installing
+  or launching the desktop GUI.
+- Package uninstall preserves server files, saves, config, and backups by
+  default, with the same explicit deletion safeguards as Windows.
+
+Target deployment model:
+
+- Windows remains the licensed host operating system.
+- WSL2 runs a supported Linux distribution, initially Ubuntu LTS.
+- SteamCMD for Linux installs the VEIN Linux dedicated-server depot inside the
+  distribution's Linux filesystem.
+- The management backend, monitors, runtime state, backups, and server process
+  run inside Linux rather than invoking Windows executables through WSL.
+- The GUI may initially run through WSLg; a later remote-control design may let
+  a Windows GUI manage a Linux/WSL backend over an authenticated local API.
+- `systemd` units manage the server and long-running monitor processes.
+- WSL mirrored networking is the preferred Windows 11 configuration, with
+  explicit Hyper-V/Windows firewall rules for game, query, and management ports.
+
+Required portability work:
+
+- Introduce platform adapters for process discovery, process-tree shutdown,
+  service control, file opening, and console visibility.
+- Replace `taskkill`, `tasklist`, PowerShell/WMI, `.bat` wrappers, and
+  Windows-only creation flags with Linux equivalents where appropriate.
+- Support `steamcmd.sh`, Linux depot selection, and Linux executable discovery.
+- Detect and validate the actual Linux server executable and Unreal config
+  directory instead of assuming `Binaries/Win64` and `WindowsServer`.
+- Add shell entrypoints and reviewed `systemd` service templates.
+- Add Linux/WSL-aware health checks, Quick Start choices, and path defaults.
+- Add Ubuntu CI coverage and clean WSL2 installation testing.
+- Add a tag-driven Linux release workflow that builds, tests, checksums, and
+  attaches `.deb` and `.tar.gz` assets to GitHub Releases alongside Windows.
+- Test the installer and complete SteamCMD/VEIN setup on a clean native Ubuntu
+  VM as well as WSL2.
+
+See `Docs/linux_wsl_support.md` for the proposed phases, networking concerns,
+licensing distinction, and acceptance criteria.
 
 ## Stability Goals
 
@@ -120,6 +177,8 @@ Out of scope:
   operator-controlled intermediary.
 
 ## Product Polish Goals
+
+The approved phased GUI plan is documented in `Docs/gui_modernization.md`.
 
 - Make GUI state and process status easier to scan.
 - Improve local setup documentation for first-time users.
@@ -184,7 +243,7 @@ Open design questions:
 
 ## Known Limitations
 
-- The project is Windows-focused.
+- The current release is Windows-only; Linux and WSL2 are roadmap targets.
 - The actual Vein dedicated server is not included.
 - GUI coverage is intentionally lower than backend/helper coverage.
 - Full integration tests require a local Vein server install and are not part

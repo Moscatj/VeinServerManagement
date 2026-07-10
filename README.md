@@ -178,6 +178,19 @@ Release tags run the installer workflow and attach a versioned installer, such a
 
 See [Docs/packaging_overview.md](Docs/packaging_overview.md) for the full packaging workflow.
 
+## Future Linux And WSL2 Support
+
+The current release is Windows-only. Future releases should support both native
+Ubuntu/Debian servers and Ubuntu WSL2. Tagged GitHub Releases are planned to
+include an installable Linux `.deb`, a portable `.tar.gz`, and checksums beside
+the Windows installer. Linux first-run setup should optionally install/reuse
+SteamCMD and download VEIN Dedicated Server app `2131400`; VEIN binaries will
+not be bundled with this project. Planned work also includes Linux process
+control, server/config discovery, `systemd`, WSL networking, and Ubuntu CI.
+
+See [Docs/linux_wsl_support.md](Docs/linux_wsl_support.md) and
+[ROADMAP.md](ROADMAP.md) for the proposed deployment model and phases.
+
 ## Testing
 
 Code changes should include or update unit tests when practical. At minimum, run:
