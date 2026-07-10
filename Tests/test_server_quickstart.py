@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,7 @@ from Tools.server_quickstart import (  # noqa: E402
     build_quick_start_plan,
     inspect_server_root,
     load_existing_server_settings,
+    ServerRootInspection,
 )
 
 
@@ -42,7 +44,11 @@ class ServerQuickStartTests(unittest.TestCase):
         return server_root, config_dir
 
     def test_build_quick_start_plan_uses_app_managed_defaults(self) -> None:
-        plan = build_quick_start_plan({"server_name": "Community Server"})
+        with mock.patch(
+            "Tools.server_quickstart.inspect_server_root",
+            return_value=ServerRootInspection("missing", "Server", ()),
+        ):
+            plan = build_quick_start_plan({"server_name": "Community Server"})
 
         self.assertTrue(plan.can_apply)
         self.assertEqual(plan.config_updates["paths"]["server_root"], "Server")
@@ -182,7 +188,11 @@ class ServerQuickStartTests(unittest.TestCase):
         )
 
     def test_build_quick_start_plan_serializes_to_dict(self) -> None:
-        plan = build_quick_start_plan({"server_name": "Serializable"})
+        with mock.patch(
+            "Tools.server_quickstart.inspect_server_root",
+            return_value=ServerRootInspection("missing", "Server", ()),
+        ):
+            plan = build_quick_start_plan({"server_name": "Serializable"})
         payload = plan.as_dict()
 
         self.assertTrue(payload["can_apply"])
