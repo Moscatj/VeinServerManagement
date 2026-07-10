@@ -58,6 +58,7 @@ if str(CTRL_DIR) not in sys.path:
 try:
     from Tools.config_io import load_and_validate_config
     from Tools import app_info, mgmt_logs
+    from Tools.server_quickstart import ExistingServerSettings, inspect_server_root
 except Exception as e:
     print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
     sys.exit(1)
@@ -66,6 +67,8 @@ try:
     from GUI import (
         NavigationItem,
         NavigationPanel,
+        ExistingServerLoadWorker,
+        apply_quick_start,
         build_config_editor,
         build_dashboard,
         build_command_bar,
@@ -84,12 +87,15 @@ try:
         build_quick_start_view,
         build_server_config_preview_view,
         ConfigRenderer,
+        enforce_quick_start_root_mode,
         LogPanelController,
         ProcessController,
+        populate_existing_server_settings,
         NavigationController,
         ConfigController,
         StatusRenderer,
         show_about_dialog,
+        set_quick_start_mode,
     )
 except Exception as e:
     print(f"[FATAL] Could not import Controller.GUI components: {e}")
@@ -1637,6 +1643,21 @@ class Main(QtWidgets.QMainWindow):
             )
         if hasattr(self, "btnQuickStartPreview"):
             self.btnQuickStartPreview.clicked.connect(self._build_quick_start_preview)
+        if hasattr(self, "btnQuickStartApply"):
+            self.btnQuickStartApply.clicked.connect(self._confirm_apply_quick_start)
+        if hasattr(self, "cmbQuickSetupMode"):
+            self.cmbQuickSetupMode.currentIndexChanged.connect(
+                self._quick_start_mode_changed
+            )
+        if hasattr(self, "btnQuickStartBrowseRoot"):
+            self.btnQuickStartBrowseRoot.clicked.connect(self._browse_quick_start_server_root)
+        if hasattr(self, "btnQuickStartBrowseSteamCmd"):
+            self.btnQuickStartBrowseSteamCmd.clicked.connect(self._browse_quick_start_steamcmd)
+        if hasattr(self, "btnQuickStartLoadExisting"):
+            self.btnQuickStartLoadExisting.clicked.connect(self._load_existing_quick_start_settings)
+        if hasattr(self, "edQuickServerRoot"):
+            self.edQuickServerRoot.editingFinished.connect(self._inspect_quick_start_server_root)
+            QtCore.QTimer.singleShot(0, self._initialize_quick_start_mode)
 
         self.b_start.clicked.connect(self.start_server)
         self.b_stop.clicked.connect(self.stop_server)
@@ -2881,15 +2902,167 @@ class Main(QtWidgets.QMainWindow):
             self._status("Server config diff preview ready.")
 
     def _build_quick_start_preview(self):
+        if self.cmbQuickSetupMode.currentData() == "new":
+            self._inspect_quick_start_server_root()
+            if self.cmbQuickSetupMode.currentData() == "existing":
+                self._status("Existing server detected; loading its current settings before preview.")
+                return
         try:
             preview = build_quick_start_preview(self)
         except Exception as exc:
             preview = f"Quick Start preview failed:\n{exc}"
             self._status(f"Quick Start preview failed: {exc}")
+            if hasattr(self, "btnQuickStartApply"):
+                self.btnQuickStartApply.setEnabled(False)
         else:
             self._status("Quick Start preview ready.")
+            if hasattr(self, "btnQuickStartApply"):
+                self.btnQuickStartApply.setEnabled("Can apply: yes" in preview)
         if hasattr(self, "txtQuickStartPreview"):
             self.txtQuickStartPreview.setPlainText(preview)
+
+    def _browse_quick_start_server_root(self):
+        current = self.edQuickServerRoot.text().strip() or str(ROOT)
+        selected = QtWidgets.QFileDialog.getExistingDirectory(self, "Select Vein Server Folder", current)
+        if selected:
+            self.edQuickServerRoot.setText(selected)
+            self._inspect_quick_start_server_root()
+
+    def _browse_quick_start_steamcmd(self):
+        current = Path(self.edQuickSteamCmd.text().strip() or "SteamCMD/steamcmd.exe").expanduser()
+        start = current if current.is_dir() else current.parent
+        selected, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select SteamCMD Executable",
+            str(start),
+            "SteamCMD (steamcmd.exe);;Executable files (*.exe);;All files (*)",
+        )
+        if selected:
+            self.edQuickSteamCmd.setText(selected)
+
+    def _quick_start_runtime_paths(self):
+        cfg = _load_cfg_for_runtime(self.config_path)
+        configured_root = str(cfg.get("server_dir") or "").strip()
+        executables = [
+            str(item) for item in (cfg.get("server_executables") or []) if str(item).strip()
+        ]
+        steamcmd_path = str(cfg.get("steamcmd_path") or "").strip()
+        self._quick_start_existing_executables = executables
+        return configured_root, steamcmd_path, executables
+
+    def _initialize_quick_start_mode(self):
+        configured_root, steamcmd_path, executables = self._quick_start_runtime_paths()
+        if steamcmd_path:
+            self.edQuickSteamCmd.setText(steamcmd_path)
+        if configured_root:
+            inspection = inspect_server_root(configured_root, executables or None)
+            if inspection.is_existing_server:
+                self.edQuickServerRoot.setText(configured_root)
+                enforce_quick_start_root_mode(self, inspection)
+
+    def _inspect_quick_start_server_root(self):
+        root = self.edQuickServerRoot.text().strip()
+        if not root:
+            return
+        _, _, executables = self._quick_start_runtime_paths()
+        inspection = inspect_server_root(root, executables or None)
+        if enforce_quick_start_root_mode(self, inspection):
+            if self.cmbQuickSetupMode.currentData() == "existing" and not getattr(
+                self, "_quick_start_load_running", False
+            ):
+                self._load_existing_quick_start_settings()
+            return
+        if inspection.state == "occupied" and self.cmbQuickSetupMode.currentData() == "new":
+            self.lblQuickStartStatus.setText(
+                "New Server requires a missing or empty destination folder. Choose another folder."
+            )
+
+    def _quick_start_mode_changed(self, *_):
+        mode = self.cmbQuickSetupMode.currentData()
+        set_quick_start_mode(self, mode)
+        if mode != "existing":
+            self._inspect_quick_start_server_root()
+            return
+
+        configured_root, steamcmd_path, _ = self._quick_start_runtime_paths()
+        detected_root = str(getattr(self, "_quick_start_auto_detected_root", "") or "").strip()
+        self._quick_start_auto_detected_root = ""
+        current_root = self.edQuickServerRoot.text().strip()
+        current_inspection = inspect_server_root(
+            current_root, getattr(self, "_quick_start_existing_executables", None) or None
+        ) if current_root else None
+        selected_root = detected_root
+        if not selected_root and current_inspection is not None and current_inspection.is_existing_server:
+            selected_root = current_root
+        selected_root = selected_root or configured_root
+        if selected_root:
+            self.edQuickServerRoot.setText(selected_root)
+        if steamcmd_path:
+            self.edQuickSteamCmd.setText(steamcmd_path)
+        if selected_root:
+            self._load_existing_quick_start_settings()
+
+    def _load_existing_quick_start_settings(self):
+        if getattr(self, "_quick_start_load_running", False):
+            return
+        self._quick_start_load_running = True
+        self.btnQuickStartLoadExisting.setEnabled(False)
+        self.lblQuickStartStatus.setText("Loading existing Game.ini and Engine.ini settings.")
+        worker = ExistingServerLoadWorker(
+            self.edQuickServerRoot.text().strip(),
+            getattr(self, "_quick_start_existing_executables", None),
+        )
+        worker.signals.ready.connect(self._apply_existing_quick_start_settings)
+        self._pool.start(worker)
+
+    def _apply_existing_quick_start_settings(self, payload: dict):
+        self._quick_start_load_running = False
+        self.btnQuickStartLoadExisting.setEnabled(True)
+        if not payload.get("ok"):
+            message = f"Existing server load failed: {payload.get('error') or 'unknown error'}"
+            self.lblQuickStartStatus.setText(message)
+            self._status(message)
+            return
+
+        settings = ExistingServerSettings(
+            server_root=payload["server_root"],
+            values=dict(payload.get("values") or {}),
+            loaded_fields=tuple(payload.get("loaded_fields") or ()),
+            missing_files=tuple(payload.get("missing_files") or ()),
+            password_configured=payload.get("password_configured"),
+            discord_chat_webhook_configured=payload.get("discord_chat_webhook_configured"),
+            discord_admin_webhook_configured=payload.get("discord_admin_webhook_configured"),
+        )
+        populate_existing_server_settings(self, settings)
+        missing = len(settings.missing_files)
+        status = f"Loaded {len(settings.loaded_fields)} existing setting(s)"
+        if missing:
+            status += f"; {missing} config file(s) not found"
+        self.lblQuickStartStatus.setText(status + ". Edit only the values you want to change, then build a preview.")
+        self._status(status + ".")
+
+    def _confirm_apply_quick_start(self):
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Apply Quick Start Setup",
+            "This will update the local management config and, if the selected server root exists, back up and modify Game.ini/Engine.ini. Continue?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        try:
+            result = apply_quick_start(self)
+        except Exception as exc:
+            result = f"Quick Start apply failed:\n{exc}"
+            self._status(f"Quick Start apply failed: {exc}")
+        else:
+            self._status("Quick Start setup applied.")
+            QtCore.QTimer.singleShot(300, self.load_config_text)
+            self._refresh_server_config_preview()
+            self._kick_preflight_check()
+        if hasattr(self, "txtQuickStartPreview"):
+            self.txtQuickStartPreview.setPlainText(result)
 
     # ------------------------------- Misc -------------------------------------
     def _safe_json(self, p: Path) -> dict:

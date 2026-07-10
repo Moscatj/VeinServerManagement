@@ -6,6 +6,23 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.7.0 - 2026-07-10
+
+- Added explicit New Server and Existing Server Quick Start modes. Existing
+  servers automatically use the active YAML's resolved server path, can import
+  supported non-secret INI settings, and only changed fields are included in
+  the guarded apply preview.
+- Hardened New Server mode so populated destinations are blocked and detected
+  Vein installations automatically switch to Existing Server mode.
+- Added folder and file pickers beside the Quick Start server-root and SteamCMD
+  path fields so paths do not need to be typed manually.
+- Added explicit existing-password status and a Show/Hide control for newly
+  entered Quick Start replacement passwords without exposing stored passwords.
+- Added matching configured-state indicators and Show/Hide controls for both
+  Quick Start Discord webhook replacement fields without importing stored URLs.
+- Kept configured `-log` launch arguments from restoring the visible log window
+  during headless startup; the fallback launch still adds it when needed.
+
 - Added a tested backend Server Quick Start planner that previews first-run
   management config updates and guarded `Game.ini` / `Engine.ini` edits without
   writing files.
@@ -15,6 +32,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Added a preview-only GUI Server Quick Start view for entering first-run
   settings and reviewing generated management config updates and guarded
   `Game.ini` / `Engine.ini` edits before any apply workflow is exposed.
+- Added a guarded Quick Start apply flow that writes local management config,
+  skips game-config writes until the selected server root exists, and delegates
+  `Game.ini` / `Engine.ini` changes to the existing backup, atomic write, and
+  validation path.
 
 ## 2.6.0 - 2026-07-08
 

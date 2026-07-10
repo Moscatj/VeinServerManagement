@@ -21,7 +21,7 @@ must live in the appropriate Tools module.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.
 - **health_check.py** - Read-only project, dependency, path, SteamCMD, secret, and server-config diagnostics.
 - **server_config_validator.py** - Read-only Vein dedicated server layout and `Game.ini` / `Engine.ini` validation.
-- **server_quickstart.py** - Preview-only first-run setup planner for management config updates and guarded server config edits.
+- **server_quickstart.py** - Guarded New Server and Existing Server setup planning, validation, importing, and apply helpers.
 - **discord.py** - Webhook utilities (`send_discord_message`, per-channel gating).
 - **state_io.py** - Atomic state/heartbeat writers shared by monitors and the GUI.
 

@@ -18,7 +18,18 @@ from GUI.kvrow import KVRow  # noqa: E402
 from GUI.navigation import NavigationItem, NavigationPanel  # noqa: E402
 from GUI.about import about_text  # noqa: E402
 from GUI.player_details import populate_json_tree  # noqa: E402
-from GUI.quickstart import build_quick_start_preview, build_quick_start_view, collect_quick_start_values  # noqa: E402
+from GUI.quickstart import (  # noqa: E402
+    build_quick_start_preview,
+    build_quick_start_view,
+    collect_quick_start_values,
+    enforce_quick_start_root_mode,
+    populate_existing_server_settings,
+    quick_start_config_path,
+    set_quick_start_password_visibility,
+    set_quick_start_webhook_visibility,
+    set_quick_start_mode,
+)
+from Tools.server_quickstart import ExistingServerSettings, ServerRootInspection  # noqa: E402
 from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
@@ -151,11 +162,121 @@ class GuiHelperTests(unittest.TestCase):
         preview = build_quick_start_preview(owner)
 
         self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertEqual(values["setup_mode"], "new")
+        self.assertFalse(owner.btnQuickStartApply.isEnabled())
+        self.assertEqual(owner.btnQuickStartBrowseRoot.text(), "Browse…")
+        self.assertEqual(owner.btnQuickStartBrowseSteamCmd.text(), "Browse…")
         self.assertEqual(values["server_name"], "Preview Server")
         self.assertEqual(values["admin_steam_ids"], ["111", "222"])
         self.assertIn("Server Quick Start Preview", preview)
         self.assertIn("Preview Server", preview)
         self.assertIn("AdminSteamIDs", preview)
+
+    def test_quick_start_config_path_avoids_example_templates(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        owner.config_path = "Config/config.example.yaml"
+        self.assertIsNone(quick_start_config_path(owner))
+
+        owner.config_path = "Config/config.yaml"
+        self.assertEqual(quick_start_config_path(owner), "Config/config.yaml")
+
+    def test_quick_start_existing_mode_imports_values_and_tracks_only_user_changes(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        owner.cmbQuickSetupMode.setCurrentIndex(1)
+        set_quick_start_mode(owner, "existing")
+        settings = ExistingServerSettings(
+            server_root="C:/VeinServer",
+            values={
+                "server_name": "Imported",
+                "max_players": 12,
+                "public": False,
+                "admin_steam_ids": ["111", "222"],
+            },
+            loaded_fields=("admin_steam_ids", "max_players", "public", "server_name"),
+            missing_files=(),
+            password_configured=True,
+            discord_chat_webhook_configured=True,
+            discord_admin_webhook_configured=False,
+        )
+
+        populate_existing_server_settings(owner, settings)
+        imported = collect_quick_start_values(owner)
+        owner.edQuickServerName.setText("Changed")
+        changed = collect_quick_start_values(owner)
+
+        self.assertEqual(imported["existing_loaded_root"], "C:/VeinServer")
+        self.assertEqual(imported["server_name"], "Imported")
+        self.assertEqual(imported["server_config_fields"], [])
+        self.assertEqual(changed["server_config_fields"], ["server_name"])
+        self.assertEqual(owner.edQuickPassword.text(), "")
+        self.assertIn("existing password is set", owner.lblQuickPasswordStatus.text())
+        self.assertIn("existing webhook is configured", owner.lblQuickDiscordChatWebhookStatus.text())
+        self.assertIn("no existing webhook", owner.lblQuickDiscordAdminWebhookStatus.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_password_status_and_visibility(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        self.assertIn("no password will be set", owner.lblQuickPasswordStatus.text())
+        self.assertEqual(owner.edQuickPassword.echoMode(), QtWidgets.QLineEdit.Password)
+
+        owner.edQuickPassword.setText("replacement")
+        set_quick_start_password_visibility(owner, True)
+
+        self.assertIn("replacement password entered", owner.lblQuickPasswordStatus.text())
+        self.assertEqual(owner.edQuickPassword.echoMode(), QtWidgets.QLineEdit.Normal)
+        self.assertEqual(owner.btnQuickPasswordVisibility.text(), "Hide")
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_webhook_status_and_visibility(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        self.assertIn("no webhook will be set", owner.lblQuickDiscordChatWebhookStatus.text())
+        self.assertEqual(owner.edQuickDiscordChatWebhook.echoMode(), QtWidgets.QLineEdit.Password)
+
+        owner.edQuickDiscordChatWebhook.setText("https://discord.com/api/webhooks/1/token")
+        set_quick_start_webhook_visibility(
+            owner.edQuickDiscordChatWebhook,
+            owner.btnQuickDiscordChatWebhookVisibility,
+            True,
+        )
+
+        self.assertIn("replacement URL entered", owner.lblQuickDiscordChatWebhookStatus.text())
+        self.assertEqual(owner.edQuickDiscordChatWebhook.echoMode(), QtWidgets.QLineEdit.Normal)
+        self.assertEqual(owner.btnQuickDiscordChatWebhookVisibility.text(), "Hide")
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_detected_server_forces_existing_mode(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        inspection = ServerRootInspection(
+            state="existing",
+            server_root="C:/VeinServer",
+            indicators=("C:/VeinServer/Vein/Binaries/Win64/VeinServer.exe",),
+        )
+
+        changed = enforce_quick_start_root_mode(owner, inspection)
+
+        self.assertTrue(changed)
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertEqual(owner.cmbQuickSetupMode.currentData(), "existing")
+        self.assertEqual(owner._quick_start_auto_detected_root, "C:/VeinServer")
 
 
 if __name__ == "__main__":

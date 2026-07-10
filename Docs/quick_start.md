@@ -1,8 +1,8 @@
 # Server Quick Start
 
-Server Quick Start is the planned guided setup flow for first-time operators.
-The initial backend foundation is preview-only: it builds a proposed setup plan
-without writing `Config/config.yaml`, `Game.ini`, or `Engine.ini`.
+Server Quick Start is the guided setup flow for new and existing server
+operators. It builds a reviewable plan before writing the local management
+config or guarded Vein server configuration files.
 
 ## Current Scope
 
@@ -29,13 +29,14 @@ The plan contains:
 - `issues` for missing required fields or invalid values.
 - `can_apply`, which is false when any blocking error is present.
 
-The backend does not apply anything by itself. Future GUI work should show the
-plan to the operator, preview diffs, then apply changes through the existing
-safe config writer and server config editor paths.
+The backend can now apply the plan through guarded local writers. It writes the
+local management config and delegates game config writes to the existing server
+config editor, which creates backups and validates after writing.
 
-The GUI now includes a preview-only Server Quick Start view. It collects the
-same first-run fields and shows a copyable plan, but it intentionally does not
-write files yet.
+If the selected server root does not exist yet, Quick Start writes only the
+management config and skips `Game.ini` / `Engine.ini` writes. This prevents the
+tool from creating fake dedicated-server folders before SteamCMD has installed
+the server files.
 
 ## Safety Model
 
@@ -74,12 +75,43 @@ is aligned with their setup guidance:
 ## Current GUI Flow
 
 1. Open `Quick Start` from the left navigation.
-2. Fill in the first-run fields.
-3. Click `Build Preview`.
-4. Review blocking errors, warnings, management config updates, and proposed
+2. Choose `New Server` or `Existing Server`.
+   If the selected folder already contains a Vein executable, `Game.ini`, or
+   `Engine.ini`, Quick Start automatically switches to Existing Server mode.
+3. For an existing server, Quick Start first uses the resolved server root and
+   executable candidates from the active YAML config and loads supported values
+   automatically. Each path field has a `Browse…` button: Server root opens a
+   folder picker and SteamCMD opens a file picker. Use `Load Existing Settings`
+   after selecting a different installation. Loading reads `Game.ini` and
+   `Engine.ini` in the background.
+4. Fill in new-server values or edit the imported existing-server values.
+5. Click `Build Preview`.
+6. Review blocking errors, warnings, management config updates, and proposed
    game config edits.
+7. Click `Apply Setup` to update the local management config.
+8. If the selected server root exists, Quick Start also backs up and writes the
+   proposed `Game.ini` / `Engine.ini` edits through the guarded editor path.
 
-## Future Apply Flow
+New Server mode produces a complete initial game configuration. Existing
+Server mode imports supported non-secret settings and only proposes game-file
+edits for fields changed after import. Existing passwords and Discord webhook
+URLs are not loaded into the form and remain unchanged unless the user enters a
+replacement. The password status explicitly reports whether an existing
+password is set, not set, or has not been checked. Each Discord webhook reports
+the same configured, not-configured, or unknown state. Show/Hide controls reveal
+only newly entered replacements; they never expose passwords or webhook tokens
+read from `Game.ini`. Changing the selected server root invalidates the import
+and requires loading that server again before a preview can be applied.
+
+New Server mode only accepts a missing or empty destination. A populated folder
+is blocked, and a detected Vein installation is forced into Existing Server
+mode so it cannot be unintentionally reconfigured as a new server.
+
+Quick Start intentionally avoids writing `Config/config.example.yaml`; if an
+example template is currently selected, Apply targets the local
+`Config/config.yaml` path instead.
+
+## Future Install Flow
 
 The intended GUI flow is:
 
@@ -88,8 +120,9 @@ The intended GUI flow is:
 3. Enter required server identity and network fields.
 4. Confirm save, log, runtime, and backup locations.
 5. Review management config updates and INI diffs.
-6. Apply only after explicit confirmation.
-7. Re-run Server Preflight and refresh the Server Config view.
+6. Run SteamCMD install/update when requested.
+7. Apply only after explicit confirmation.
+8. Re-run Server Preflight and refresh the Server Config view.
 
 ## Multi-Server Direction
 

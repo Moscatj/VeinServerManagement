@@ -22,7 +22,8 @@ This is a personal source-available portfolio project. It is suitable for experi
 - Unit test and coverage foundation for hardening future changes.
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
 - GUI server preflight summary for install/config readiness before starting the server.
-- Read-only GUI preview of key Vein `Game.ini` / `Engine.ini` server settings.
+- GUI preview and guarded editing for key Vein `Game.ini` / `Engine.ini` server settings.
+- Server Quick Start modes for complete new-server setup and selective, guarded updates to existing servers.
 
 ## Repository Layout
 

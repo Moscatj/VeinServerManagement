@@ -458,15 +458,11 @@ def start_server(
         if visible_console:
             if "-log" not in args:
                 args.append("-log")
-        else:
-            try:
-                while True:
-                    args.remove("-log")
-            except ValueError:
-                pass
 
         args.extend(["-Unattended", "-NoCrashDialog"])
         args.extend(_merged_launch_args(extra_args))
+        if not visible_console:
+            args = [arg for arg in args if arg.lower() != "-log"]
         return args
 
     def launch(args: List[str], hide: bool) -> Optional[subprocess.Popen]:

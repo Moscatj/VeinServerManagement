@@ -40,10 +40,16 @@ from .server_config_view import (
     edit_values_from_text,
 )
 from .quickstart import (
+    ExistingServerLoadWorker,
+    apply_quick_start,
     build_quick_start_preview,
     build_quick_start_view,
     collect_quick_start_values,
+    enforce_quick_start_root_mode,
     format_quick_start_plan,
+    populate_existing_server_settings,
+    quick_start_config_path,
+    set_quick_start_mode,
 )
 from .about import about_text, show_about_dialog
 
@@ -80,8 +86,14 @@ __all__ = [
     "edit_values_from_text",
     "build_quick_start_view",
     "build_quick_start_preview",
+    "ExistingServerLoadWorker",
+    "apply_quick_start",
     "collect_quick_start_values",
+    "enforce_quick_start_root_mode",
     "format_quick_start_plan",
+    "populate_existing_server_settings",
+    "quick_start_config_path",
+    "set_quick_start_mode",
     "about_text",
     "show_about_dialog",
 ]
