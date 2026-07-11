@@ -120,6 +120,14 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("SteamCMD installs use the app-managed Server folder by default", text)
         self.assertNotIn("ServerDirPage.Values[0] := ExpandConstant('{sd}\\VeinServer');", text)
 
+    def test_installer_defaults_to_guided_server_and_steamcmd_install(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("InstallServerRadio.Checked := True;", text)
+        self.assertIn("ExistingServerRadio.Checked := False;", text)
+        self.assertIn("AppSteamCmdRadio.Checked := True;", text)
+        self.assertIn("NoSteamCmdRadio.Checked := False;", text)
+
     def test_config_template_defaults_to_app_managed_install_layout(self) -> None:
         text = CONFIG_TEMPLATE.read_text(encoding="utf-8")
 

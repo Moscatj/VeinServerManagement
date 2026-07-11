@@ -206,8 +206,17 @@ def check_dependencies() -> list[HealthCheckResult]:
         results.append(HealthCheckResult(f"dependency.{module}", status, message))
 
     for module in optional:
-        status = "PASS" if importlib.util.find_spec(module) else "WARN"
-        message = "Dependency is importable." if status == "PASS" else "Optional dependency is missing."
+        available = bool(importlib.util.find_spec(module))
+        if module == "PySide6" and getattr(sys, "frozen", False) and not available:
+            status = "INFO"
+            message = "GUI runtime is bundled separately in VeinManager.exe."
+        else:
+            status = "PASS" if available else "WARN"
+            message = (
+                "Dependency is importable."
+                if status == "PASS"
+                else "Optional dependency is missing."
+            )
         results.append(HealthCheckResult(f"dependency.{module}", status, message))
 
     return results

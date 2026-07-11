@@ -246,8 +246,16 @@ class ProcessController:
         except Exception as exc:
             self._report_error("Server Stop Failed", str(exc))
             return
+        env = os.environ.copy()
+        env["VEIN_CONFIG"] = self.owner.config_path
+        stop_log = mgmt_logs.allocate_log_file(
+            "vein_manager",
+            label="stop_server",
+            record_latest=False,
+            metadata={"action": "stop_server", "config": self.owner.config_path},
+        )
         worker = RunOnceWorker(
-            self._run_once,
+            lambda cmd, **kwargs: self._run_once(cmd, env=env, **kwargs),
             command,
             cwd=self._ctrl_dir.parent if self._packaged else py.parent,
             timeout=180,
@@ -261,18 +269,28 @@ class ProcessController:
                 self.owner._write_action_log("stop_server", "stdout", out)
             if err:
                 self.owner._write_action_log("stop_server", "stderr", err)
-            self.owner._status(
-                "Server stop requested."
-                if code == 0
-                else f"Stop returned {code}. {err or out}"
-            )
+            self._write_launch_log(stop_log, command, out, err)
+            if code == 0:
+                self.owner._status("Server stop completed.")
+            else:
+                detail = (err or out or "The shutdown helper returned no diagnostic output.").strip()
+                self._report_error(
+                    "Server Stop Failed",
+                    f"Shutdown returned exit code {code}. {detail}",
+                    stop_log,
+                )
             if code == 0 and after_success:
                 QtCore.QTimer.singleShot(1200, after_success)
 
         def failed(message: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
-            self.owner._status(f"Stop failed: {message}")
+            self._write_launch_log(stop_log, command, err=message)
+            self._report_error(
+                "Server Stop Failed",
+                f"Could not run the shutdown helper: {message}",
+                stop_log,
+            )
 
         worker.signals.finished.connect(finished)
         worker.signals.failed.connect(failed)
@@ -309,7 +327,7 @@ class ProcessController:
             )
             self.owner._status("Log monitor starting.")
         except Exception as e:
-            self.owner._status(f"Log monitor start failed: {e}")
+            self._report_error("Log Monitor Start Failed", str(e), lm_stdout)
 
         if self._runtime_paths(self.owner.config_path)["log_monitor_enabled"]:
             self.owner.chk_live.setChecked(True)
@@ -364,7 +382,7 @@ class ProcessController:
             )
             self.owner._status("Crash monitor starting.")
         except Exception as e:
-            self.owner._status(f"Crash monitor start failed: {e}")
+            self._report_error("Crash Monitor Start Failed", str(e), cm_stdout)
 
     def stop_cm(self) -> None:
         rp = self._rt_paths(self.owner.config_path)
@@ -411,7 +429,10 @@ class ProcessController:
         def status(message: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
-            self.owner._status(message)
+            if "still running" in message.lower():
+                self._report_error(f"{monitor_name} Stop Failed", message)
+            else:
+                self.owner._status(message)
 
         worker.signals.status.connect(status)
         self.owner._status(f"Stopping {monitor_name}; waiting for monitor exit.")

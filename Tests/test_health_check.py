@@ -96,6 +96,21 @@ class HealthCheckTests(unittest.TestCase):
         self.assertEqual(result.status, "WARN")
         self.assertIn("does not exist", result.message)
 
+    def test_packaged_cli_does_not_warn_about_separate_gui_runtime(self) -> None:
+        real_find_spec = importlib.util.find_spec
+
+        def find_spec(name: str):
+            return None if name == "PySide6" else real_find_spec(name)
+
+        with mock.patch.object(health_check.sys, "frozen", True, create=True), mock.patch.object(
+            health_check.importlib.util, "find_spec", side_effect=find_spec
+        ):
+            results = health_check.check_dependencies()
+
+        pyside = next(result for result in results if result.name == "dependency.PySide6")
+        self.assertEqual(pyside.status, "INFO")
+        self.assertIn("VeinManager.exe", pyside.message)
+
     def test_raw_config_loader_handles_json_and_missing_files(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             config_path = Path(tmp) / "config.json"

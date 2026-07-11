@@ -6,6 +6,18 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Hardened packaged lifecycle control so explicit config selections override
+  inherited values, server-stop failures produce captured diagnostics, and
+  monitor start/stop exceptions surface actionable errors. Failed server starts
+  now roll back spawned monitors, and packaged monitor-stop commands recognize
+  frozen `VeinTools.exe` subcommands.
+- Clarified packaged health checks so the CLI does not warn that PySide6 is
+  absent when the GUI runtime is bundled separately in `VeinManager.exe`.
+- Changed the Windows installer defaults to the recommended app-managed
+  SteamCMD and dedicated-server installation path for novice operators.
+- Added immediate Quick Start network-readiness guidance and detailed the
+  planned firewall, router, and reachability wizard behavior.
+
 ## 2.8.1 - 2026-07-11
 
 - Fixed a CI safety-scan false positive caused by diagnostic dialog labels being

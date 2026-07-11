@@ -117,7 +117,86 @@ class GuiControllerTests(unittest.TestCase):
         owner._write_action_log.assert_any_call("stop_server", "stderr", "err")
         owner._status.assert_any_call("Server process launched; waiting for running status.")
         owner._status.assert_any_call("Server stop requested; waiting for shutdown script.")
-        owner._status.assert_any_call("Server stop requested.")
+        owner._status.assert_any_call("Server stop completed.")
+
+    def test_packaged_lifecycle_actions_all_use_vein_tools(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            ctrl = base / "Controller"
+            ctrl.mkdir()
+            tools = base / "VeinTools.exe"
+            tools.write_text("fixture", encoding="utf-8")
+            owner = mock.Mock()
+            owner.config_path = str(base / "Config" / "config.yaml")
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "py -3",
+                resolved_paths=lambda: {},
+                rt_paths=lambda _: {},
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=mock.Mock(),
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=mock.Mock(return_value=True),
+                ctrl_dir=ctrl,
+                packaged=True,
+                tools_executable=tools,
+            )
+
+            for action in (
+                "start-server",
+                "stop-server",
+                "monitor-log",
+                "stop-log-monitor",
+                "crash-monitor",
+                "stop-crash-monitor",
+            ):
+                command = controller._helper_command(action, ctrl / "unused.py")
+                self.assertIn(str(tools), command)
+                self.assertIn(action, command)
+                self.assertIn("--config", command)
+                self.assertNotIn("py -3", command)
+
+    def test_packaged_stop_surfaces_helper_failure(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            ctrl = base / "Controller"
+            ctrl.mkdir()
+            tools = base / "VeinTools.exe"
+            tools.write_text("fixture", encoding="utf-8")
+            owner = mock.Mock()
+            owner.config_path = str(base / "Config" / "config.yaml")
+            owner._status = mock.Mock()
+            owner._notify_action_error = mock.Mock()
+            owner._write_action_log = mock.Mock()
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "py -3",
+                resolved_paths=lambda: {"shutdown_server": ctrl / "shutdown_server.py"},
+                rt_paths=lambda _: {},
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=mock.Mock(return_value=(2, "", "shutdown failed")),
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=mock.Mock(return_value=True),
+                ctrl_dir=ctrl,
+                packaged=True,
+                tools_executable=tools,
+            )
+            log_path = base / "Logs" / "stop.log"
+            log_path.parent.mkdir()
+            with mock.patch(
+                "GUI.process_control.mgmt_logs.allocate_log_file", return_value=log_path
+            ), mock.patch.object(
+                controller._pool, "start", side_effect=lambda worker: worker.run()
+            ):
+                controller.stop_server()
+
+            owner._notify_action_error.assert_called_once()
+            self.assertIn("exit code 2", owner._notify_action_error.call_args.args[1])
+            self.assertIn("shutdown failed", log_path.read_text(encoding="utf-8"))
 
     def test_packaged_start_uses_vein_tools_and_surfaces_failure(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

@@ -230,7 +230,7 @@ begin
   InstallServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
   InstallServerRadio.Parent := ServerChoicePage.Surface;
   InstallServerRadio.Caption := 'Install or update the dedicated server with SteamCMD';
-  InstallServerRadio.Checked := False;
+  InstallServerRadio.Checked := True;
   LayoutServerChoiceControl(InstallServerRadio, ScaleY(56));
   InstallServerRadio.Height := ScaleY(26);
   InstallServerRadio.OnClick := @ServerChoiceChanged;
@@ -238,7 +238,7 @@ begin
   ExistingServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
   ExistingServerRadio.Parent := ServerChoicePage.Surface;
   ExistingServerRadio.Caption := 'Use an existing dedicated server folder';
-  ExistingServerRadio.Checked := True;
+  ExistingServerRadio.Checked := False;
   LayoutServerChoiceControl(ExistingServerRadio, InstallServerRadio.Top + InstallServerRadio.Height + ScaleY(10));
   ExistingServerRadio.Height := ScaleY(26);
   ExistingServerRadio.OnClick := @ServerChoiceChanged;
@@ -287,7 +287,7 @@ begin
   AppSteamCmdRadio := TNewRadioButton.Create(SteamCmdChoicePage.Surface);
   AppSteamCmdRadio.Parent := SteamCmdChoicePage.Surface;
   AppSteamCmdRadio.Caption := 'Install or use app-managed SteamCMD inside the app folder';
-  AppSteamCmdRadio.Checked := False;
+  AppSteamCmdRadio.Checked := True;
   AppSteamCmdRadio.Left := ScaleX(0);
   AppSteamCmdRadio.Top := ScaleY(56);
   AppSteamCmdRadio.Width := SteamCmdChoicePage.SurfaceWidth;
@@ -307,7 +307,7 @@ begin
   NoSteamCmdRadio := TNewRadioButton.Create(SteamCmdChoicePage.Surface);
   NoSteamCmdRadio.Parent := SteamCmdChoicePage.Surface;
   NoSteamCmdRadio.Caption := 'Do not configure SteamCMD now';
-  NoSteamCmdRadio.Checked := True;
+  NoSteamCmdRadio.Checked := False;
   NoSteamCmdRadio.Left := ScaleX(0);
   NoSteamCmdRadio.Top := ExistingSteamCmdRadio.Top + ExistingSteamCmdRadio.Height + ScaleY(10);
   NoSteamCmdRadio.Width := SteamCmdChoicePage.SurfaceWidth;

@@ -58,6 +58,17 @@ class MonitorStopTests(unittest.TestCase):
         with mock.patch.object(monitors.psutil, "process_iter", side_effect=RuntimeError("psutil failed")):
             monitors.stop_crash_monitor()
 
+    def test_stop_processes_matches_packaged_monitor_subcommand(self) -> None:
+        packaged = FakeMonitorProcess(
+            ["VeinTools.exe", "monitor-log", "--config", "config.yaml"]
+        )
+
+        with mock.patch.object(monitors.psutil, "process_iter", return_value=[packaged]):
+            monitors.stop_log_monitor()
+
+        self.assertTrue(packaged.terminated)
+        self.assertEqual(packaged.wait_timeout, 5)
+
     def test_stop_all_monitors_delegates_to_both_monitor_stoppers(self) -> None:
         with mock.patch.object(monitors, "stop_log_monitor") as stop_log, mock.patch.object(
             monitors, "stop_crash_monitor"

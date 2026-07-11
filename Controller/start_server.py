@@ -143,7 +143,7 @@ def _spawn_py(script_name: str) -> bool:
         return False
 
 
-def _start_monitors() -> None:
+def _start_monitors() -> list[str]:
     # Always begin with a clean slate
     stop_log_monitor()
     stop_crash_monitor()
@@ -192,6 +192,7 @@ def _start_monitors() -> None:
         send_discord_message(
             f"🟢 Monitors started: {', '.join(started)}", channel="startup"
         )
+    return started
 
 
 def _steam_update_if_enabled() -> None:
@@ -262,7 +263,7 @@ def main() -> int:
         _steam_update_if_enabled()
 
         # 4) Start monitors BEFORE launching server so log monitor watches whole boot
-        _start_monitors()
+        started_monitors = _start_monitors()
 
         # Verify log monitor actually started; if not, re-spawn once
         try:
@@ -326,6 +327,11 @@ def main() -> int:
             proc = start_vein_server()
 
         if proc is None:
+            if started_monitors:
+                # Failed launches must not leave monitor helpers running in the
+                # background on packaged installations.
+                stop_log_monitor()
+                stop_crash_monitor()
             send_discord_message(
                 "❌ Start failed: no executable or launch error.", channel="startup"
             )

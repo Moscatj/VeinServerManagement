@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -164,6 +165,23 @@ class CliWrapperTests(unittest.TestCase):
         self.assertEqual(code, 0)
         stop.run.assert_called_once()
         start.run.assert_called_once()
+
+    def test_vein_tools_explicit_config_overrides_inherited_environment(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            cfg = (Path(tmp) / "selected.yaml").resolve()
+            cfg.write_text("version: 2\n", encoding="utf-8")
+            command = mock.Mock()
+            command.run.return_value = 0
+            commands = dict(vein_tools.COMMANDS)
+            commands["health-check"] = command
+            with mock.patch.object(vein_tools, "COMMANDS", commands), mock.patch.dict(
+                os.environ, {"VEIN_CONFIG": str(ROOT / "stale.yaml")}
+            ):
+                code = vein_tools.main(["health-check", "--config", str(cfg)])
+                selected = os.environ["VEIN_CONFIG"]
+
+        self.assertEqual(code, 0)
+        self.assertEqual(selected, str(cfg))
 
     def test_vein_tools_health_check_command_dispatches(self) -> None:
         command = vein_tools.COMMANDS["health-check"]

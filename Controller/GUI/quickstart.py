@@ -258,6 +258,15 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
         "Choose whether to configure a new or existing server."
     )
     layout.addWidget(owner.lblQuickStartStatus)
+    layout.addWidget(
+        InlineNotice(
+            "Internet readiness: public servers normally require UDP gameplay port "
+            "7777 and UDP Steam query port 27015 through Windows Firewall and your "
+            "router. Keep the HTTP API private unless you intentionally secure it. "
+            "Quick Start configures Vein, but it does not currently change firewall "
+            "or router settings.",
+        )
+    )
 
     form = QtWidgets.QGroupBox("Server Quick Start")
     grid = QtWidgets.QGridLayout(form)

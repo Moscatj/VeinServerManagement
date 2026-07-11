@@ -143,8 +143,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _ensure_env(config_path: Path) -> None:
-    os.environ.setdefault("VEIN_MGMT_ROOT", str(ROOT))
-    os.environ.setdefault("VEIN_CONFIG", str(config_path))
+    # Explicit CLI arguments are authoritative.  A packaged GUI may switch
+    # configs during its lifetime, so inherited values must not win here.
+    os.environ["VEIN_MGMT_ROOT"] = str(ROOT)
+    os.environ["VEIN_CONFIG"] = str(config_path)
 
 
 def main(argv: list[str] | None = None) -> int:

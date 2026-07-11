@@ -59,6 +59,13 @@ The GUI should help an operator answer three questions quickly:
 - Add immediate field validation, preserved back/forward state, and progress.
 - Show a human-readable review before expandable YAML/INI technical details.
 - Keep existing-install detection, protected secrets, backups, and validation.
+- Default novice installs to app-managed SteamCMD and dedicated-server paths.
+- Add a Network Readiness step that explains the selected UDP gameplay/query
+  ports, offers explicit Windows Firewall rules, keeps the HTTP API private by
+  default, and provides router port-forwarding instructions without claiming
+  the app can configure every router.
+- Finish with health checks, confirmed server/monitor states, LAN/public test
+  guidance, and direct links to the diagnostic log when a step fails.
 
 ### Phase 4 - Everyday Operation
 

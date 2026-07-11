@@ -107,6 +107,26 @@ New Server mode only accepts a missing or empty destination. A populated folder
 is blocked, and a detected Vein installation is forced into Existing Server
 mode so it cannot be unintentionally reconfigured as a new server.
 
+## Network Readiness
+
+Selecting `List server publicly` configures Vein's public-server setting; it
+does not by itself make the computer reachable from the internet. With the
+default Quick Start values, the host normally needs inbound UDP access for:
+
+- gameplay: `7777`
+- Steam query/discovery: `27015`
+
+Windows Firewall must allow the selected server executable or these selected
+UDP ports. The internet router must forward the same UDP ports to the server
+computer's stable LAN address. Router interfaces differ, carrier-grade NAT may
+prevent inbound hosting, and the app cannot safely automate arbitrary router
+configuration. Do not forward the HTTP API port (`8080` by default) unless the
+operator intentionally secures and exposes that service.
+
+The current GUI displays this guidance but does not yet create firewall rules,
+configure the router, reserve a LAN address, or perform an external reachability
+test. Those checks belong in the planned multi-step Network Readiness wizard.
+
 Quick Start intentionally avoids writing `Config/config.example.yaml`; if an
 example template is currently selected, Apply targets the local
 `Config/config.yaml` path instead.
