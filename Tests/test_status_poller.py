@@ -95,6 +95,7 @@ class StatusPollerTests(unittest.TestCase):
         self.assertEqual(snap["crash_mode"], "watching")
         self.assertFalse(snap["backup"]["enabled"])
         self.assertEqual(snap["backup"]["last_zip"], "backup.zip")
+        self.assertFalse(snap["server_available"])
 
 
 if __name__ == "__main__":

@@ -27,8 +27,8 @@ DEFAULT_SERVER_ROOT = "Server"
 DEFAULT_STEAMCMD_PATH = "SteamCMD/steamcmd.exe"
 DEFAULT_SAVE_FILENAMES = ("Server.vns", "Server.sav")
 DEFAULT_EXECUTABLES = (
-    "Vein/Binaries/Win64/VeinServer.exe",
     "Vein/Binaries/Win64/VeinServer-Win64-Test.exe",
+    "Vein/Binaries/Win64/VeinServer.exe",
 )
 DEFAULT_EXTRA_LAUNCH_ARGS = ("-SteamSockets", "-log")
 NEW_SERVER_MODE = "new"

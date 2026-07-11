@@ -57,6 +57,14 @@ class ServerQuickStartTests(unittest.TestCase):
         self.assertEqual(plan.config_updates["steam"]["steamcmd_path"], "SteamCMD/steamcmd.exe")
         self.assertEqual(plan.config_updates["server"]["game_port"], 7777)
         self.assertEqual(plan.config_updates["server"]["query_port"], 27015)
+        self.assertEqual(
+            plan.config_updates["server"]["preferred_exe"],
+            "Vein/Binaries/Win64/VeinServer-Win64-Test.exe",
+        )
+        self.assertEqual(
+            plan.config_updates["server"]["executables"][0],
+            "Vein/Binaries/Win64/VeinServer-Win64-Test.exe",
+        )
         self.assertEqual(plan.config_updates["server"]["ports"]["game"], 7777)
         self.assertEqual(plan.config_updates["server"]["ports"]["query"], 27015)
         self.assertEqual(plan.config_updates["server"]["max_players"], 8)

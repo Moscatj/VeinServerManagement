@@ -64,6 +64,11 @@ is aligned with their setup guidance:
 - SteamCMD installs or updates app `2131400` into the selected server root.
 - Windows server files are expected under the selected install directory, with
   the executable below `Vein/Binaries/Win64/`.
+- The management app launches
+  `Vein/Binaries/Win64/VeinServer-Win64-Test.exe` directly when it exists.
+  The adjacent small `VeinServer.exe` is treated as a bootstrap/discovery
+  executable because launching it in the SteamCMD layout can duplicate the
+  `Vein/Binaries/Win64` path.
 - UDP `27015` is the default Steam query port and UDP `7777` is the default
   gameplay port.
 - Launch-time config uses `-QueryPort`, `-Port`, `-multihome`, and `-log`.
@@ -91,6 +96,13 @@ is aligned with their setup guidance:
 7. Click `Apply Setup` to update the local management config.
 8. If the selected server root exists, Quick Start also backs up and writes the
    proposed `Game.ini` / `Engine.ini` edits through the guarded editor path.
+
+If the active configuration does not resolve to a supported Vein server
+executable, the command bar disables Start, Restart, and both monitor Start
+actions. A visible `Set Up Serverâ€¦` action opens Quick Start; stop actions only
+become available for processes that are actually running. The Quick Start page
+uses scrollbars and minimum control heights on smaller displays instead of
+compressing fields into unreadable rows.
 
 New Server mode produces a complete initial game configuration. Existing
 Server mode imports supported non-secret settings and only proposes game-file

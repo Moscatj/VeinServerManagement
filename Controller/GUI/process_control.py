@@ -169,6 +169,12 @@ class ProcessController:
             button.setEnabled(not busy)
 
     def start_server(self) -> None:
+        if getattr(self.owner, "_server_available", True) is False:
+            self._report_error(
+                "No Server Available",
+                "No Vein server is installed or selected. Open Quick Start to install or configure one.",
+            )
+            return
         paths = self._resolved_paths()
         py = paths["start_server"]
         if not self._packaged and not py.exists():
@@ -208,7 +214,10 @@ class ProcessController:
             if err:
                 self.owner._write_action_log("start_server", "stderr", err)
             if code == 0:
-                self.owner._status("Server process launched; waiting for running status.")
+                if "already running" in out.lower():
+                    self.owner._status("Server is already running; no second process was started.")
+                else:
+                    self.owner._status("Server process launched; waiting for running status.")
                 return
             detail = (err or out or "The startup helper returned no diagnostic output.").strip()
             if len(detail) > 2000:
@@ -301,6 +310,12 @@ class ProcessController:
         self.stop_server(after_success=self.start_server)
 
     def start_lm(self) -> None:
+        if getattr(self.owner, "_server_available", True) is False:
+            self._report_error(
+                "No Server Available",
+                "Install or select a Vein server in Quick Start before starting its log monitor.",
+            )
+            return
         paths = self._resolved_paths()
         mon_py = paths["monitor_log"]
         if not self._packaged and not mon_py.exists():
@@ -356,6 +371,12 @@ class ProcessController:
         )
 
     def start_cm(self) -> None:
+        if getattr(self.owner, "_server_available", True) is False:
+            self._report_error(
+                "No Server Available",
+                "Install or select a Vein server in Quick Start before starting its crash monitor.",
+            )
+            return
         paths = self._resolved_paths()
         cm_py = paths["crash_monitor"]
         if not self._packaged and not cm_py.exists():

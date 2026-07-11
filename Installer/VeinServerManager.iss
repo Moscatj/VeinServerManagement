@@ -620,7 +620,8 @@ end;
 procedure InstallDedicatedServer;
 var
   ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, SteamCmdLog, DownloadCmd, ExtractCmd, InstallCmd: string;
-  ResultCode: Integer;
+  ResultCode, RetryResult: Integer;
+  InstallSucceeded: Boolean;
 begin
   ServerDir := ServerDirPage.Values[0];
   if ServerDir = '' then
@@ -677,32 +678,43 @@ begin
     exit;
   end;
 
-  SetStatus('Installing Vein dedicated server via SteamCMD. This can take several minutes...');
   SteamCmdLog := ExpandConstant('{app}\Logs\steamcmd-install.log');
-  DeleteFile(SteamCmdLog);
   InstallCmd :=
     '/C ""' + SteamCmdExe + '" +@sSteamCmdForcePlatformType windows +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} -beta public validate +quit > "' + SteamCmdLog + '" 2>&1"';
-  if (not Exec(
-    ExpandConstant('{cmd}'),
-    InstallCmd,
-    '',
-    SW_HIDE,
-    ewWaitUntilTerminated,
-    ResultCode
-  )) or ((ResultCode <> 0) and (not FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'))) then
+  RetryResult := IDCANCEL;
+  repeat
+    SetStatus('Installing Vein dedicated server via SteamCMD. This can take several minutes...');
+    DeleteFile(SteamCmdLog);
+    InstallSucceeded := Exec(
+      ExpandConstant('{cmd}'),
+      InstallCmd,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode
+    ) and ((ResultCode = 0) or FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'));
+
+    if not InstallSucceeded then
+    begin
+      UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);
+      SaveServerInstallPath(ServerDir);
+      RetryResult := MsgBox(
+        'SteamCMD could not download the VEIN dedicated server.'#13#10#13#10 +
+        'Choose Retry to run the server installation again now, or Cancel to finish installing the management app without server files.'#13#10#13#10 +
+        'Installer log:'#13#10 +
+        SteamCmdLog + #13#10#13#10 +
+        'SteamCMD internal logs:'#13#10 +
+        AddBackslash(SteamCmdDir) + 'logs',
+        mbError,
+        MB_RETRYCANCEL
+      );
+      if RetryResult = IDRETRY then
+        SetStatus('Retrying the Vein dedicated server installation...');
+    end;
+  until InstallSucceeded or (RetryResult <> IDRETRY);
+
+  if not InstallSucceeded then
   begin
-    UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);
-    SaveServerInstallPath(ServerDir);
-    MsgBox(
-      'The management app was installed, but SteamCMD could not download the VEIN dedicated server.'#13#10#13#10 +
-      'You can continue by choosing an existing server folder or rerunning the server install later.'#13#10#13#10 +
-      'Installer log:'#13#10 +
-      SteamCmdLog + #13#10#13#10 +
-      'SteamCMD internal logs:'#13#10 +
-      AddBackslash(SteamCmdDir) + 'logs',
-      mbInformation,
-      MB_OK
-    );
     exit;
   end;
 

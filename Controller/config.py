@@ -352,7 +352,7 @@ def _with_defaults(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
 
     # Executable candidates
     cfg.setdefault(
-        "server_executables", ["VeinServer.exe", "VeinServer-Win64-Test.exe"]
+        "server_executables", ["VeinServer-Win64-Test.exe", "VeinServer.exe"]
     )
 
     # Default backup_root to ServerManagement\Backups if missing

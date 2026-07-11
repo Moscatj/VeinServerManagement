@@ -46,6 +46,19 @@ def build_command_bar(
     owner.b_lm_off = QtWidgets.QPushButton("Stop Log Monitor")
     owner.b_cm_on = QtWidgets.QPushButton("Start Crash Monitor")
     owner.b_cm_off = QtWidgets.QPushButton("Stop Crash Monitor")
+    owner.b_setup_server = QtWidgets.QPushButton("Set Up Serverâ€¦")
+    owner.b_setup_server.setToolTip("Open Quick Start to install or select a Vein server")
+    owner.b_setup_server.setVisible(False)
+    for button in (
+        owner.b_start,
+        owner.b_stop,
+        owner.b_restart,
+        owner.b_lm_on,
+        owner.b_lm_off,
+        owner.b_cm_on,
+        owner.b_cm_off,
+    ):
+        button.setEnabled(False)
 
     set_button_role(owner.b_start, BUTTON_PRIMARY)
     set_button_role(owner.b_stop, BUTTON_DANGER)
@@ -63,6 +76,7 @@ def build_command_bar(
     build_cluster("Server", owner.dot_srv, [owner.b_start, owner.b_stop, owner.b_restart])
     build_cluster("LogMon", owner.dot_lm, [owner.b_lm_on, owner.b_lm_off])
     build_cluster("CrashMon", owner.dot_cm, [owner.b_cm_on, owner.b_cm_off])
+    layout.addWidget(owner.b_setup_server)
 
     layout.addStretch(1)
     owner.status_label = QtWidgets.QLabel("Status: Idle")

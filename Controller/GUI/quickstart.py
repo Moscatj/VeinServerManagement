@@ -53,6 +53,7 @@ class ExistingServerLoadWorker(QtCore.QRunnable):
 def _line_edit(text: str = "") -> QtWidgets.QLineEdit:
     field = QtWidgets.QLineEdit()
     field.setText(text)
+    field.setMinimumHeight(28)
     return field
 
 
@@ -60,13 +61,15 @@ def _spin(value: int, minimum: int = 1, maximum: int = 65535) -> QtWidgets.QSpin
     field = QtWidgets.QSpinBox()
     field.setRange(minimum, maximum)
     field.setValue(value)
+    field.setMinimumHeight(28)
     return field
 
 
 def _plain_text(placeholder: str = "") -> QtWidgets.QPlainTextEdit:
     field = QtWidgets.QPlainTextEdit()
     field.setPlaceholderText(placeholder)
-    field.setMaximumHeight(72)
+    field.setMinimumHeight(64)
+    field.setMaximumHeight(96)
     return field
 
 
@@ -239,8 +242,9 @@ def quick_start_config_path(owner) -> str | None:
 
 
 def build_quick_start_view(owner) -> QtWidgets.QWidget:
-    widget = QtWidgets.QWidget()
-    layout = QtWidgets.QVBoxLayout(widget)
+    content = QtWidgets.QWidget()
+    content.setMinimumWidth(620)
+    layout = QtWidgets.QVBoxLayout(content)
     layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
     layout.setSpacing(SECTION_SPACING)
 
@@ -270,6 +274,7 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
 
     form = QtWidgets.QGroupBox("Server Quick Start")
     grid = QtWidgets.QGridLayout(form)
+    grid.setVerticalSpacing(8)
     grid.setColumnStretch(1, 1)
 
     owner.cmbQuickSetupMode = QtWidgets.QComboBox()
@@ -352,16 +357,16 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     grid.addWidget(owner.lblQuickPasswordStatus, row, 1)
     row += 1
 
-    toggles = QtWidgets.QHBoxLayout()
-    for checkbox in [
+    toggles = QtWidgets.QGridLayout()
+    for index, checkbox in enumerate([
         owner.chkQuickPublic,
         owner.chkQuickHttpApi,
         owner.chkQuickPvp,
         owner.chkQuickVac,
         owner.chkQuickScoreboardBadges,
-    ]:
-        toggles.addWidget(checkbox)
-    toggles.addStretch(1)
+    ]):
+        toggles.addWidget(checkbox, index // 3, index % 3)
+    toggles.setColumnStretch(3, 1)
     grid.addLayout(toggles, row, 0, 1, 2)
     row += 1
 
@@ -413,6 +418,7 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner.txtQuickStartPreview = QtWidgets.QPlainTextEdit()
     owner.txtQuickStartPreview.setReadOnly(True)
     owner.txtQuickStartPreview.setPlaceholderText("Generated setup preview appears here.")
+    owner.txtQuickStartPreview.setMinimumHeight(140)
     layout.addWidget(owner.txtQuickStartPreview, 1)
 
     tracked_widgets = {
@@ -467,7 +473,14 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     update_quick_start_password_status(owner)
     update_quick_start_webhook_statuses(owner)
 
-    return widget
+    scroll = QtWidgets.QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+    scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+    scroll.setWidget(content)
+    scroll.setProperty("quickStartScroll", True)
+    return scroll
 
 
 def mark_quick_start_field_changed(owner, field: str) -> None:

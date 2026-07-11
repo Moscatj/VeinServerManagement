@@ -227,7 +227,10 @@ class GuiHelperTests(unittest.TestCase):
         values = collect_quick_start_values(owner)
         preview = build_quick_start_preview(owner)
 
-        self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertIsInstance(widget, QtWidgets.QScrollArea)
+        self.assertTrue(widget.widgetResizable())
+        self.assertGreaterEqual(owner.txtQuickServerDescription.minimumHeight(), 64)
+        self.assertGreaterEqual(owner.txtQuickStartPreview.minimumHeight(), 140)
         self.assertIsInstance(owner.lblQuickStartStatus, InlineNotice)
         self.assertEqual(owner.btnQuickStartApply.property("buttonRole"), BUTTON_PRIMARY)
         self.assertEqual(values["setup_mode"], "new")

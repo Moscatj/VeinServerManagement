@@ -30,7 +30,7 @@ class UpdateSteamTests(unittest.TestCase):
         with mock.patch.object(update_steam, "is_feature_enabled", return_value=False):
             self.assertTrue(update_steam.check_for_steam_update())
 
-    def test_check_for_steam_update_fails_when_config_is_missing(self) -> None:
+    def test_check_for_steam_update_skips_when_config_is_missing(self) -> None:
         with mock.patch.object(update_steam, "is_feature_enabled", return_value=True), mock.patch.object(
             update_steam,
             "STEAMCMD_PATH",
@@ -40,7 +40,7 @@ class UpdateSteamTests(unittest.TestCase):
             "APP_ID",
             "",
         ), mock.patch("builtins.print") as printed:
-            self.assertFalse(update_steam.check_for_steam_update())
+            self.assertIsNone(update_steam.check_for_steam_update())
 
         printed.assert_called_once()
 
@@ -73,6 +73,19 @@ class UpdateSteamTests(unittest.TestCase):
             self.assertTrue(update_steam.check_for_steam_update())
 
         send.assert_called_once()
+
+    def test_check_for_steam_update_skips_missing_absolute_executable(self) -> None:
+        missing = ROOT / "missing-steamcmd" / "steamcmd.exe"
+        with mock.patch.object(update_steam, "is_feature_enabled", return_value=True), mock.patch.object(
+            update_steam, "STEAMCMD_PATH", str(missing)
+        ), mock.patch.object(update_steam, "APP_ID", "123"), mock.patch.object(
+            update_steam.subprocess, "run"
+        ) as run, mock.patch.object(update_steam, "send_discord_message") as send:
+            result = update_steam.check_for_steam_update()
+
+        self.assertIsNone(result)
+        run.assert_not_called()
+        self.assertIn("not available", send.call_args.args[0])
 
     def test_check_for_steam_update_builds_beta_validate_args(self) -> None:
         proc = mock.Mock(returncode=0, stdout="")
@@ -109,8 +122,11 @@ class UpdateSteamTests(unittest.TestCase):
             self.assertTrue(update_steam.check_for_steam_update())
 
         cmd = run.call_args.args[0]
-        app_update = cmd[cmd.index("+app_update") + 1]
-        self.assertEqual(app_update, "123 -beta beta -betapassword secret validate")
+        app_update = cmd.index("+app_update")
+        self.assertEqual(
+            cmd[app_update + 1 : app_update + 7],
+            ["123", "-beta", "beta", "-betapassword", "secret", "validate"],
+        )
         self.assertEqual(run.call_args.kwargs["timeout"], 9)
 
     def test_check_for_steam_update_retries_failures_and_reports_final_failure(self) -> None:

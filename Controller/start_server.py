@@ -9,6 +9,7 @@ from Tools.discord import send_discord_message
 from Tools.monitors import stop_log_monitor, stop_crash_monitor
 from Tools.update_steam import check_for_steam_update
 from Tools.process import (
+    find_running_server,
     start_server as start_vein_server,
     win_creationflags_for_headless,
     headless_enabled,
@@ -203,9 +204,14 @@ def _steam_update_if_enabled() -> None:
         return
     send_discord_message("🧰 Checking Steam version…", channel="startup")
     ok = check_for_steam_update()
-    if ok:
+    if ok is True:
         send_discord_message(
             "✅ Steam version up-to-date (or updated).", channel="startup"
+        )
+    elif ok is None:
+        send_discord_message(
+            "ℹ️ Steam update skipped because SteamCMD is not configured or available.",
+            channel="startup",
         )
     else:
         send_discord_message(
@@ -216,14 +222,32 @@ def _steam_update_if_enabled() -> None:
 # --------- main orchestrator ---------
 def main() -> int:
     # 0) Load + validate config once (paths, exe choice, hb knobs)
-    from Tools.config_io import load_and_validate_config
-
     vcfg = load_and_validate_config(CONFIG_PATH)
 
     SERVER_DIR_PATH: Path = vcfg.server_dir
     RUNTIME_DIR_PATH: Path = vcfg.runtime_dir
     SELECTED_EXE: Path = vcfg.selected_exe
     EXTRA_ARGS = vcfg.raw.get("extra_launch_args", [])
+
+    existing = find_running_server(
+        executable_names=[Path(name).name for name in vcfg.server_executables],
+        server_dir=SERVER_DIR_PATH,
+    )
+    if existing is not None:
+        try:
+            existing_name = existing.name()
+        except Exception:
+            existing_name = "VeinServer"
+        set_server_state(
+            True,
+            pid=existing.pid,
+            exe=existing_name,
+            cwd=str(SERVER_DIR_PATH),
+        )
+        message = f"Server is already running (PID {existing.pid}); no second process was started."
+        print(f"[Start] {message}")
+        send_discord_message(message, channel="startup")
+        return 0
 
     # --- DEBUG breadcrumb ---
     try:

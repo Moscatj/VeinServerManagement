@@ -19,6 +19,9 @@ import os
 from config import load_config, _mgmt_root  # type: ignore[attr-defined]
 
 
+VEIN_RUNTIME_EXECUTABLE = "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
+
+
 @dataclass(frozen=True)
 class ValidConfig:
     # Raw config dict as returned by config.load_config()
@@ -129,7 +132,13 @@ def load_and_validate_config(
     elif server_executables:
         selected_name = server_executables[0]
 
-    if selected_name:
+    runtime_exe = server_dir / VEIN_RUNTIME_EXECUTABLE
+    if runtime_exe.is_file():
+        # VeinServer.exe is a small Unreal bootstrapper. In the SteamCMD
+        # dedicated-server layout it can build a duplicated relative path;
+        # launch the adjacent runtime binary directly when it is present.
+        selected_exe = runtime_exe
+    elif selected_name:
         selected_exe = server_dir / selected_name
     else:
         # Reasonable fallback; config.load_config() already warned if

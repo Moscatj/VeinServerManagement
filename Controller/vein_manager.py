@@ -1672,6 +1672,9 @@ class Main(QtWidgets.QMainWindow):
         self.b_lm_off.clicked.connect(self.stop_lm)
         self.b_cm_on.clicked.connect(self.start_cm)
         self.b_cm_off.clicked.connect(self.stop_cm)
+        self.b_setup_server.clicked.connect(
+            lambda: self._on_view_selected("monitor.quick_start")
+        )
 
     # -------------------------- Config folder ---------------------------------
     def pick_cfg_dir(self):
@@ -2177,7 +2180,22 @@ class Main(QtWidgets.QMainWindow):
 
         # Server
         server_on = bool(snap.get("server", False))
+        server_available = bool(snap.get("server_available", False))
+        self._server_available = server_available
         self.dot_srv.setStyleSheet(dot(server_on))
+        self.b_start.setEnabled(server_available and not server_on)
+        self.b_stop.setEnabled(server_on)
+        self.b_restart.setEnabled(server_available and server_on)
+        self.b_lm_on.setEnabled(server_available and not bool(snap.get("logmon", False)))
+        self.b_lm_off.setEnabled(bool(snap.get("logmon", False)))
+        self.b_cm_on.setEnabled(server_available and not bool(snap.get("crashmon", False)))
+        self.b_cm_off.setEnabled(bool(snap.get("crashmon", False)))
+        self.b_setup_server.setVisible(not server_available)
+        if not server_available:
+            guidance = "No Vein server is installed or selected. Open Quick Start to install or configure one."
+            for button in (self.b_start, self.b_restart, self.b_lm_on, self.b_cm_on):
+                button.setToolTip(guidance)
+            self.status_label.setText(f"Status: {guidance}")
         # Log monitor: green if alive+fresh; yellow if alive but stale
         lm_on = snap.get("logmon", False)
         lm_fresh = snap.get("logmon_fresh", False)

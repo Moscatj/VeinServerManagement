@@ -280,6 +280,35 @@ class GuiControllerTests(unittest.TestCase):
         owner._notify_action_error.assert_called_once()
         self.assertIn("Reinstall", owner._notify_action_error.call_args.args[1])
 
+    def test_start_actions_are_blocked_when_no_server_is_available(self) -> None:
+        owner = mock.Mock()
+        owner._server_available = False
+        owner.config_path = "Config/config.yaml"
+        owner._status = mock.Mock()
+        owner._notify_action_error = mock.Mock()
+        controller = ProcessController(
+            owner,
+            pyexe=lambda: "python",
+            resolved_paths=mock.Mock(),
+            rt_paths=mock.Mock(),
+            runtime_paths=mock.Mock(),
+            spawn_logged=mock.Mock(),
+            run_once=mock.Mock(),
+            mkflag=mock.Mock(),
+            rm=mock.Mock(),
+            wait_for_monitor_exit=mock.Mock(),
+            ctrl_dir=ROOT / "Controller",
+        )
+
+        controller.start_server()
+        controller.start_lm()
+        controller.start_cm()
+
+        self.assertEqual(owner._notify_action_error.call_count, 3)
+        controller._resolved_paths.assert_not_called()
+        controller._spawn_logged.assert_not_called()
+        controller._run_once.assert_not_called()
+
     def test_process_controller_stop_server_runs_off_gui_thread(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)

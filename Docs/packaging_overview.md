@@ -162,8 +162,16 @@ SteamCMD note:
 Fresh install check:
 
 - For a full-package install, the expected active paths are `SteamCMD\steamcmd.exe`, `Server\Vein\Binaries\Win64\...`, `Server\Vein\Saved\SaveGames`, and `Server\Vein\Saved\Logs` under the app install folder.
+- The expected launch target is
+  `Server\Vein\Binaries\Win64\VeinServer-Win64-Test.exe`. The smaller adjacent
+  `VeinServer.exe` remains a recognized installation indicator and legacy
+  fallback, but is not preferred as the dedicated runtime.
 - For an existing-server install, those paths should point to the selected external server root and data folders.
 - Run `VeinTools.exe health-check` after install to verify the config loads, writable app folders are available, SteamCMD exists when configured, and at least one configured server executable is present.
+- If the SteamCMD app installation fails, the installer shows the management
+  and SteamCMD log locations and offers Retry immediately. Cancel finishes the
+  management-app installation without claiming that server files are ready;
+  the GUI then directs the operator to Quick Start.
 
 Uninstall behavior:
 

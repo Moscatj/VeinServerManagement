@@ -244,6 +244,8 @@ class StatusPoller(QtCore.QRunnable):
 
             snapshot = {
                 "server": srv_on,
+                "server_available": Path(str(self.selected_exe or "")).is_file(),
+                "server_executable": str(self.selected_exe or ""),
                 "logmon": lm_on,
                 "logmon_fresh": lm_fresh,
                 "crashmon": cm_on,

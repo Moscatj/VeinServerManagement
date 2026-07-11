@@ -62,6 +62,34 @@ class ConfigIoTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Could not load config"):
                 config_io.load_and_validate_config(fatal=False)
 
+    def test_runtime_binary_is_preferred_over_unreal_bootstrapper(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            server = base / "Server"
+            runtime = server / config_io.VEIN_RUNTIME_EXECUTABLE
+            runtime.parent.mkdir(parents=True)
+            runtime.write_text("runtime", encoding="utf-8")
+            bootstrap = server / "Vein/Binaries/Win64/VeinServer.exe"
+            bootstrap.write_text("bootstrap", encoding="utf-8")
+            raw = {
+                "server_dir": str(server),
+                "runtime_dir": str(base / "Runtime"),
+                "logs_dir": str(base / "Logs"),
+                "save_dir": str(base / "Saved"),
+                "server_executables": [
+                    "Vein/Binaries/Win64/VeinServer.exe",
+                    config_io.VEIN_RUNTIME_EXECUTABLE,
+                ],
+                "preferred_exe": "Vein/Binaries/Win64/VeinServer.exe",
+            }
+
+            with mock.patch.object(config_io, "load_config", return_value=raw), mock.patch.object(
+                config_io, "_discover_cfg_path", return_value=base / "config.yaml"
+            ):
+                view = config_io.load_and_validate_config()
+
+        self.assertEqual(view.selected_exe, runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

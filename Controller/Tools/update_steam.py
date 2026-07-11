@@ -34,7 +34,7 @@ STEAMCMD_PATH: str = str(config.get("steamcmd_path", "") or "")
 APP_ID: str = str(config.get("app_id", "") or "")
 
 
-def check_for_steam_update() -> bool:
+def check_for_steam_update() -> bool | None:
     """
     Run SteamCMD update for the configured app_id (retries + timeout).
     Fully gated by features.enable_steam_update.
@@ -44,7 +44,14 @@ def check_for_steam_update() -> bool:
 
     if not STEAMCMD_PATH or not APP_ID:
         print("[Update] SteamCMD path or App ID missing; skipping update.")
-        return False
+        return None
+
+    steamcmd = Path(STEAMCMD_PATH).expanduser()
+    if steamcmd.is_absolute() and not steamcmd.is_file():
+        message = f"SteamCMD is not available; automatic update skipped: {steamcmd}"
+        print(f"[Update] {message}")
+        send_discord_message(message, channel="startup")
+        return None
 
     validate = bool(config.get("steam_update_validate", True))
     beta = str(config.get("steam_update_beta", "") or "")
@@ -52,22 +59,22 @@ def check_for_steam_update() -> bool:
     retries = int(config.get("steam_update_retries", 2))
     timeout = int(config.get("steam_update_timeout_seconds", 900))
 
-    app_arg = f"{APP_ID}"
+    app_args = [APP_ID]
     if beta:
-        app_arg += f" -beta {beta}"
+        app_args.extend(["-beta", beta])
         if beta_pwd:
-            app_arg += f" -betapassword {beta_pwd}"
+            app_args.extend(["-betapassword", beta_pwd])
     if validate:
-        app_arg += " validate"
+        app_args.append("validate")
 
     cmd = [
-        STEAMCMD_PATH,
+        str(steamcmd),
         "+force_install_dir",
         str(SERVER_DIR),
         "+login",
         "anonymous",
         "+app_update",
-        app_arg,
+        *app_args,
         "+quit",
     ]
 

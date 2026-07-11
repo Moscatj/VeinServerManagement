@@ -30,8 +30,8 @@ management_logs:
 
 server:
   executables:
-    - "Vein/Binaries/Win64/VeinServer.exe"
     - "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
+    - "Vein/Binaries/Win64/VeinServer.exe"
   preferred_exe: "Vein/Binaries/Win64/VeinServer-Win64-Test.exe"
   extra_launch_args:
     - "-SteamSockets"

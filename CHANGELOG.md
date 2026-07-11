@@ -6,6 +6,26 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.8.2 - 2026-07-11
+
+- Made the dedicated runtime binary
+  `Vein/Binaries/Win64/VeinServer-Win64-Test.exe` the explicit launch target
+  when present, while retaining `VeinServer.exe` only for discovery and legacy
+  fallback. This avoids the Unreal bootstrapper duplicating its relative path.
+- Prevented duplicate server launches by detecting an existing Vein process
+  before Steam updates, monitor startup, or executable launch; the GUI now
+  reports that the server is already running instead of claiming a new launch.
+- Distinguished unavailable SteamCMD from a true update failure, stopped
+  retrying missing executables, and corrected SteamCMD beta/validate arguments
+  so each option is passed as its own command argument.
+- Added an in-installer Retry option when SteamCMD fails to download the Vein
+  dedicated server, while preserving the diagnostic log paths and allowing the
+  user to finish without server files.
+- Disabled server and monitor start controls when no supported Vein executable
+  is installed or selected, added a visible Quick Start setup action, and kept
+  stop controls tied to actual running processes.
+- Made Quick Start scrollable with minimum field and preview heights plus
+  wrapped option rows so narrow or short windows cannot compress form text.
 - Hardened packaged lifecycle control so explicit config selections override
   inherited values, server-stop failures produce captured diagnostics, and
   monitor start/stop exceptions surface actionable errors. Failed server starts
