@@ -3114,8 +3114,8 @@ class Main(QtWidgets.QMainWindow):
     ) -> None:
         details = message
         if log_path:
-            details += f"\n\nStartup output log:\n{log_path}"
-        details += f"\n\nActive config:\n{self.config_path}"
+            details += f"\n\nStartup output file\n{log_path}"
+        details += f"\n\nActive configuration\n{self.config_path}"
         QtWidgets.QMessageBox.critical(self, title, details)
 
     def _open_folder(self, p: Path):

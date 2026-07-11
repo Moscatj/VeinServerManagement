@@ -6,6 +6,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.8.1 - 2026-07-11
+
+- Fixed a CI safety-scan false positive caused by diagnostic dialog labels being
+  interpreted as a local drive path.
+
 ## 2.8.0 - 2026-07-11
 
 - Added the phased GUI modernization plan and the first shared visual component
