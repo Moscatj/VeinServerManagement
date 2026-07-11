@@ -225,6 +225,8 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("--collect-submodules", args)
         self.assertIn("Tools", args)
+        for module_name in module.CLI_HIDDEN_IMPORTS:
+            self.assertIn(module_name, args)
 
     def test_installer_rejects_inner_vein_folder_selection(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

@@ -77,6 +77,34 @@ class RestartTests(unittest.TestCase):
         popen.assert_called_once()
         send.assert_called_once()
 
+    def test_packaged_restart_uses_vein_tools_subcommand(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            stamp = base / "last_restart_at.txt"
+            lock = base / "restart.lock"
+            with mock.patch.object(restart, "RESTART_STAMP", stamp), mock.patch.object(
+                restart, "RESTARTING_LOCK", lock
+            ), mock.patch.object(restart.time, "time", return_value=2_000), mock.patch.object(
+                restart.time, "sleep"
+            ), mock.patch.dict(
+                restart.config,
+                {"restart_throttle_seconds": 120, "restart_settle_seconds": 0},
+                clear=False,
+            ), mock.patch.object(restart, "win_creationflags_for_headless", return_value=0), mock.patch.object(
+                restart, "send_discord_message"
+            ), mock.patch.object(restart.subprocess, "Popen") as popen, mock.patch.object(
+                restart.sys, "frozen", True, create=True
+            ), mock.patch.object(
+                restart.sys, "executable", str(base / "VeinTools.exe")
+            ), mock.patch.dict(
+                restart.os.environ, {"VEIN_CONFIG": str(base / "Config" / "config.yaml")}, clear=False
+            ):
+                self.assertTrue(restart.initiate_controlled_restart("packaged"))
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[1], "start-server")
+        self.assertIn("--config", command)
+
 
 if __name__ == "__main__":
     unittest.main()

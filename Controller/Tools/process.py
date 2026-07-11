@@ -513,6 +513,10 @@ def start_server(
             return None
         time.sleep(2)
 
+    if proc.poll() is not None:
+        print(f"[Start] Server process exited during startup with code {proc.returncode}.")
+        return None
+
     if proc.poll() is None:
         try:
             write_flag(proc.pid, os.path.basename(str(exe)), MAP_URL or "")

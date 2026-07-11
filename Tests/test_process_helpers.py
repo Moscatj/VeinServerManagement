@@ -582,6 +582,22 @@ class ProcessHelperTests(unittest.TestCase):
             self.assertNotIn("-log", first_args)
             self.assertIn("-log", second_args)
 
+    def test_start_server_returns_none_when_visible_process_exits_during_startup(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            server_dir = Path(tmp)
+            exe = server_dir / "VeinServer.exe"
+            exe.write_text("", encoding="utf-8")
+            proc = mock.Mock(pid=1, returncode=7)
+            proc.poll.return_value = 7
+            with mock.patch.object(process, "EXECUTABLE_NAMES", ["VeinServer.exe"]), mock.patch.object(
+                process, "headless_enabled", return_value=False
+            ), mock.patch.object(
+                process.subprocess, "Popen", return_value=proc
+            ), mock.patch.object(process.time, "sleep"), mock.patch("builtins.print"):
+                result = process.start_server(server_dir=server_dir)
+
+        self.assertIsNone(result)
+
     def test_start_vein_server_and_resolve_executable_aliases(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             server_dir = Path(tmp)

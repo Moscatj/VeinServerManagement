@@ -69,13 +69,14 @@ def _py_argv() -> list[str]:
     Return the Python launcher command as a list of args.
     Handles env 'PYEXE' like 'py -3' by splitting it safely.
     """
-    s = os.environ.get("PYEXE", "py -3").strip()
+    s = os.environ.get("PYEXE", "").strip() or sys.executable
     # On Windows, shlex.split(..., posix=False) preserves quoting semantics.
     return shlex.split(s, posix=(os.name != "nt"))
 
 
 def _controller_root() -> Path:
-    return Path(__file__).parents[1].resolve()
+    configured = os.environ.get("VEIN_MGMT_ROOT", "").strip()
+    return Path(configured).resolve() if configured else Path(__file__).parents[1].resolve()
 
 
 def _controller_path(name: str) -> Path:
@@ -85,7 +86,8 @@ def _controller_path(name: str) -> Path:
 def _spawn_py(script_name: str) -> bool:
     try:
         script = _controller_path(script_name)
-        if not script.exists():
+        packaged = bool(getattr(sys, "frozen", False))
+        if not packaged and not script.exists():
             msg = f"[Start] Script not found: {script}"
             print(msg)
             send_discord_message(f"⚠️ {msg}", channel="startup")
@@ -102,13 +104,23 @@ def _spawn_py(script_name: str) -> bool:
         stdout = open(logs["stdout"], "ab", buffering=0)
         stderr = open(logs["stderr"], "ab", buffering=0)
 
-        cmd = _py_argv() + [str(script)]
+        packaged_commands = {
+            "monitor_log.py": "monitor-log",
+            "crash_monitor.py": "crash-monitor",
+        }
+        if packaged:
+            command = packaged_commands.get(script_name)
+            if not command:
+                raise RuntimeError(f"No packaged command is registered for {script_name}")
+            cmd = [sys.executable, command, "--config", str(CONFIG_PATH)]
+        else:
+            cmd = _py_argv() + [str(script)]
         env = os.environ.copy()
         # Ensure children see the same config file path
         env.setdefault("VEIN_CONFIG", str(CONFIG_PATH))
 
         # propagate PYEXE if you’re launching helpers from a BAT later
-        env.setdefault("PYEXE", os.environ.get("PYEXE", "py -3"))
+        env.setdefault("PYEXE", os.environ.get("PYEXE", "") or sys.executable)
 
         print(
             f"[Start] Spawning {script_name}: {' '.join(cmd)}  (cwd={_controller_root()})"

@@ -56,6 +56,13 @@ EXTRA_FILES: tuple[Path, ...] = tuple(
 CONFIG_TEMPLATE = Path("Config/config.example.yaml")
 ICON_PATH = REPO_ROOT / "Installer" / "assets" / "VeinServerManager.ico"
 VERSION_FILE = "version.txt"
+CLI_HIDDEN_IMPORTS: tuple[str, ...] = (
+    "start_server",
+    "shutdown_server",
+    "monitor_log",
+    "crash_monitor",
+    "nightly_backup",
+)
 
 
 def _ensure_pyinstaller():
@@ -105,7 +112,7 @@ def _pyinstaller_args(*, dist: Path, build: Path, onefile: bool) -> list[str]:
 
 
 def _cli_pyinstaller_args(*, dist: Path, build: Path) -> list[str]:
-    return [
+    args = [
         str(CLI_ENTRYPOINT),
         "--noconfirm",
         "--clean",
@@ -124,6 +131,9 @@ def _cli_pyinstaller_args(*, dist: Path, build: Path) -> list[str]:
         "--console",
         "--onefile",
     ]
+    for module in CLI_HIDDEN_IMPORTS:
+        args.extend(("--hidden-import", module))
+    return args
 
 
 def _copytree(src: Path, dst: Path) -> None:

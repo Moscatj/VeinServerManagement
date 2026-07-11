@@ -52,8 +52,13 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
             channel="startup",
         )
 
+        command = (
+            [sys.executable, "start-server", "--config", env.get("VEIN_CONFIG", "")]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, str(START_SCRIPT)]
+        )
         subprocess.Popen(
-            [sys.executable, str(START_SCRIPT)],
+            command,
             cwd=str(PROJECT_ROOT),
             env=env,
             creationflags=creationflags,

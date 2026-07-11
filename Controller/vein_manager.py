@@ -1111,6 +1111,8 @@ class Main(QtWidgets.QMainWindow):
             rm=_rm,
             wait_for_monitor_exit=_wait_for_monitor_exit,
             ctrl_dir=CTRL_DIR,
+            packaged=bool(getattr(sys, "frozen", False)),
+            tools_executable=ROOT / "VeinTools.exe",
         )
         self.status_renderer = StatusRenderer(self)
 
@@ -3106,6 +3108,15 @@ class Main(QtWidgets.QMainWindow):
 
     def _status(self, s: str):
         self.status.setText(f"Status: {s}")
+
+    def _notify_action_error(
+        self, title: str, message: str, log_path: Path | None = None
+    ) -> None:
+        details = message
+        if log_path:
+            details += f"\n\nStartup output log:\n{log_path}"
+        details += f"\n\nActive config:\n{self.config_path}"
+        QtWidgets.QMessageBox.critical(self, title, details)
 
     def _open_folder(self, p: Path):
         if not p:

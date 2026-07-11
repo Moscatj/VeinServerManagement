@@ -8,6 +8,7 @@ Main window can delegate without carrying the implementation details.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
@@ -110,6 +111,8 @@ class ProcessController:
         rm: Callable[[Path], None],
         wait_for_monitor_exit: Callable[[Path, int], bool],
         ctrl_dir: Path,
+        packaged: bool = False,
+        tools_executable: Path | None = None,
     ) -> None:
         self.owner = owner
         self._pyexe = pyexe
@@ -122,15 +125,54 @@ class ProcessController:
         self._rm = rm
         self._wait_for_monitor_exit = wait_for_monitor_exit
         self._ctrl_dir = ctrl_dir
+        self._packaged = packaged
+        self._tools_executable = tools_executable
         self._pool = QtCore.QThreadPool.globalInstance()
         self._workers: list[QtCore.QRunnable] = []
 
     # ------------------------ Server / monitors -------------------------------
+    def _helper_command(self, action: str, script: Path, *script_args: str) -> str:
+        if self._packaged:
+            tool = self._tools_executable
+            if tool is None or not tool.is_file():
+                expected = tool or (self._ctrl_dir.parent / "VeinTools.exe")
+                raise FileNotFoundError(
+                    f"Packaged helper is missing: {expected}. Reinstall Vein Server Management."
+                )
+            return subprocess.list2cmdline(
+                [str(tool), action, "--config", self.owner.config_path]
+            )
+        suffix = " ".join(script_args)
+        return f'{self._pyexe()} "{script}"{f" {suffix}" if suffix else ""}'
+
+    def _report_error(self, title: str, message: str, log_path: Path | None = None) -> None:
+        self.owner._status(message)
+        notify = getattr(self.owner, "_notify_action_error", None)
+        if callable(notify):
+            notify(title, message, log_path)
+
+    @staticmethod
+    def _write_launch_log(path: Path, command: str, out: str = "", err: str = "") -> None:
+        try:
+            sections = [f"Command: {command}"]
+            if out:
+                sections.extend(("", "STDOUT:", out.rstrip()))
+            if err:
+                sections.extend(("", "STDERR:", err.rstrip()))
+            path.write_text("\n".join(sections) + "\n", encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _set_busy(button, busy: bool) -> None:
+        if button is not None:
+            button.setEnabled(not busy)
+
     def start_server(self) -> None:
         paths = self._resolved_paths()
         py = paths["start_server"]
-        if not py.exists():
-            self.owner._status("start_server.py not found.")
+        if not self._packaged and not py.exists():
+            self._report_error("Server Start Failed", f"Startup helper was not found: {py}")
             return
         env = os.environ.copy()
         env["VEIN_CONFIG"] = self.owner.config_path
@@ -141,21 +183,73 @@ class ProcessController:
             metadata={"action": "start_server", "config": self.owner.config_path},
         )
         try:
-            self._spawn_logged(f'{self._pyexe()} "{py}"', srv_stdout, py.parent, env=env)
-            self.owner._status("Server starting.")
-        except Exception as e:
-            self.owner._status(f"Start failed: {e}")
+            command = self._helper_command("start-server", py)
+        except Exception as exc:
+            self._report_error("Server Start Failed", str(exc), srv_stdout)
+            return
+
+        worker = RunOnceWorker(
+            lambda cmd, **kwargs: self._run_once(cmd, env=env, **kwargs),
+            command,
+            cwd=self._ctrl_dir.parent if self._packaged else py.parent,
+            timeout=600,
+        )
+        self._workers.append(worker)
+        start_button = getattr(self.owner, "b_start", None)
+        self._set_busy(start_button, True)
+
+        def finished(code: int, out: str, err: str) -> None:
+            if worker in self._workers:
+                self._workers.remove(worker)
+            self._set_busy(start_button, False)
+            self._write_launch_log(srv_stdout, command, out, err)
+            if out:
+                self.owner._write_action_log("start_server", "stdout", out)
+            if err:
+                self.owner._write_action_log("start_server", "stderr", err)
+            if code == 0:
+                self.owner._status("Server process launched; waiting for running status.")
+                return
+            detail = (err or out or "The startup helper returned no diagnostic output.").strip()
+            if len(detail) > 2000:
+                detail = "…" + detail[-2000:]
+            self._report_error(
+                "Server Start Failed",
+                f"Startup returned exit code {code}. {detail}",
+                srv_stdout,
+            )
+
+        def failed(message: str) -> None:
+            if worker in self._workers:
+                self._workers.remove(worker)
+            self._set_busy(start_button, False)
+            self._write_launch_log(srv_stdout, command, err=message)
+            self._report_error(
+                "Server Start Failed",
+                f"Could not run the startup helper: {message}",
+                srv_stdout,
+            )
+
+        worker.signals.finished.connect(finished)
+        worker.signals.failed.connect(failed)
+        self.owner._status(f"Starting server… Output: {srv_stdout}")
+        self._pool.start(worker)
 
     def stop_server(self, *, after_success: Optional[Callable[[], None]] = None) -> None:
         paths = self._resolved_paths()
         py = paths["shutdown_server"]
-        if not py.exists():
-            self.owner._status("shutdown_server.py not found.")
+        if not self._packaged and not py.exists():
+            self._report_error("Server Stop Failed", f"Shutdown helper was not found: {py}")
+            return
+        try:
+            command = self._helper_command("stop-server", py)
+        except Exception as exc:
+            self._report_error("Server Stop Failed", str(exc))
             return
         worker = RunOnceWorker(
             self._run_once,
-            f'{self._pyexe()} "{py}"',
-            cwd=py.parent,
+            command,
+            cwd=self._ctrl_dir.parent if self._packaged else py.parent,
             timeout=180,
         )
         self._workers.append(worker)
@@ -191,8 +285,8 @@ class ProcessController:
     def start_lm(self) -> None:
         paths = self._resolved_paths()
         mon_py = paths["monitor_log"]
-        if not mon_py.exists():
-            self.owner._status("monitor_log.py not found.")
+        if not self._packaged and not mon_py.exists():
+            self._report_error("Log Monitor Start Failed", f"Monitor helper was not found: {mon_py}")
             return
         rp = self._rt_paths(self.owner.config_path)
         self._rm(rp["stop_log"])
@@ -206,8 +300,12 @@ class ProcessController:
             metadata={"action": "start_monitor_log"},
         )
         try:
+            command = self._helper_command("monitor-log", mon_py, "--follow")
             self._spawn_logged(
-                f'{self._pyexe()} "{mon_py}" --follow', lm_stdout, mon_py.parent, env=env
+                command,
+                lm_stdout,
+                self._ctrl_dir.parent if self._packaged else mon_py.parent,
+                env=env,
             )
             self.owner._status("Log monitor starting.")
         except Exception as e:
@@ -219,21 +317,31 @@ class ProcessController:
     def stop_lm(self) -> None:
         rp = self._rt_paths(self.owner.config_path)
         self._mkflag(rp["stop_log"])
+        monitor_py = self._resolved_paths().get("monitor_log", self._ctrl_dir / "monitor_log.py")
+        try:
+            fallback = (
+                self._helper_command("stop-log-monitor", monitor_py)
+                if self._packaged
+                else (
+                    f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
+                    "from Tools import monitors;monitors.stop_log_monitor();print('OK')\""
+                )
+            )
+        except Exception as exc:
+            self._report_error("Log Monitor Stop Failed", str(exc))
+            return
         self._stop_monitor_async(
             monitor_name="Log Monitor",
             pid_file=rp["pid_log"],
-            fallback_command=(
-                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
-                "from Tools import monitors;monitors.stop_log_monitor();print('OK')\""
-            ),
+            fallback_command=fallback,
             initial_timeout=20,
         )
 
     def start_cm(self) -> None:
         paths = self._resolved_paths()
         cm_py = paths["crash_monitor"]
-        if not cm_py.exists():
-            self.owner._status("crash_monitor.py not found.")
+        if not self._packaged and not cm_py.exists():
+            self._report_error("Crash Monitor Start Failed", f"Monitor helper was not found: {cm_py}")
             return
         rp = self._rt_paths(self.owner.config_path)
         self._rm(rp["stop_crash"])
@@ -247,7 +355,13 @@ class ProcessController:
             metadata={"action": "start_crash_monitor"},
         )
         try:
-            self._spawn_logged(f'{self._pyexe()} "{cm_py}"', cm_stdout, cm_py.parent, env=env)
+            command = self._helper_command("crash-monitor", cm_py)
+            self._spawn_logged(
+                command,
+                cm_stdout,
+                self._ctrl_dir.parent if self._packaged else cm_py.parent,
+                env=env,
+            )
             self.owner._status("Crash monitor starting.")
         except Exception as e:
             self.owner._status(f"Crash monitor start failed: {e}")
@@ -255,13 +369,23 @@ class ProcessController:
     def stop_cm(self) -> None:
         rp = self._rt_paths(self.owner.config_path)
         self._mkflag(rp["stop_crash"])
+        monitor_py = self._resolved_paths().get("crash_monitor", self._ctrl_dir / "crash_monitor.py")
+        try:
+            fallback = (
+                self._helper_command("stop-crash-monitor", monitor_py)
+                if self._packaged
+                else (
+                    f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
+                    "from Tools import monitors;monitors.stop_crash_monitor();print('OK')\""
+                )
+            )
+        except Exception as exc:
+            self._report_error("Crash Monitor Stop Failed", str(exc))
+            return
         self._stop_monitor_async(
             monitor_name="Crash Monitor",
             pid_file=rp["pid_crash"],
-            fallback_command=(
-                f"{self._pyexe()} -c \"import sys;sys.path.insert(0, r'{self._ctrl_dir}');"
-                "from Tools import monitors;monitors.stop_crash_monitor();print('OK')\""
-            ),
+            fallback_command=fallback,
             initial_timeout=30,
         )
 

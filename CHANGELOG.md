@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.8.0 - 2026-07-11
+
 - Added the phased GUI modernization plan and the first shared visual component
   foundation for consistent page headers, notices, status badges, and actions.
 - Fixed dark-theme subtitle contrast and prevented Home dashboard cards and the
@@ -13,6 +15,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Fixed persisted log-monitor and player snapshots being presented as live when
   the server process is offline; offline now forces zero online players and
   labels cached details as last-known data.
+- Fixed clean-machine packaged startup by routing GUI and monitor/restart helper
+  launches through `VeinTools.exe` instead of requiring `py -3`, collecting all
+  dynamic CLI modules in PyInstaller, detecting early server exits, and showing
+  actionable GUI errors with captured output paths.
 - Documented future native Linux and WSL2 support goals, including versioned
   GitHub `.deb` and portable Linux packages, guided SteamCMD/VEIN installation,
   an Ubuntu WSL2 deployment model, platform-portability phases, networking,

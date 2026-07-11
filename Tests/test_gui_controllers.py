@@ -84,6 +84,7 @@ class GuiControllerTests(unittest.TestCase):
             owner = mock.Mock()
             owner.config_path = str(base / "config.yaml")
             owner._status = mock.Mock()
+            owner._notify_action_error = mock.Mock()
             owner._write_action_log = mock.Mock()
             spawn = mock.Mock()
             run_once = mock.Mock(return_value=(0, "out", "err"))
@@ -100,18 +101,105 @@ class GuiControllerTests(unittest.TestCase):
                 wait_for_monitor_exit=mock.Mock(return_value=True),
                 ctrl_dir=base,
             )
-            with mock.patch("GUI.process_control.mgmt_logs.allocate_log_file", return_value=base / "run.log"):
+            with mock.patch("GUI.process_control.mgmt_logs.allocate_log_file", return_value=base / "run.log"), mock.patch.object(
+                controller._pool, "start", side_effect=lambda worker: worker.run()
+            ):
                 controller.start_server()
-            with mock.patch.object(controller._pool, "start", side_effect=lambda worker: worker.run()):
                 controller.stop_server()
 
-        spawn.assert_called_once()
-        run_once.assert_called_once()
+        spawn.assert_not_called()
+        self.assertEqual(run_once.call_count, 2)
+        self.assertIn('python "', run_once.call_args_list[0].args[0])
+        self.assertIn("start_server.py", run_once.call_args_list[0].args[0])
+        owner._write_action_log.assert_any_call("start_server", "stdout", "out")
+        owner._write_action_log.assert_any_call("start_server", "stderr", "err")
         owner._write_action_log.assert_any_call("stop_server", "stdout", "out")
         owner._write_action_log.assert_any_call("stop_server", "stderr", "err")
-        owner._status.assert_any_call("Server starting.")
+        owner._status.assert_any_call("Server process launched; waiting for running status.")
         owner._status.assert_any_call("Server stop requested; waiting for shutdown script.")
         owner._status.assert_any_call("Server stop requested.")
+
+    def test_packaged_start_uses_vein_tools_and_surfaces_failure(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            ctrl = base / "Controller"
+            ctrl.mkdir()
+            tools = base / "VeinTools.exe"
+            tools.write_text("fixture", encoding="utf-8")
+            config = base / "Config" / "config.yaml"
+            config.parent.mkdir()
+            config.write_text("version: '2.2'\n", encoding="utf-8")
+            log_path = base / "Logs" / "start.log"
+            log_path.parent.mkdir()
+            owner = mock.Mock()
+            owner.config_path = str(config)
+            owner._status = mock.Mock()
+            owner._notify_action_error = mock.Mock()
+            owner._write_action_log = mock.Mock()
+            owner.b_start = QtWidgets.QPushButton("Start Server")
+            run_once = mock.Mock(return_value=(1, "", "No server executable found"))
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "py -3",
+                resolved_paths=lambda: {"start_server": ctrl / "start_server.py"},
+                rt_paths=lambda _: {},
+                runtime_paths=lambda _: {"log_monitor_enabled": False},
+                spawn_logged=mock.Mock(),
+                run_once=run_once,
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=mock.Mock(return_value=True),
+                ctrl_dir=ctrl,
+                packaged=True,
+                tools_executable=tools,
+            )
+
+            with mock.patch(
+                "GUI.process_control.mgmt_logs.allocate_log_file", return_value=log_path
+            ), mock.patch.object(
+                controller._pool, "start", side_effect=lambda worker: worker.run()
+            ):
+                controller.start_server()
+
+            command = run_once.call_args.args[0]
+            self.assertIn(str(tools), command)
+            self.assertIn("start-server", command)
+            self.assertIn("--config", command)
+            self.assertNotIn("py -3", command)
+            owner._notify_action_error.assert_called_once()
+            self.assertIn("exit code 1", owner._notify_action_error.call_args.args[1])
+            self.assertIn("No server executable found", log_path.read_text(encoding="utf-8"))
+            self.assertTrue(owner.b_start.isEnabled())
+
+    def test_packaged_start_reports_missing_vein_tools(self) -> None:
+        owner = mock.Mock()
+        owner.config_path = "Config/config.yaml"
+        owner._status = mock.Mock()
+        owner._notify_action_error = mock.Mock()
+        controller = ProcessController(
+            owner,
+            pyexe=lambda: "py -3",
+            resolved_paths=lambda: {"start_server": Path("Controller/start_server.py")},
+            rt_paths=lambda _: {},
+            runtime_paths=lambda _: {"log_monitor_enabled": False},
+            spawn_logged=mock.Mock(),
+            run_once=mock.Mock(),
+            mkflag=mock.Mock(),
+            rm=mock.Mock(),
+            wait_for_monitor_exit=mock.Mock(return_value=True),
+            ctrl_dir=ROOT / "Controller",
+            packaged=True,
+            tools_executable=ROOT / "missing-VeinTools.exe",
+        )
+
+        with mock.patch(
+            "GUI.process_control.mgmt_logs.allocate_log_file",
+            return_value=ROOT / "Logs" / "missing.log",
+        ):
+            controller.start_server()
+
+        owner._notify_action_error.assert_called_once()
+        self.assertIn("Reinstall", owner._notify_action_error.call_args.args[1])
 
     def test_process_controller_stop_server_runs_off_gui_thread(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
