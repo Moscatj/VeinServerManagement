@@ -11,25 +11,27 @@
 #define SteamAppId "2131400"
 
 [Setup]
-AppId={{2D6A61E2-0A8B-4F6B-9F8B-9912879D7499}}
+AppId={{2D6A61E2-0A8B-4F6B-9F8B-9912879D7499}{code:InstallAppIdSuffix}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={commonpf}\VeinServerManagement
-DefaultGroupName={#MyAppName}
+DefaultGroupName={#MyAppName}{code:InstanceDisplaySuffix}
 OutputDir=..\dist\installer
 OutputBaseFilename=VeinServerManagement-Setup-v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 DisableProgramGroupPage=yes
-UninstallDisplayName={#MyAppName}
+DisableDirPage=no
+UninstallDisplayName={#MyAppName}{code:InstanceDisplaySuffix}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallFilesDir={app}\Uninstall
 WizardStyle=modern
 CloseApplications=yes
 RestartApplications=no
 CloseApplicationsFilter=VeinManager.exe,VeinTools.exe
+UsePreviousLanguage=no
 #ifexist "{#MyAppIcon}"
 SetupIconFile={#MyAppIcon}
 #endif
@@ -42,6 +44,9 @@ Source: "{#MyStageDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubd
 Source: "{#MyStageDir}\Config\config.yaml"; DestDir: "{app}\Config"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Dirs]
+Name: "{app}"; Flags: uninsalwaysuninstall
+Name: "{app}\Controller"; Flags: uninsalwaysuninstall
+Name: "{app}\Uninstall"; Flags: uninsalwaysuninstall
 Name: "{app}\Backups"; Permissions: users-modify
 Name: "{app}\Config"; Permissions: users-modify
 Name: "{app}\Logs"; Permissions: users-modify
@@ -50,11 +55,11 @@ Name: "{app}\SteamCMD"; Permissions: users-modify
 Name: "{app}\Server"; Permissions: users-modify
 
 [Icons]
-Name: "{group}\Vein Server Manager"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"
+Name: "{group}\Vein Server Manager{code:InstanceDisplaySuffix}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"
 Name: "{group}\Open Config Folder"; Filename: "{app}\Config"; WorkingDir: "{app}\Config"
 Name: "{group}\Docs"; Filename: "{app}\Docs"; WorkingDir: "{app}\Docs"
 Name: "{group}\Uninstall Vein Server Management"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Vein Server Manager"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"; Tasks: desktopicon
+Name: "{autodesktop}\Vein Server Manager{code:InstanceDisplaySuffix}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppShortcutIcon}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
@@ -69,6 +74,8 @@ Filename: "{app}\VeinTools.exe"; Parameters: "uninstall-cleanup"; WorkingDir: "{
 Type: filesandordirs; Name: "{app}\Logs"
 Type: filesandordirs; Name: "{app}\Runtime"
 Type: filesandordirs; Name: "{app}\SteamCMD"
+Type: dirifempty; Name: "{app}\Controller"
+Type: dirifempty; Name: "{app}\Uninstall"
 Type: dirifempty; Name: "{app}"
 
 [Code]
@@ -76,16 +83,21 @@ var
   InstallIntentPage: TWizardPage;
   PrimaryIntentRadio: TRadioButton;
   AlternateIntentRadio: TRadioButton;
+  UninstallIntentRadio: TRadioButton;
   InstallIntentBox: TNewStaticText;
   ServerChoicePage: TWizardPage;
   InstallServerRadio: TRadioButton;
   ExistingServerRadio: TRadioButton;
+  SkipServerRadio: TRadioButton;
   ServerDirPage: TInputDirWizardPage;
   SteamCmdChoicePage: TWizardPage;
   AppSteamCmdRadio: TRadioButton;
   ExistingSteamCmdRadio: TRadioButton;
   NoSteamCmdRadio: TRadioButton;
   ExistingSteamCmdDirPage: TInputDirWizardPage;
+  SteamCmdProgressPage: TOutputMarqueeProgressWizardPage;
+  SteamCmdMessagePumpPage: TOutputProgressWizardPage;
+  SteamCmdProgressNote: TNewStaticText;
   InstallServerBox: TNewStaticText;
   SteamCmdChoiceBox: TNewStaticText;
   InstallServer: Boolean;
@@ -100,8 +112,23 @@ var
   ExistingAppVersion: string;
   PreviousServerDir: string;
   PreviousSteamCmdExe: string;
+  ExistingUninstallerPath: string;
   SetupNewServer: Boolean;
+  InstallNewServer: Boolean;
+  RepairMissingServer: Boolean;
+  FreshAppInstall: Boolean;
+  FreshServerMaintenance: Boolean;
+  SkipServerSetup: Boolean;
+  UninstallExistingApp: Boolean;
+  UninstallerLaunched: Boolean;
+  PathScopedExistingInstall: Boolean;
+  ExistingAppDir: string;
   PreserveExistingServerConfig: Boolean;
+  SteamCmdProgressLog: string;
+  SteamCmdProgressAction: string;
+  SteamCmdCancelFile: string;
+  SteamCmdMessagePumpStep: Integer;
+  SteamCmdRunnerPhase: string;
 
 procedure LayoutIntentControl(Control: TControl; Top: Integer);
 begin
@@ -119,9 +146,20 @@ end;
 
 procedure UpdateServerChoiceState;
 begin
-  if ExistingAppInstall and (not SetupNewServer) then
+  if (not ExistingAppInstall) or FreshAppInstall then
   begin
     InstallServer := InstallServerRadio.Checked;
+    InstallNewServer := InstallServer and (not FreshServerMaintenance);
+    SetupNewServer := InstallNewServer;
+    SkipServerSetup := SkipServerRadio.Checked;
+    PreserveExistingServerConfig := False;
+  end
+  else
+  begin
+    InstallServer := InstallServerRadio.Checked;
+    InstallNewServer := False;
+    SetupNewServer := False;
+    SkipServerSetup := False;
     PreserveExistingServerConfig := ExistingServerRadio.Checked;
   end;
 end;
@@ -138,25 +176,39 @@ begin
     exit;
 
   AppSteamCmdRadio.Enabled := InstallServer;
-  if (not InstallServer) and AppSteamCmdRadio.Checked then
+  NoSteamCmdRadio.Visible := not InstallServer;
+  NoSteamCmdRadio.Enabled := not InstallServer;
+  if InstallServer then
+  begin
+    if NoSteamCmdRadio.Checked then
+    begin
+      AppSteamCmdRadio.Checked := True;
+      ExistingSteamCmdRadio.Checked := False;
+      NoSteamCmdRadio.Checked := False;
+    end;
+    SteamCmdChoiceBox.Top := ExistingSteamCmdRadio.Top + ExistingSteamCmdRadio.Height + ScaleY(20);
+  end
+  else if AppSteamCmdRadio.Checked then
   begin
     NoSteamCmdRadio.Checked := True;
-    UpdateSteamCmdChoiceState;
   end;
+  if not InstallServer then
+    SteamCmdChoiceBox.Top := NoSteamCmdRadio.Top + NoSteamCmdRadio.Height + ScaleY(20);
+  UpdateSteamCmdChoiceState;
 end;
 
 function CurrentAppDir(): string; forward;
 function DefaultManagedServerDir(): string; forward;
 function NormalizePathForCompare(const Value: string): string; forward;
 
-function DefaultSeparateServerDir(): string;
+function DefaultSeparateAppDir(): string;
 var
   BaseDir: string;
   Suffix: Integer;
 begin
-  BaseDir := AddBackslash(CurrentAppDir()) + 'Server-New';
-  Result := BaseDir;
-  Suffix := 2;
+  BaseDir := ExpandConstant('{commonpf}\VeinServerManagement');
+  Result := BaseDir + '-2';
+  Suffix := 3;
   while DirExists(Result) do
   begin
     Result := BaseDir + '-' + IntToStr(Suffix);
@@ -166,23 +218,33 @@ end;
 
 procedure ApplyIntentState;
 begin
-  if ExistingAppInstall then
-    SetupNewServer := AlternateIntentRadio.Checked
+  FreshAppInstall := ExistingAppInstall and AlternateIntentRadio.Checked;
+  UninstallExistingApp := ExistingAppInstall and UninstallIntentRadio.Checked;
+  if (not ExistingAppInstall) or FreshAppInstall then
+  begin
+    InstallServer := Assigned(InstallServerRadio) and InstallServerRadio.Checked;
+    InstallNewServer := InstallServer and (not FreshServerMaintenance);
+    SetupNewServer := InstallNewServer;
+    SkipServerSetup := Assigned(SkipServerRadio) and SkipServerRadio.Checked;
+    PreserveExistingServerConfig := False;
+  end
   else
-    SetupNewServer := PrimaryIntentRadio.Checked;
-
-  PreserveExistingServerConfig := ExistingAppInstall and (not SetupNewServer);
-  if SetupNewServer then
-    InstallServer := True
-  else if ExistingAppInstall then
-    InstallServer := Assigned(InstallServerRadio) and InstallServerRadio.Checked
-  else
-    InstallServer := False;
+  begin
+    InstallServer := Assigned(InstallServerRadio) and InstallServerRadio.Checked;
+    InstallNewServer := False;
+    SetupNewServer := False;
+    SkipServerSetup := False;
+    PreserveExistingServerConfig := Assigned(ExistingServerRadio) and ExistingServerRadio.Checked;
+  end;
 
   if Assigned(ServerDirPage) then
   begin
-    if ExistingAppInstall and SetupNewServer then
-      ServerDirPage.Values[0] := DefaultSeparateServerDir()
+    if InstallNewServer then
+      ServerDirPage.Values[0] := DefaultManagedServerDir()
+    else if SkipServerSetup then
+      ServerDirPage.Values[0] := ''
+    else if FreshAppInstall or (not ExistingAppInstall) then
+      ServerDirPage.Values[0] := ''
     else if (PreviousServerDir <> '') then
       ServerDirPage.Values[0] := PreviousServerDir
     else
@@ -192,7 +254,8 @@ begin
 
   if Assigned(AppSteamCmdRadio) then
   begin
-    if InstallServer and (PreviousSteamCmdExe <> '') and FileExists(PreviousSteamCmdExe) then
+    if InstallServer and (not FreshAppInstall) and
+       (PreviousSteamCmdExe <> '') and FileExists(PreviousSteamCmdExe) then
     begin
       ExistingSteamCmdRadio.Checked := True;
       ExistingSteamCmdDirPage.Values[0] := ExtractFileDir(PreviousSteamCmdExe);
@@ -218,6 +281,21 @@ end;
 
 procedure InstallIntentChanged(Sender: TObject);
 begin
+  if ExistingAppInstall and AlternateIntentRadio.Checked then
+  begin
+    if NormalizePathForCompare(CurrentAppDir()) = NormalizePathForCompare(ExistingAppDir) then
+      WizardForm.DirEdit.Text := DefaultSeparateAppDir();
+    InstallServerRadio.Checked := True;
+    ExistingServerRadio.Checked := False;
+    SkipServerRadio.Checked := False;
+  end
+  else if ExistingAppInstall and PrimaryIntentRadio.Checked then
+  begin
+    WizardForm.DirEdit.Text := ExistingAppDir;
+    InstallServerRadio.Checked := False;
+    ExistingServerRadio.Checked := True;
+    SkipServerRadio.Checked := False;
+  end;
   ApplyIntentState;
   WizardForm.NextButton.Enabled := True;
 end;
@@ -225,16 +303,29 @@ end;
 procedure ServerChoiceChanged(Sender: TObject);
 begin
   UpdateServerChoiceState;
+  if Assigned(ServerDirPage) and ((not ExistingAppInstall) or FreshAppInstall) then
+  begin
+    if InstallServer then
+      ServerDirPage.Values[0] := DefaultManagedServerDir()
+    else
+      ServerDirPage.Values[0] := '';
+    LastManagedServerDefault := ServerDirPage.Values[0];
+  end;
   if InstallServer and Assigned(AppSteamCmdRadio) then
   begin
-    if (PreviousSteamCmdExe <> '') and FileExists(PreviousSteamCmdExe) and
+    if (not FreshAppInstall) and
+       (PreviousSteamCmdExe <> '') and FileExists(PreviousSteamCmdExe) and
        Assigned(ExistingSteamCmdRadio) and Assigned(ExistingSteamCmdDirPage) then
     begin
       ExistingSteamCmdRadio.Checked := True;
       ExistingSteamCmdDirPage.Values[0] := ExtractFileDir(PreviousSteamCmdExe);
     end
     else
+    begin
       AppSteamCmdRadio.Checked := True;
+      ExistingSteamCmdRadio.Checked := False;
+      NoSteamCmdRadio.Checked := False;
+    end;
   end
   else if Assigned(NoSteamCmdRadio) then
     NoSteamCmdRadio.Checked := True;
@@ -254,6 +345,34 @@ begin
   Result := WizardDirValue();
   if Result = '' then
     Result := ExpandConstant('{commonpf}\VeinServerManagement');
+end;
+
+function AppDirectoryLabel(): string;
+var
+  Value: string;
+begin
+  Value := CurrentAppDir();
+  while (Length(Value) > 3) and (Copy(Value, Length(Value), 1) = '\') do
+    Delete(Value, Length(Value), 1);
+  Result := ExtractFileName(Value);
+  if Result = '' then
+    Result := 'Separate';
+end;
+
+function InstallAppIdSuffix(Param: string): string;
+begin
+  if FreshAppInstall or PathScopedExistingInstall then
+    Result := '-' + GetMD5OfString(NormalizePathForCompare(CurrentAppDir()))
+  else
+    Result := '';
+end;
+
+function InstanceDisplaySuffix(Param: string): string;
+begin
+  if FreshAppInstall or PathScopedExistingInstall then
+    Result := ' (' + AppDirectoryLabel() + ')'
+  else
+    Result := '';
 end;
 
 function DefaultManagedServerDir(): string;
@@ -311,28 +430,46 @@ begin
   end;
 end;
 
-procedure DetectExistingInstall;
-var
-  AppDir, ConfigPath, Candidate: string;
+function IsManagementInstallAt(const AppDir: string): Boolean;
 begin
-  AppDir := CurrentAppDir();
-  ExistingAppInstall :=
+  Result :=
     FileExists(AddBackslash(AppDir) + '{#MyAppExeName}') or
     FileExists(AddBackslash(AppDir) + 'VeinTools.exe') or
     FileExists(AddBackslash(AppDir) + 'version.txt') or
     FileExists(AddBackslash(AppDir) + 'Config\config.yaml');
+end;
+
+procedure LoadExistingInstallAt(const AppDir: string);
+var
+  ConfigPath, Candidate: string;
+begin
+  ExistingAppInstall := IsManagementInstallAt(AppDir);
   ExistingAppVersion := '';
+  ExistingAppDir := '';
   PreviousServerDir := '';
   PreviousSteamCmdExe := '';
+  ExistingUninstallerPath := '';
 
   if not ExistingAppInstall then
     exit;
+
+  ExistingAppDir := AppDir;
 
   LoadTrimmedFile(AddBackslash(AppDir) + 'version.txt', ExistingAppVersion);
   if ExistingAppVersion = '' then
     ExistingAppVersion := 'unknown';
   LoadTrimmedFile(AddBackslash(AppDir) + 'Runtime\server_install_path.txt', PreviousServerDir);
+  LoadTrimmedFile(AddBackslash(AppDir) + 'Runtime\uninstaller_path.txt', ExistingUninstallerPath);
   ConfigPath := AddBackslash(AppDir) + 'Config\config.yaml';
+  if (PreviousServerDir = '') and ReadYamlScalar(ConfigPath, 'server_root', Candidate) then
+  begin
+    StringChangeEx(Candidate, '/', '\', True);
+    if ((Length(Candidate) >= 2) and (Candidate[2] = ':')) or
+       (Copy(Candidate, 1, 2) = '\\') then
+      PreviousServerDir := Candidate
+    else
+      PreviousServerDir := AddBackslash(AppDir) + Candidate;
+  end;
   if ReadYamlScalar(ConfigPath, 'steamcmd_path', Candidate) then
   begin
     StringChangeEx(Candidate, '/', '\', True);
@@ -341,6 +478,15 @@ begin
     else if FileExists(AddBackslash(AppDir) + Candidate) then
       PreviousSteamCmdExe := AddBackslash(AppDir) + Candidate;
   end;
+  if (PreviousSteamCmdExe = '') and
+     FileExists(AddBackslash(AppDir) + 'SteamCMD\steamcmd.exe') then
+    PreviousSteamCmdExe := AddBackslash(AppDir) + 'SteamCMD\steamcmd.exe';
+end;
+
+procedure DetectExistingInstall;
+begin
+  PathScopedExistingInstall := False;
+  LoadExistingInstallAt(CurrentAppDir());
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -349,15 +495,15 @@ var
   ToolPath: string;
 begin
   Result := '';
-  if not ExistingAppInstall then
+  if (not ExistingAppInstall) or FreshAppInstall then
     exit;
 
-  ToolPath := AddBackslash(CurrentAppDir()) + 'VeinTools.exe';
+  ToolPath := AddBackslash(ExistingAppDir) + 'VeinTools.exe';
   if FileExists(ToolPath) then
     Exec(
       ToolPath,
       'stop-all-monitors',
-      CurrentAppDir(),
+      ExistingAppDir,
       SW_HIDE,
       ewWaitUntilTerminated,
       ResultCode
@@ -372,8 +518,10 @@ begin
     exit;
 
   Current := ServerDirPage.Values[0];
-  if ExistingAppInstall and SetupNewServer then
-    NextDefault := DefaultSeparateServerDir()
+  if InstallNewServer then
+    NextDefault := DefaultManagedServerDir()
+  else if PreviousServerDir <> '' then
+    NextDefault := PreviousServerDir
   else
     NextDefault := DefaultManagedServerDir();
 
@@ -385,6 +533,46 @@ begin
   end;
 
   LastManagedServerDefault := NextDefault;
+end;
+
+function HasVeinServerAt(const ServerDir: string): Boolean;
+begin
+  Result :=
+    FileExists(AddBackslash(ServerDir) + 'Vein\Binaries\Win64\VeinServer.exe') or
+    FileExists(AddBackslash(ServerDir) + 'Vein\Binaries\Win64\VeinServer-Win64-Test.exe');
+end;
+
+procedure RefreshInstallIntentPresentation;
+begin
+  if ExistingAppInstall then
+  begin
+    InstallIntentPage.Caption := 'Choose What Setup Should Do';
+    InstallIntentPage.Description := 'Select the installation goal for this computer.';
+    PrimaryIntentRadio.Visible := True;
+    AlternateIntentRadio.Visible := True;
+    PrimaryIntentRadio.Caption := 'Update or repair the detected installation (recommended)';
+    AlternateIntentRadio.Caption := 'Install a separate, fresh management app in another folder';
+    UninstallIntentRadio.Caption := 'Uninstall the detected management app';
+    UninstallIntentRadio.Visible := True;
+    InstallIntentBox.Caption :=
+      'Detected version ' + ExistingAppVersion + ' in:'#13#10 +
+      ExistingAppDir + #13#10#13#10 +
+      'Update/Repair preserves configuration and data. Fresh install uses an independent app folder. Uninstall launches this installation''s own uninstaller.';
+    InstallIntentBox.Top := UninstallIntentRadio.Top + UninstallIntentRadio.Height + ScaleY(18);
+  end
+  else
+  begin
+    InstallIntentPage.Caption := 'Install Vein Server Management Suite';
+    InstallIntentPage.Description := 'A guided installer for the management app and optional Vein dedicated server.';
+    PrimaryIntentRadio.Visible := False;
+    AlternateIntentRadio.Visible := False;
+    UninstallIntentRadio.Visible := False;
+    InstallIntentBox.Caption :=
+      'This installer first installs Vein Server Management Suite, the desktop app for configuring, starting, stopping, monitoring, backing up, and maintaining a Vein dedicated server.'#13#10#13#10 +
+      'Next, choose where to install the management app. You can then install a new Vein server with SteamCMD, connect an existing server, or finish with the management app only.';
+    InstallIntentBox.Top := ScaleY(48);
+  end;
+  InstallIntentBox.Height := InstallIntentPage.SurfaceHeight - InstallIntentBox.Top - ScaleY(8);
 end;
 
 procedure InitializeWizard;
@@ -399,12 +587,6 @@ begin
 
   PrimaryIntentRadio := TNewRadioButton.Create(InstallIntentPage.Surface);
   PrimaryIntentRadio.Parent := InstallIntentPage.Surface;
-  if ExistingAppInstall then
-    PrimaryIntentRadio.Caption :=
-      'Update or repair the existing installation (recommended)'
-  else
-    PrimaryIntentRadio.Caption :=
-      'Install the management app and a new Vein dedicated server (recommended)';
   PrimaryIntentRadio.Checked := True;
   LayoutIntentControl(PrimaryIntentRadio, ScaleY(48));
   PrimaryIntentRadio.Height := ScaleY(28);
@@ -412,30 +594,25 @@ begin
 
   AlternateIntentRadio := TNewRadioButton.Create(InstallIntentPage.Surface);
   AlternateIntentRadio.Parent := InstallIntentPage.Surface;
-  if ExistingAppInstall then
-    AlternateIntentRadio.Caption :=
-      'Update the management app and set up a new server in a different folder'
-  else
-    AlternateIntentRadio.Caption :=
-      'Install the management app and connect it to an existing Vein server';
   AlternateIntentRadio.Checked := False;
   LayoutIntentControl(AlternateIntentRadio, PrimaryIntentRadio.Top + PrimaryIntentRadio.Height + ScaleY(12));
   AlternateIntentRadio.Height := ScaleY(28);
   AlternateIntentRadio.OnClick := @InstallIntentChanged;
 
+  UninstallIntentRadio := TNewRadioButton.Create(InstallIntentPage.Surface);
+  UninstallIntentRadio.Parent := InstallIntentPage.Surface;
+  UninstallIntentRadio.Checked := False;
+  LayoutIntentControl(UninstallIntentRadio, AlternateIntentRadio.Top + AlternateIntentRadio.Height + ScaleY(12));
+  UninstallIntentRadio.Height := ScaleY(28);
+  UninstallIntentRadio.OnClick := @InstallIntentChanged;
+
   InstallIntentBox := TNewStaticText.Create(InstallIntentPage.Surface);
   InstallIntentBox.Parent := InstallIntentPage.Surface;
-  if ExistingAppInstall then
-    InstallIntentBox.Caption :=
-      'Detected version ' + ExistingAppVersion + ' in:'#13#10 +
-      CurrentAppDir() + #13#10#13#10 +
-      'Setup will install version {#MyAppVersion}. Update/Repair preserves local configuration, backups, runtime state, server data, and the current server selection. The new-server option keeps the existing server files but changes this management installation to manage the newly installed server.'
-  else
-    InstallIntentBox.Caption :=
-      'A new installation can download SteamCMD and the Vein server automatically. If the server is already installed, Setup can connect the management app to its existing root folder.';
   InstallIntentBox.AutoSize := False;
-  LayoutIntentControl(InstallIntentBox, AlternateIntentRadio.Top + AlternateIntentRadio.Height + ScaleY(18));
-  InstallIntentBox.Height := ScaleY(112);
+  InstallIntentBox.WordWrap := True;
+  LayoutIntentControl(InstallIntentBox, UninstallIntentRadio.Top + UninstallIntentRadio.Height + ScaleY(18));
+  InstallIntentBox.Height := InstallIntentPage.SurfaceHeight - InstallIntentBox.Top - ScaleY(8);
+  RefreshInstallIntentPresentation;
 
   ServerChoicePage := CreateCustomPage(
     wpSelectDir,
@@ -459,19 +636,28 @@ begin
   ExistingServerRadio.Height := ScaleY(26);
   ExistingServerRadio.OnClick := @ServerChoiceChanged;
 
+  SkipServerRadio := TNewRadioButton.Create(ServerChoicePage.Surface);
+  SkipServerRadio.Parent := ServerChoicePage.Surface;
+  SkipServerRadio.Caption := 'Skip server setup for now';
+  SkipServerRadio.Checked := False;
+  LayoutServerChoiceControl(SkipServerRadio, ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(10));
+  SkipServerRadio.Height := ScaleY(26);
+  SkipServerRadio.OnClick := @ServerChoiceChanged;
+
   InstallServerBox := TNewStaticText.Create(ServerChoicePage.Surface);
   InstallServerBox.Parent := ServerChoicePage.Surface;
   InstallServerBox.Caption :=
     'The management app update does not require a game-server update. Leave the server unchanged for the quickest repair, or select SteamCMD maintenance to validate and refresh app {#SteamAppId} after a controlled shutdown.';
   InstallServerBox.AutoSize := False;
-  LayoutServerChoiceControl(InstallServerBox, ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(16));
-  InstallServerBox.Height := ScaleY(56);
+  InstallServerBox.WordWrap := True;
+  LayoutServerChoiceControl(InstallServerBox, SkipServerRadio.Top + SkipServerRadio.Height + ScaleY(16));
+  InstallServerBox.Height := ServerChoicePage.SurfaceHeight - InstallServerBox.Top - ScaleY(8);
 
   ServerDirPage := CreateInputDirPage(
     ServerChoicePage.ID,
-    'Server Install Location',
-    'Choose where the Vein dedicated server is or should be installed.',
-    'Select the server root folder. SteamCMD installs use the app-managed Server folder by default. Existing servers can stay outside the app folder.',
+    'Vein Server Location',
+    'Confirm which dedicated server this management app should use.',
+    'The recommended location is selected automatically. Click Next to accept it, or use Browse when a different location is needed.',
     False,
     ''
   );
@@ -523,6 +709,7 @@ begin
   SteamCmdChoiceBox.Caption :=
     'SteamCMD is portable. Use the app-managed copy for full package installs, or select an existing SteamCMD folder to avoid duplicates.';
   SteamCmdChoiceBox.AutoSize := False;
+  SteamCmdChoiceBox.WordWrap := True;
   SteamCmdChoiceBox.Left := ScaleX(0);
   SteamCmdChoiceBox.Top := NoSteamCmdRadio.Top + NoSteamCmdRadio.Height + ScaleY(20);
   SteamCmdChoiceBox.Width := SteamCmdChoicePage.SurfaceWidth - ScaleX(12);
@@ -549,40 +736,192 @@ begin
     NoSteamCmdRadio.Checked := True;
     AppSteamCmdRadio.Checked := False;
   end;
+  if not ExistingAppInstall then
+  begin
+    InstallServerRadio.Checked := True;
+    ExistingServerRadio.Checked := False;
+    SkipServerRadio.Checked := False;
+  end;
+  SteamCmdProgressPage := CreateOutputMarqueeProgressPage(
+    'Installing Vein Dedicated Server',
+    'SteamCMD is downloading, validating, and preparing the dedicated server.'
+  );
+  SteamCmdProgressNote := TNewStaticText.Create(SteamCmdProgressPage.Surface);
+  SteamCmdProgressNote.Parent := SteamCmdProgressPage.Surface;
+  SteamCmdProgressNote.Caption :=
+    'SteamCMD cannot be cancelled safely from this installer step. If Setup or the computer is interrupted, run Update/Repair later to resume and validate the partial files.';
+  SteamCmdProgressNote.Left := ScaleX(0);
+  SteamCmdProgressNote.Top := SteamCmdProgressPage.ProgressBar.Top + SteamCmdProgressPage.ProgressBar.Height + ScaleY(24);
+  SteamCmdProgressNote.Width := SteamCmdProgressPage.SurfaceWidth;
+  SteamCmdProgressNote.Height := ScaleY(52);
+  SteamCmdProgressNote.AutoSize := False;
+  SteamCmdProgressNote.WordWrap := True;
+  SteamCmdMessagePumpPage := CreateOutputProgressPage('', '');
+  SteamCmdMessagePumpPage.SetProgress(0, 1);
   ApplyIntentState;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
+var
+  SteamCmdNote: string;
 begin
+  if CurPageID = wpFinished then
+  begin
+    WizardForm.Enabled := True;
+    WizardForm.NextButton.Enabled := True;
+  end;
   if Assigned(InstallIntentPage) and (CurPageID = InstallIntentPage.ID) then
     ApplyIntentState;
   if Assigned(ServerDirPage) and (CurPageID = ServerDirPage.ID) then
   begin
-    if InstallServer then
+    if InstallServer and ExistingAppInstall and (not FreshAppInstall) then
     begin
-      ServerDirPage.Caption := 'New or Maintained Server Location';
-      ServerDirPage.Description := 'Choose the dedicated server root that SteamCMD should install, update, or repair.';
+      RepairMissingServer := not HasVeinServerAt(ServerDirPage.Values[0]);
+      if RepairMissingServer then
+      begin
+        ServerDirPage.Caption := 'Server Repair or Reinstall Location';
+        ServerDirPage.Description := 'Confirm where SteamCMD should restore the missing Vein dedicated server files.';
+        ServerDirPage.SubCaptionLabel.Caption :=
+          'The configured location does not currently contain a supported Vein server executable. Click Next to reinstall and validate the server in this folder, or use Browse to correct the location.';
+      end
+      else
+      begin
+        ServerDirPage.Caption := 'Existing Server to Update or Repair';
+        ServerDirPage.Description := 'Confirm the detected dedicated server root that SteamCMD should maintain.';
+        ServerDirPage.SubCaptionLabel.Caption :=
+          'Setup prefilled the configured existing server. Click Next to confirm it, or use Browse only to correct the location.';
+      end;
+      SyncManagedServerDefault;
+    end
+    else if InstallServer and (not FreshServerMaintenance) then
+    begin
+      ServerDirPage.Caption := 'New Server Installation Location';
+      ServerDirPage.Description := 'Choose where SteamCMD should install the new Vein dedicated server.';
+      ServerDirPage.SubCaptionLabel.Caption :=
+        'The app-managed Server folder is selected by default. Click Next to keep the server with this management app, or use Browse for an advanced custom location.';
+      SyncManagedServerDefault;
+    end
+    else if InstallServer then
+    begin
+      ServerDirPage.Caption := 'Existing Server to Update or Repair';
+      ServerDirPage.Description := 'Confirm the detected dedicated server root that SteamCMD should maintain.';
+      ServerDirPage.SubCaptionLabel.Caption :=
+        'Setup prefilled the configured existing server. Click Next to confirm it, or use Browse only to correct the location.';
       SyncManagedServerDefault;
     end
     else
     begin
       ServerDirPage.Caption := 'Existing Server Location';
       ServerDirPage.Description := 'Choose the root folder of the existing Vein dedicated server.';
+      ServerDirPage.SubCaptionLabel.Caption :=
+        'Select the existing server root that contains Vein\Binaries\Win64, then click Next.';
+    end;
+  end;
+  if Assigned(ServerChoicePage) and (CurPageID = ServerChoicePage.ID) then
+  begin
+    if (not ExistingAppInstall) or FreshAppInstall then
+    begin
+      FreshServerMaintenance := HasVeinServerAt(DefaultManagedServerDir());
+      UpdateServerChoiceState;
+      ServerChoicePage.Caption := 'Choose Server Setup';
+      ServerChoicePage.Description := 'Choose what the new management app should do with the Vein dedicated server.';
+      if FreshServerMaintenance then
+        InstallServerRadio.Caption := 'Update or repair the detected dedicated server with SteamCMD (recommended)'
+      else
+        InstallServerRadio.Caption := 'Install a new dedicated server with SteamCMD (recommended)';
+      ExistingServerRadio.Caption := 'Connect to an existing dedicated server';
+      SkipServerRadio.Caption := 'Skip server setup for now';
+      SkipServerRadio.Visible := True;
+      InstallServerBox.Top := SkipServerRadio.Top + SkipServerRadio.Height + ScaleY(16);
+      if FreshServerMaintenance then
+        InstallServerBox.Caption :=
+          'A Vein server was detected inside the selected app''s managed Server folder. The recommended option updates or repairs it; connect and skip choices do not change server files.'
+      else
+        InstallServerBox.Caption :=
+          'The recommended option installs a new server inside the app-managed Server folder. Existing-server and skip choices do not download or change server files.';
+    end
+    else
+    begin
+      ServerChoicePage.Caption := 'Existing Server Maintenance';
+      RepairMissingServer := not HasVeinServerAt(ServerDirPage.Values[0]);
+      if RepairMissingServer then
+      begin
+        ServerChoicePage.Description := 'The configured Vein server is missing. Choose whether to reinstall it during app repair.';
+        InstallServerRadio.Caption := 'Repair or reinstall the missing dedicated server with SteamCMD (recommended)';
+        ExistingServerRadio.Caption := 'Repair the management app only and leave the server missing';
+        InstallServerRadio.Checked := True;
+        ExistingServerRadio.Checked := False;
+        UpdateServerChoiceState;
+      end
+      else
+      begin
+        ServerChoicePage.Description := 'Choose whether the existing Vein server should also be updated or repaired.';
+        InstallServerRadio.Caption := 'Update or repair the existing dedicated server with SteamCMD';
+        ExistingServerRadio.Caption := 'Leave the existing dedicated server unchanged (recommended)';
+      end;
+      SkipServerRadio.Visible := False;
+      InstallServerBox.Top := ExistingServerRadio.Top + ExistingServerRadio.Height + ScaleY(16);
+      if (PreviousSteamCmdExe <> '') and FileExists(PreviousSteamCmdExe) then
+        SteamCmdNote := 'SteamCMD will be reused automatically:'#13#10 + PreviousSteamCmdExe
+      else
+        SteamCmdNote := 'The app-managed SteamCMD copy will be used or installed automatically.';
+      if RepairMissingServer then
+        InstallServerBox.Caption :=
+          'Configured server location:'#13#10 + ServerDirPage.Values[0] + #13#10#13#10 +
+          'Status: dedicated server executable is missing.'#13#10#13#10 +
+          SteamCmdNote + #13#10#13#10 +
+          'The recommended option recreates the server files at this configured location and validates them through SteamCMD.'
+      else if PreviousServerDir <> '' then
+        InstallServerBox.Caption :=
+          'Detected server:'#13#10 + PreviousServerDir + #13#10#13#10 +
+          SteamCmdNote + #13#10#13#10 +
+          'The app repair does not require a server update. Leave it unchanged for the quickest repair, or select SteamCMD maintenance and confirm the server location on the next screen.'
+      else
+        InstallServerBox.Caption :=
+          'No existing server root was detected.'#13#10#13#10 + SteamCmdNote + #13#10#13#10 +
+          'The app repair can leave server settings unchanged. If you select SteamCMD maintenance, Setup will ask for the existing server location.';
     end;
   end;
   if Assigned(SteamCmdChoicePage) and (CurPageID = SteamCmdChoicePage.ID) then
+  begin
     UpdateSteamCmdChoiceAvailability;
+    if InstallServer then
+    begin
+      if FreshServerMaintenance then
+        SteamCmdChoicePage.Caption := 'SteamCMD for Server Update or Repair'
+      else
+        SteamCmdChoicePage.Caption := 'SteamCMD for the New Server';
+      SteamCmdChoicePage.Description := 'Use the recommended app-managed SteamCMD or select an existing copy.';
+      SteamCmdChoiceBox.Caption :=
+        'App-managed SteamCMD is selected by default and requires no extra setup. Advanced users may reuse an existing SteamCMD folder.';
+    end;
+  end;
   if CurPageID = wpReady then
   begin
-    if ExistingAppInstall and SetupNewServer then
+    if (not ExistingAppInstall) or FreshAppInstall then
     begin
-      WizardForm.PageNameLabel.Caption := 'Ready to Update the App and Install a New Server';
-      WizardForm.PageDescriptionLabel.Caption := 'The existing management app will be refreshed and a separate Vein server will be installed.';
+      WizardForm.PageNameLabel.Caption := 'Ready to Install Vein Server Management';
+      if InstallServer and (not FreshServerMaintenance) then
+        WizardForm.PageDescriptionLabel.Caption := 'The management app and a new Vein server will be installed in their selected locations.'
+      else if InstallServer then
+        WizardForm.PageDescriptionLabel.Caption := 'The management app will be installed and the detected Vein server will be updated or repaired.'
+      else if SkipServerSetup then
+        WizardForm.PageDescriptionLabel.Caption := 'The management app will be installed without configuring a Vein server.'
+      else
+        WizardForm.PageDescriptionLabel.Caption := 'The management app will be installed and connected to the selected Vein server.';
     end
     else if ExistingAppInstall and InstallServer then
     begin
-      WizardForm.PageNameLabel.Caption := 'Ready to Update or Repair the App and Server';
-      WizardForm.PageDescriptionLabel.Caption := 'The management app and selected Vein server will both receive maintenance.';
+      if RepairMissingServer then
+      begin
+        WizardForm.PageNameLabel.Caption := 'Ready to Repair the App and Reinstall the Server';
+        WizardForm.PageDescriptionLabel.Caption := 'SteamCMD will restore and validate the missing Vein server files at the configured location.';
+      end
+      else
+      begin
+        WizardForm.PageNameLabel.Caption := 'Ready to Update or Repair the App and Server';
+        WizardForm.PageDescriptionLabel.Caption := 'The management app and selected Vein server will both receive maintenance.';
+      end;
     end
     else if ExistingAppInstall then
     begin
@@ -606,15 +945,16 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
   if PageID = wpSelectDir then
-    Result := ExistingAppInstall
+    Result := ExistingAppInstall and (not FreshAppInstall)
   else if Assigned(ServerChoicePage) and (PageID = ServerChoicePage.ID) then
-    Result := (not ExistingAppInstall) or SetupNewServer
+    Result := UninstallExistingApp
   else if Assigned(ServerDirPage) and (PageID = ServerDirPage.ID) then
-    Result := PreserveExistingServerConfig
+    Result := PreserveExistingServerConfig or SkipServerSetup
   else if Assigned(SteamCmdChoicePage) and (PageID = SteamCmdChoicePage.ID) then
-    Result := not InstallServer
+    Result := (not InstallServer) or (ExistingAppInstall and (not FreshAppInstall))
   else if Assigned(ExistingSteamCmdDirPage) and (PageID = ExistingSteamCmdDirPage.ID) then
-    Result := (not InstallServer) or (not UseExistingSteamCmd);
+    Result := (not InstallServer) or (not UseExistingSteamCmd) or
+      (ExistingAppInstall and (not FreshAppInstall));
 end;
 
 function ValidateServerDir: Boolean;
@@ -650,6 +990,8 @@ begin
 
   if InstallServer then
   begin
+    RepairMissingServer := ExistingAppInstall and (not FreshAppInstall) and
+      (not SetupNewServer) and (not FileExists(ExeA)) and (not FileExists(ExeB));
     if ExistingAppInstall and SetupNewServer and
        (NormalizePathForCompare(ServerDir) = NormalizePathForCompare(PreviousServerDir)) then
     begin
@@ -663,12 +1005,18 @@ begin
     end;
     if SetupNewServer and (FileExists(ExeA) or FileExists(ExeB)) then
     begin
-      MsgBox(
-        'The new-server folder already contains a Vein dedicated server. Choose an empty or new folder so existing server files are not repurposed accidentally.',
-        mbError,
-        MB_OK
-      );
-      Result := False;
+      Result := MsgBox(
+        'A Vein dedicated server already exists in the selected folder.'#13#10#13#10 +
+        'Choose Yes to update or repair that server with SteamCMD, or No to return and choose a different folder.',
+        mbConfirmation,
+        MB_YESNO
+      ) = IDYES;
+      if Result then
+      begin
+        FreshServerMaintenance := True;
+        InstallNewServer := False;
+        SetupNewServer := False;
+      end;
     end;
     exit;
   end;
@@ -695,6 +1043,55 @@ begin
       mbConfirmation,
       MB_YESNO
     ) = IDYES;
+  end;
+end;
+
+function ValidateFreshAppDir: Boolean;
+var
+  Candidate, ExistingRoot: string;
+begin
+  Result := True;
+  Candidate := NormalizePathForCompare(CurrentAppDir());
+  ExistingRoot := NormalizePathForCompare(ExistingAppDir);
+  if Candidate = '' then
+  begin
+    MsgBox('Choose a folder for the separate management app installation.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+
+  if ExistingAppInstall and FreshAppInstall and
+     ((Candidate = ExistingRoot) or
+      (Pos(ExistingRoot + '\', Candidate) = 1) or
+      (Pos(Candidate + '\', ExistingRoot) = 1)) then
+  begin
+    MsgBox(
+      'Choose a separate app folder that is not the existing installation or one of its parent/child folders.',
+      mbError,
+      MB_OK
+    );
+    Result := False;
+    exit;
+  end;
+
+  if IsManagementInstallAt(CurrentAppDir()) then
+  begin
+    LoadExistingInstallAt(CurrentAppDir());
+    PathScopedExistingInstall := True;
+    WizardForm.DirEdit.Text := ExistingAppDir;
+    PrimaryIntentRadio.Checked := True;
+    AlternateIntentRadio.Checked := False;
+    UninstallIntentRadio.Checked := False;
+    RefreshInstallIntentPresentation;
+    ApplyIntentState;
+    MsgBox(
+      'An existing Vein Server Management installation was found in the selected folder.'#13#10#13#10 +
+      'Setup will return to the first page so you can update/repair it, uninstall it, or choose a different folder for a fresh installation.',
+      mbInformation,
+      MB_OK
+    );
+    WizardForm.BackButton.OnClick(WizardForm.BackButton);
+    Result := False;
   end;
 end;
 
@@ -734,12 +1131,115 @@ begin
   end;
 end;
 
+function FindUninstallerInFolder(const Folder: string; var UninstallerPath: string): Boolean;
+var
+  FindRec: TFindRec;
+  Candidate: string;
+begin
+  Result := False;
+  if not DirExists(Folder) then
+    exit;
+  if FindFirst(AddBackslash(Folder) + 'unins*.exe', FindRec) then
+  begin
+    try
+      repeat
+        Candidate := AddBackslash(Folder) + FindRec.Name;
+        if FileExists(Candidate) then
+        begin
+          UninstallerPath := Candidate;
+          Result := True;
+          exit;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+function ResolveExistingUninstaller(var UninstallerPath: string): Boolean;
+begin
+  UninstallerPath := ExistingUninstallerPath;
+  if (UninstallerPath <> '') and FileExists(UninstallerPath) then
+  begin
+    Result := True;
+    exit;
+  end;
+
+  UninstallerPath := AddBackslash(ExistingAppDir) + 'Uninstall\unins000.exe';
+  if FileExists(UninstallerPath) then
+  begin
+    Result := True;
+    exit;
+  end;
+  UninstallerPath := AddBackslash(ExistingAppDir) + 'unins000.exe';
+  if FileExists(UninstallerPath) then
+  begin
+    Result := True;
+    exit;
+  end;
+
+  Result := FindUninstallerInFolder(AddBackslash(ExistingAppDir) + 'Uninstall', UninstallerPath);
+  if not Result then
+    Result := FindUninstallerInFolder(ExistingAppDir, UninstallerPath);
+end;
+
+function LaunchExistingUninstaller: Boolean;
+var
+  UninstallerPath: string;
+  ResultCode: Integer;
+begin
+  Result := False;
+  if not ResolveExistingUninstaller(UninstallerPath) then
+  begin
+    MsgBox(
+      'The uninstaller could not be found for:'#13#10#13#10 + ExistingAppDir + #13#10#13#10 +
+      'Use Windows Installed Apps to remove this installation, or choose Update/Repair.',
+      mbError,
+      MB_OK
+    );
+    exit;
+  end;
+
+  Result := Exec(
+    UninstallerPath,
+    '',
+    ExistingAppDir,
+    SW_SHOWNORMAL,
+    ewNoWait,
+    ResultCode
+  );
+  if Result then
+    UninstallerLaunched := True
+  else
+    MsgBox('The detected uninstaller could not be started.', mbError, MB_OK);
+end;
+
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if UninstallerLaunched then
+  begin
+    Cancel := True;
+    Confirm := False;
+  end;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if CurPageID = InstallIntentPage.ID then
   begin
     ApplyIntentState;
+    if UninstallExistingApp then
+    begin
+      Result := False;
+      if LaunchExistingUninstaller then
+        WizardForm.Close;
+    end;
+  end
+  else if CurPageID = wpSelectDir then
+  begin
+    Result := ValidateFreshAppDir;
   end
   else if CurPageID = ServerChoicePage.ID then
   begin
@@ -764,6 +1264,91 @@ procedure SetStatus(const Msg: string);
 begin
   WizardForm.StatusLabel.Caption := Msg;
   Log(Msg);
+end;
+
+function ExtractSteamCmdProgress(const Line: string): string;
+var
+  LowerLine: string;
+  StartPos, EndPos: Integer;
+begin
+  Result := '';
+  LowerLine := Lowercase(Line);
+  StartPos := Pos('progress: ', LowerLine);
+  if StartPos = 0 then
+    exit;
+
+  StartPos := StartPos + Length('progress: ');
+  EndPos := StartPos;
+  while (EndPos <= Length(Line)) and
+        (Pos(Copy(Line, EndPos, 1), '0123456789.') > 0) do
+    EndPos := EndPos + 1;
+  if EndPos > StartPos then
+    Result := Copy(Line, StartPos, EndPos - StartPos) + '%';
+end;
+
+procedure SteamCmdOutput(const S: string; const Error, FirstLine: Boolean);
+var
+  CleanLine, LowerLine, Phase, ProgressValue: string;
+begin
+  SteamCmdMessagePumpStep := 1 - SteamCmdMessagePumpStep;
+  SteamCmdMessagePumpPage.SetProgress(SteamCmdMessagePumpStep, 1);
+
+  CleanLine := Trim(S);
+  if CleanLine = '__VEIN_STEAMCMD_HEARTBEAT__' then
+    exit;
+  if Pos('__VEIN_STEAMCMD_PHASE__:', CleanLine) = 1 then
+  begin
+    SteamCmdRunnerPhase := Copy(CleanLine, Length('__VEIN_STEAMCMD_PHASE__:') + 1, MaxInt);
+    if SteamCmdRunnerPhase = 'bootstrap' then
+      SteamCmdProgressPage.SetText(
+        'Initializing SteamCMD...',
+        'Checking for SteamCMD first-run updates before installing the Vein server.'
+      )
+    else if SteamCmdRunnerPhase = 'server' then
+      SteamCmdProgressPage.SetText(
+        SteamCmdProgressAction,
+        'SteamCMD is initialized. Starting the Vein server download and validation.'
+      );
+    exit;
+  end;
+
+  if SteamCmdProgressLog <> '' then
+    SaveStringToFile(SteamCmdProgressLog, S + #13#10, True);
+
+  if Error then
+  begin
+    Log('SteamCMD output capture warning: ' + S);
+    SteamCmdProgressPage.SetText(
+      SteamCmdProgressAction,
+      'SteamCMD is still running, but live output is unavailable. Details will remain in steamcmd-install.log.'
+    );
+    exit;
+  end;
+
+  if CleanLine = '' then
+    exit;
+  Log('[SteamCMD] ' + CleanLine);
+
+  LowerLine := Lowercase(CleanLine);
+  if Pos('type ''quit'' to exit', LowerLine) > 0 then
+    exit;
+  Phase := SteamCmdProgressAction;
+  if Pos('downloading', LowerLine) > 0 then
+  begin
+    if SteamCmdRunnerPhase = 'bootstrap' then
+      Phase := 'Updating SteamCMD...'
+    else
+      Phase := 'Downloading Vein server files...';
+  end
+  else if Pos('verifying', LowerLine) > 0 then
+    Phase := 'Verifying Vein server files...'
+  else if Pos('success!', LowerLine) > 0 then
+    Phase := 'SteamCMD completed successfully.';
+
+  ProgressValue := ExtractSteamCmdProgress(CleanLine);
+  if ProgressValue <> '' then
+    Phase := Phase + ' ' + ProgressValue;
+  SteamCmdProgressPage.SetText(Phase, Copy(CleanLine, 1, 180));
 end;
 
 function RunPowerShell(const Command: string): Boolean;
@@ -874,14 +1459,27 @@ end;
 
 procedure InstallDedicatedServer;
 var
-  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, SteamCmdLog, DownloadCmd, ExtractCmd, InstallCmd: string;
-  ResultCode, RetryResult: Integer;
+  ServerDir, SteamCmdDir, SteamCmdExe, TempZip, ExtractDir, ExtractedSteamCmdExe, SteamCmdLog, DownloadCmd, ExtractCmd, InstallParams: string;
+  ResultCode, RetryResult, AttemptNumber: Integer;
   InstallSucceeded: Boolean;
 begin
   ServerDir := ServerDirPage.Values[0];
   if ServerDir = '' then
     exit;
   ForceDirectories(ServerDir);
+  SteamCmdCancelFile := ExpandConstant('{tmp}\steamcmd-cancel.request');
+  DeleteFile(SteamCmdCancelFile);
+
+  if SetupNewServer then
+    SteamCmdProgressAction := 'Installing the new Vein dedicated server...'
+  else if RepairMissingServer then
+    SteamCmdProgressAction := 'Reinstalling the missing Vein dedicated server...'
+  else
+    SteamCmdProgressAction := 'Updating or repairing the Vein dedicated server...';
+  SteamCmdProgressPage.SetText(SteamCmdProgressAction, 'Preparing SteamCMD...');
+  SteamCmdProgressPage.Show;
+  SteamCmdProgressPage.Animate;
+  try
 
   if UseExistingSteamCmd then
   begin
@@ -902,6 +1500,7 @@ begin
       DelTree(ExtractDir, True, True, True);
 
       SetStatus('Downloading SteamCMD from Valve...');
+      SteamCmdProgressPage.SetText('Downloading SteamCMD from Valve...', 'Preparing the app-managed SteamCMD copy.');
       DownloadCmd :=
         '$ProgressPreference=''SilentlyContinue''; ' +
         'Invoke-WebRequest -UseBasicParsing -Uri ' + PowerShellQuote('{#SteamCmdUrl}') + ' -OutFile ' + PowerShellQuote(TempZip) + '; ' +
@@ -913,6 +1512,7 @@ begin
       end;
 
       SetStatus('Extracting SteamCMD...');
+      SteamCmdProgressPage.SetText('Extracting SteamCMD...', 'Preparing steamcmd.exe inside the management app folder.');
       ExtractCmd :=
         'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
         '[System.IO.Compression.ZipFile]::ExtractToDirectory(' + PowerShellQuote(TempZip) + ', ' + PowerShellQuote(ExtractDir) + ')';
@@ -954,37 +1554,72 @@ begin
   end;
 
   SteamCmdLog := ExpandConstant('{app}\Logs\steamcmd-install.log');
-  InstallCmd :=
-    '/C ""' + SteamCmdExe + '" +@sSteamCmdForcePlatformType windows +force_install_dir "' + ServerDir + '" +login anonymous +app_update {#SteamAppId} -beta public validate +quit > "' + SteamCmdLog + '" 2>&1"';
+  SteamCmdProgressLog := SteamCmdLog;
+  InstallParams :=
+    'steamcmd-run --steamcmd-exe "' + SteamCmdExe + '" --server-dir "' + ServerDir + '" --app-id {#SteamAppId} --cancel-file "' + SteamCmdCancelFile + '"';
   RetryResult := IDCANCEL;
+  AttemptNumber := 0;
+  DeleteFile(SteamCmdLog);
   repeat
-    SetStatus('Installing Vein dedicated server via SteamCMD. This can take several minutes...');
-    DeleteFile(SteamCmdLog);
-    InstallSucceeded := Exec(
-      ExpandConstant('{cmd}'),
-      InstallCmd,
-      '',
-      SW_HIDE,
-      ewWaitUntilTerminated,
-      ResultCode
-    ) and ((ResultCode = 0) or FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'));
+    AttemptNumber := AttemptNumber + 1;
+    if SetupNewServer then
+      SetStatus('Installing the new Vein dedicated server via SteamCMD...')
+    else if RepairMissingServer then
+      SetStatus('Repairing or reinstalling the missing Vein dedicated server via SteamCMD...')
+    else
+      SetStatus('Updating or repairing the existing Vein dedicated server via SteamCMD...');
+    DeleteFile(SteamCmdCancelFile);
+    SteamCmdRunnerPhase := '';
+    SteamCmdProgressPage.SetText(SteamCmdProgressAction, 'Waiting for live SteamCMD status...');
+    SaveStringToFile(
+      SteamCmdLog,
+      '' + #13#10 + '===== SteamCMD attempt ' + IntToStr(AttemptNumber) + ' =====' + #13#10,
+      True
+    );
+    ResultCode := -1;
+    try
+      InstallSucceeded := ExecAndLogOutput(
+        ExpandConstant('{app}\VeinTools.exe'),
+        InstallParams,
+        ExpandConstant('{app}'),
+        SW_SHOWNORMAL,
+        ewWaitUntilTerminated,
+        ResultCode,
+        @SteamCmdOutput
+      ) and ((ResultCode = 0) or FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.'));
+    except
+      Log('SteamCMD execution failed: ' + GetExceptionMessage);
+      InstallSucceeded := False;
+    end;
 
     if not InstallSucceeded then
     begin
       UpdateConfigPaths(ServerDir, SteamCmdExe);
       SaveServerInstallPath(ServerDir);
-      RetryResult := MsgBox(
-        'SteamCMD could not download the VEIN dedicated server.'#13#10#13#10 +
-        'Choose Retry to run the server installation again now, or Cancel to finish installing the management app without server files.'#13#10#13#10 +
-        'Installer log:'#13#10 +
-        SteamCmdLog + #13#10#13#10 +
-        'SteamCMD internal logs:'#13#10 +
-        AddBackslash(SteamCmdDir) + 'logs',
-        mbError,
-        MB_RETRYCANCEL
-      );
-      if RetryResult = IDRETRY then
-        SetStatus('Retrying the Vein dedicated server installation...');
+      if AttemptNumber = 1 then
+      begin
+        RetryResult := IDRETRY;
+        SetStatus('The first SteamCMD attempt did not complete; retrying automatically...');
+        SteamCmdProgressPage.SetText(
+          'Retrying SteamCMD automatically...',
+          'SteamCMD can require a second invocation after first-run initialization. Both attempts are retained in the installer log.'
+        );
+      end
+      else
+      begin
+        RetryResult := MsgBox(
+          'SteamCMD could not install, update, or repair the VEIN dedicated server after two attempts.'#13#10#13#10 +
+          'Choose Retry to run SteamCMD again now, or Cancel to finish the management app setup without changing server files.'#13#10#13#10 +
+          'Installer log:'#13#10 +
+          SteamCmdLog + #13#10#13#10 +
+          'SteamCMD internal logs:'#13#10 +
+          AddBackslash(SteamCmdDir) + 'logs',
+          mbError,
+          MB_RETRYCANCEL
+        );
+        if RetryResult = IDRETRY then
+          SetStatus('Retrying the Vein dedicated server installation...');
+      end;
     end;
   until InstallSucceeded or (RetryResult <> IDRETRY);
 
@@ -996,6 +1631,11 @@ begin
   SetStatus('Updating config paths to match the installed server...');
   UpdateConfigPaths(ServerDir, SteamCmdExe);
   SaveServerInstallPath(ServerDir);
+  finally
+    DeleteFile(SteamCmdCancelFile);
+    SteamCmdProgressLog := '';
+    SteamCmdProgressPage.Hide;
+  end;
 end;
 
 procedure ConfigureExistingServer;
@@ -1016,9 +1656,14 @@ begin
   if CurStep = ssPostInstall then
   begin
     SaveStringToFile(ExpandConstant('{app}\version.txt'), '{#MyAppVersion}', False);
+    SaveStringToFile(
+      ExpandConstant('{app}\Runtime\uninstaller_path.txt'),
+      ExpandConstant('{uninstallexe}'),
+      False
+    );
     if InstallServer then
       InstallDedicatedServer
-    else if not PreserveExistingServerConfig then
+    else if (not PreserveExistingServerConfig) and (not SkipServerSetup) then
       ConfigureExistingServer;
   end;
 end;

@@ -129,21 +129,59 @@ Installer responsibilities:
   and server data are preserved.
 - Present an intent page immediately after Welcome. Existing installs default to
   `Update or repair the existing installation`; operators can instead choose to
-  update the management app and install a new server under a different root.
-  Fresh installs explicitly choose between installing a new server and
-  connecting to an existing server.
+  install a separate fresh management-app instance under another app root.
+  Each side-by-side app directory receives a stable path-derived AppId plus
+  distinct Add/Remove Programs, Start Menu, desktop shortcut, config, runtime,
+  SteamCMD, backup, and uninstaller identities. Fresh installs select the app
+  destination first, then choose between installing a new server, connecting
+  to an existing server, or skipping server setup.
 - Keep the remaining wizard goal-specific. App-only repair skips the app-folder,
   server-root, and SteamCMD pages and leaves the recorded server configuration
-  untouched. New-server setup rejects the currently managed server root and
-  any folder that already contains a Vein server, and defaults to the first
-  available `Server-New\`, `Server-New-2\`, and so on.
-- Preload the previously recorded server root and configured SteamCMD location.
+  untouched. Side-by-side setup exposes the app destination page, rejects the
+  detected app folder and parent/child overlap, and defaults to the first
+  available `VeinServerManagement-2`, `-3`, and so on. It then independently
+  asks whether the new app should install, connect to, or skip a dedicated
+  server. If the selected app destination already contains the management app,
+  Setup routes back to update/repair, uninstall, or fresh-folder choices.
+  If the selected app-managed or custom server destination already contains a
+  Vein server, Setup offers SteamCMD update/repair instead of treating it as a
+  new-server folder.
+- Begin clean setup with a Management Suite introduction, then always show the
+  app destination page for fresh installs before presenting optional new,
+  existing, or skipped server setup. In-place repair continues to skip the app
+  destination page.
+- Preload the previously recorded server root and configured SteamCMD location. Server-root detection uses the runtime install record first and falls back to `Config/config.yaml`, including app-relative paths.
+- Label SteamCMD maintenance as an update/repair of the detected existing server and show that detected path before asking the user to confirm it; new-server wording is reserved for fresh server installs.
+- Avoid redundant SteamCMD choices during in-place maintenance: reuse the configured SteamCMD executable when available, fall back to the app-managed copy, and install that copy automatically if it is missing. Fresh app installs retain the explicit SteamCMD choice.
+- Keep fresh new-server flows independent from repair wording: preselect and explain the new app's managed `Server` and `SteamCMD` folders, allow advanced custom/existing locations, and hide the unavailable “Do not configure SteamCMD” choice when SteamCMD is required.
   Updating the management app does not update the Vein server by default.
 - Offer an explicit `Install, update, or repair` server option. When selected,
   Setup uses the canonical controlled shutdown pipeline, then runs SteamCMD
   `app_update 2131400 ... validate`. A shutdown failure skips SteamCMD rather
   than updating files beneath a running server.
+- Stream SteamCMD output through the packaged `VeinTools.exe` runner. A private
+  heartbeat keeps the Inno Setup event queue moving during quiet download
+  periods. Inno Setup keeps the wizard disabled while its blocking post-install
+  command runs, so Setup does not display a misleading custom Cancel button.
+  The page explains that an interrupted operation can be resumed and validated
+  by running Update/Repair later.
+- Explicitly restore the final Finish page and button after post-install
+  maintenance exits.
+- Initialize SteamCMD with a standalone `+quit` pass before invoking the VEIN
+  app command. This gives a freshly downloaded SteamCMD copy time to complete
+  its own update/bootstrap lifecycle instead of making the user repeat a server
+  installation that succeeds only on retry.
+- If the first server operation still does not complete, retry it once
+  automatically and retain both attempts in `Logs\steamcmd-install.log`. Only
+  after two failed attempts does Setup ask the user whether to retry again.
+- Treat a missing executable as a repairable maintenance state when an existing
+  management installation already has a configured server root. Setup offers
+  and preselects SteamCMD repair/reinstall at that same location, permits the
+  folder and server files to be recreated, and keeps this distinct from the
+  fresh-app/new-server workflow.
 - Register an uninstaller entry in Add/Remove Programs and keep Inno Setup's generated uninstaller files under `Uninstall\`
+- Show an uninstall action on the installer goal page whenever a management-app installation is detected, and launch that installation's own uninstaller rather than overwriting it.
+- Remove reused `Controller`, `Uninstall`, and app-root directories after an upgrade only when they are empty. This handles folders that predated the latest installer run without recursively deleting preserved user data.
 - Run a best-effort uninstall cleanup that stops log/crash monitors first and then performs a controlled server shutdown only when a Vein server process is running
 - Preserve external Vein dedicated server installs by default. If the recorded server root is inside the app install folder, the uninstaller offers an explicit opt-in deletion prompt with save-loss warnings and defaults to preserving data.
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
@@ -198,10 +236,21 @@ Fresh install check:
   and SteamCMD log locations and offers Retry immediately. Cancel finishes the
   management-app installation without claiming that server files are ready;
   the GUI then directs the operator to Quick Start.
+- While SteamCMD installs, updates, or validates the server, Setup displays an
+  animated activity page and streams the latest SteamCMD phase and output line.
+  Download percentages are shown when SteamCMD reports them; the animation
+  remains active during startup, validation, and other indeterminate work.
+- SteamCMD console instructions that are not meaningful installer progress are
+  retained in `steamcmd-install.log` but omitted from the live status line. The
+  progress page can cancel its installer-owned SteamCMD child after confirmation;
+  partial server files are preserved for a later retry or validation pass.
 
 Uninstall behavior:
 
 - The uninstaller stops management monitors and shuts down a running Vein server before removing app files.
+- Each installation records its exact Inno uninstaller path. Installer-launched
+  removal uses that record and falls back to discovering numbered `unins*.exe`
+  files only inside the detected management-app folder for older installations.
 - App-owned transient folders such as `Logs\`, `Runtime\`, and app-managed `SteamCMD\` are removed during uninstall.
 - The uninstaller prompts before deleting local `Backups\` and `Config\` folders, then attempts to remove the now-empty app install folder.
 - Server roots outside the app folder, such as `D:\VeinServer` or `<external drive>\Servers\VeinServer`, are preserved.

@@ -112,13 +112,25 @@ For normal users, use the Windows installer from the GitHub Releases page when a
 - `VeinTools.exe` for command-line operations such as health checks, server start/stop, monitor control, and backups.
 - A local `Config/config.yaml` copied from the sanitized app-managed template.
 - Optional full-package setup that keeps app-managed SteamCMD under `SteamCMD\` and installs a new dedicated server under `Server\` by default.
+- Live SteamCMD install/update progress with an activity indicator, useful status
+  filtering, first-run initialization, and one automatic retry. Inno Setup's
+  blocking SteamCMD phase is explicitly shown as non-cancellable; interrupted
+  downloads can be resumed and validated through Update/Repair.
 - Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and automatically resolve Vein SaveGames and the Vein Game Log from that root.
 - In-place upgrade and repair using the same installer AppId. Existing local
   config, backups, runtime state, and server data are preserved; SteamCMD server
   update/validation remains an explicit installer choice. When an installation
   is detected, the first setup page clearly separates an app-only update/repair
-  from setting up a new dedicated server in a different folder. App-only
-  maintenance skips unrelated server and SteamCMD questions.
+  from installing an independent management-app instance in another folder.
+  Each side-by-side app has its own config, runtime data, shortcuts, uninstaller,
+  and server selection. App-only maintenance skips unrelated server and
+  SteamCMD questions. If the configured server executable is missing,
+  maintenance offers to recreate and validate the server at the same location
+  through SteamCMD instead of blocking the repair.
+- Fresh setup chooses the management-app destination before any server decision,
+  then offers new-server installation, connection to an existing server, or an
+  app-only install. Selecting a destination that already contains the app routes
+  back to update/repair or uninstall instead of overwriting it.
 - Read-only diagnostics through `VeinTools.exe health-check` and `VeinTools.exe server-config-check`.
 
 The repository itself is the developer/source workflow. Clone it when you want to inspect code, run tests, or build the installer locally.

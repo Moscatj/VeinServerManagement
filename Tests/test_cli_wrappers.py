@@ -195,6 +195,30 @@ class CliWrapperTests(unittest.TestCase):
             self.assertEqual(command.run(), 0)
         check_main.assert_called_once()
 
+    def test_vein_tools_dispatches_installer_owned_steamcmd_runner(self) -> None:
+        with mock.patch("Tools.steamcmd_runner.run_steamcmd", return_value=20) as run:
+            code = vein_tools.main(
+                [
+                    "steamcmd-run",
+                    "--steamcmd-exe",
+                    "C:/tools/steamcmd.exe",
+                    "--server-dir",
+                    "D:/servers/Vein",
+                    "--app-id",
+                    "2131400",
+                    "--cancel-file",
+                    "C:/temp/cancel.request",
+                ]
+            )
+
+        self.assertEqual(code, 20)
+        run.assert_called_once_with(
+            Path("C:/tools/steamcmd.exe"),
+            Path("D:/servers/Vein"),
+            "2131400",
+            Path("C:/temp/cancel.request"),
+        )
+
     def test_vein_tools_subcommand_does_not_leak_wrapper_argv(self) -> None:
         seen: list[list[str]] = []
 

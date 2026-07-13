@@ -114,7 +114,7 @@ COMMANDS: dict[str, CommandSpec] = {
     ),
 }
 
-SPECIAL_COMMANDS = {"restart-server"}
+SPECIAL_COMMANDS = {"restart-server", "steamcmd-run"}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -139,6 +139,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=2,
         help="Seconds to wait between stop/start when using restart-server",
     )
+    parser.add_argument("--steamcmd-exe", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--server-dir", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--app-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--cancel-file", default="", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -168,6 +172,25 @@ def main(argv: list[str] | None = None) -> int:
 
             time.sleep(delay)
         return COMMANDS["start-server"].run()
+
+    if cmd in SPECIAL_COMMANDS and cmd == "steamcmd-run":
+        required = {
+            "--steamcmd-exe": args.steamcmd_exe,
+            "--server-dir": args.server_dir,
+            "--app-id": args.app_id,
+            "--cancel-file": args.cancel_file,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise SystemExit(f"steamcmd-run requires: {', '.join(missing)}")
+        from Tools.steamcmd_runner import run_steamcmd
+
+        return run_steamcmd(
+            Path(args.steamcmd_exe),
+            Path(args.server_dir),
+            args.app_id,
+            Path(args.cancel_file),
+        )
 
     spec = COMMANDS.get(cmd)
     if not spec:

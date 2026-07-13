@@ -48,8 +48,8 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("Config\\config.yaml", text)
         self.assertIn("Flags: onlyifdoesntexist uninsneveruninstall", text)
-        self.assertIn("Update or repair the existing installation (recommended)", text)
-        self.assertIn("preserves local configuration, backups, runtime state, server data", text)
+        self.assertIn("Update or repair the detected installation (recommended)", text)
+        self.assertIn("Update/Repair preserves configuration and data", text)
         self.assertIn("FileExists(AddBackslash(AppDir) + 'Config\\config.yaml')", text)
 
     def test_installer_detects_previous_server_and_steamcmd_paths(self) -> None:
@@ -57,16 +57,56 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("procedure DetectExistingInstall;", text)
         self.assertIn("Runtime\\server_install_path.txt", text)
+        self.assertIn("ReadYamlScalar(ConfigPath, 'server_root', Candidate)", text)
+        self.assertIn("PreviousServerDir := AddBackslash(AppDir) + Candidate;", text)
         self.assertIn("ReadYamlScalar(ConfigPath, 'steamcmd_path', Candidate)", text)
+        self.assertIn("FileExists(AddBackslash(AppDir) + 'SteamCMD\\steamcmd.exe')", text)
         self.assertIn("ServerDirPage.Values[0] := PreviousServerDir;", text)
         self.assertIn("ExistingSteamCmdDirPage.Values[0] := ExtractFileDir(PreviousSteamCmdExe);", text)
+
+    def test_existing_server_maintenance_is_prefilled_and_clearly_labeled(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Existing Server to Update or Repair", text)
+        self.assertIn("Confirm the detected dedicated server root that SteamCMD should maintain.", text)
+        self.assertIn("'Detected server:'#13#10 + PreviousServerDir", text)
+        self.assertIn("use Browse only to correct the location", text)
+        self.assertNotIn("New or Maintained Server Location", text)
+        self.assertNotIn("does not contain the existing Vein dedicated server executable", text)
+        self.assertIn("Updating or repairing the existing Vein dedicated server via SteamCMD", text)
+
+    def test_existing_maintenance_can_reinstall_a_missing_server(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("RepairMissingServer := not HasVeinServerAt(ServerDirPage.Values[0]);", text)
+        self.assertIn("Server Repair or Reinstall Location", text)
+        self.assertIn("Repair or reinstall the missing dedicated server with SteamCMD (recommended)", text)
+        self.assertIn("Repair the management app only and leave the server missing", text)
+        self.assertIn("recreates the server files at this configured location", text)
+        self.assertIn("Reinstalling the missing Vein dedicated server...", text)
+        self.assertIn("Repairing or reinstalling the missing Vein dedicated server via SteamCMD", text)
+
+    def test_in_place_server_maintenance_reuses_steamcmd_without_choice_pages(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("SteamCMD will be reused automatically", text)
+        self.assertIn("The app-managed SteamCMD copy will be used or installed automatically.", text)
+        self.assertIn(
+            "Result := (not InstallServer) or (ExistingAppInstall and (not FreshAppInstall))",
+            text,
+        )
+        self.assertIn(
+            "(ExistingAppInstall and (not FreshAppInstall));",
+            text,
+        )
 
     def test_installer_offers_optional_server_update_and_repair(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("Update or repair the existing dedicated server with SteamCMD", text)
         self.assertIn("Leave the existing dedicated server unchanged (recommended)", text)
-        self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
+        self.assertIn("steamcmd-run --steamcmd-exe", text)
+        self.assertIn("--app-id {#SteamAppId}", text)
         self.assertIn("InstallServerRadio.Checked := False;", text)
         self.assertIn("ExistingServerRadio.Checked := True;", text)
         self.assertIn("Stopping monitors and the Vein server before SteamCMD maintenance", text)
@@ -87,30 +127,120 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("CreateCustomPage(\n    wpWelcome,", text)
         self.assertIn("Choose What Setup Should Do", text)
-        self.assertIn("Update or repair the existing installation (recommended)", text)
-        self.assertIn("set up a new server in a different folder", text)
-        self.assertIn("Install the management app and a new Vein dedicated server", text)
-        self.assertIn("connect it to an existing Vein server", text)
+        self.assertIn("Update or repair the detected installation (recommended)", text)
+        self.assertIn("Install a separate, fresh management app in another folder", text)
+        self.assertIn("Uninstall the detected management app", text)
 
     def test_upgrade_only_skips_irrelevant_new_install_pages(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("Result := ExistingAppInstall", text)
-        self.assertIn("Result := PreserveExistingServerConfig", text)
-        self.assertIn("Result := not InstallServer", text)
-        self.assertIn("else if not PreserveExistingServerConfig then", text)
+        self.assertIn("Result := ExistingAppInstall and (not FreshAppInstall)", text)
+        self.assertIn("Result := PreserveExistingServerConfig or SkipServerSetup", text)
+        self.assertIn(
+            "Result := (not InstallServer) or (ExistingAppInstall and (not FreshAppInstall))",
+            text,
+        )
+        self.assertIn("else if (not PreserveExistingServerConfig) and (not SkipServerSetup) then", text)
         self.assertIn("The existing server configuration and server files will be left unchanged.", text)
 
-    def test_existing_install_new_server_uses_a_separate_default(self) -> None:
+    def test_existing_install_can_create_an_independent_app_instance(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("function DefaultSeparateServerDir(): string;", text)
-        self.assertIn("BaseDir := AddBackslash(CurrentAppDir()) + 'Server-New';", text)
+        self.assertIn("AppId={{2D6A61E2-0A8B-4F6B-9F8B-9912879D7499}{code:InstallAppIdSuffix}", text)
+        self.assertIn("function DefaultSeparateAppDir(): string;", text)
+        self.assertIn("BaseDir := ExpandConstant('{commonpf}\\VeinServerManagement');", text)
         self.assertIn("while DirExists(Result) do", text)
-        self.assertIn("NextDefault := DefaultSeparateServerDir()", text)
-        self.assertIn("NormalizePathForCompare(ServerDir) = NormalizePathForCompare(PreviousServerDir)", text)
-        self.assertIn("Choose a different folder for the new server.", text)
-        self.assertIn("The new-server folder already contains a Vein dedicated server.", text)
+        self.assertIn("GetMD5OfString(NormalizePathForCompare(CurrentAppDir()))", text)
+        self.assertIn("UninstallDisplayName={#MyAppName}{code:InstanceDisplaySuffix}", text)
+        self.assertIn("function ValidateFreshAppDir: Boolean;", text)
+        self.assertIn("An existing Vein Server Management installation was found", text)
+        self.assertIn("LoadExistingInstallAt(CurrentAppDir());", text)
+        self.assertIn("WizardForm.BackButton.OnClick(WizardForm.BackButton);", text)
+        self.assertIn("Result := ExistingAppInstall and (not FreshAppInstall)", text)
+        self.assertIn("UsePreviousLanguage=no", text)
+
+    def test_intent_helper_text_uses_remaining_page_height(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("InstallIntentBox.WordWrap := True;", text)
+        self.assertIn(
+            "InstallIntentBox.Height := InstallIntentPage.SurfaceHeight - InstallIntentBox.Top - ScaleY(8);",
+            text,
+        )
+
+    def test_fresh_app_has_an_explicit_server_choice(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Choose Server Setup", text)
+        self.assertIn("Install a new dedicated server with SteamCMD (recommended)", text)
+        self.assertIn("Connect to an existing dedicated server", text)
+        self.assertIn("Skip server setup for now", text)
+        self.assertIn("InstallNewServer := InstallServer and (not FreshServerMaintenance);", text)
+
+    def test_clean_install_starts_with_app_location_then_three_server_outcomes(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("DisableDirPage=no", text)
+        self.assertIn("DefaultDirName={commonpf}\\VeinServerManagement", text)
+        self.assertIn("Result := UninstallExistingApp", text)
+        self.assertIn("SkipServerSetup := SkipServerRadio.Checked;", text)
+        self.assertIn("Result := PreserveExistingServerConfig or SkipServerSetup", text)
+        self.assertIn("if InstallServer then\n      ServerDirPage.Values[0] := DefaultManagedServerDir()", text)
+        self.assertIn("else\n      ServerDirPage.Values[0] := '';", text)
+
+    def test_clean_install_introduces_the_management_suite_before_server_choices(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Install Vein Server Management Suite", text)
+        self.assertIn("A guided installer for the management app and optional Vein dedicated server.", text)
+        self.assertIn("This installer first installs Vein Server Management Suite", text)
+        self.assertIn("PrimaryIntentRadio.Visible := False;", text)
+        self.assertIn("Next, choose where to install the management app.", text)
+
+    def test_fresh_location_detects_existing_managed_or_custom_server(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function HasVeinServerAt(const ServerDir: string): Boolean;", text)
+        self.assertIn("FreshServerMaintenance := HasVeinServerAt(DefaultManagedServerDir());", text)
+        self.assertIn("Update or repair the detected dedicated server with SteamCMD", text)
+        self.assertIn("A Vein dedicated server already exists in the selected folder.", text)
+        self.assertIn("FreshServerMaintenance := True;", text)
+
+    def test_detected_install_can_launch_its_uninstaller(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function LaunchExistingUninstaller: Boolean;", text)
+        self.assertIn("Uninstall\\unins000.exe", text)
+        self.assertIn("function ResolveExistingUninstaller", text)
+        self.assertIn("Runtime\\uninstaller_path.txt", text)
+        self.assertIn("ExpandConstant('{uninstallexe}')", text)
+        self.assertIn("FindFirst(AddBackslash(Folder) + 'unins*.exe'", text)
+        self.assertIn("FindUninstallerInFolder(ExistingAppDir", text)
+        self.assertIn("if LaunchExistingUninstaller then", text)
+        self.assertIn("procedure CancelButtonClick", text)
+
+    def test_new_server_pages_use_app_managed_defaults_without_repair_language(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("The app-managed Server folder is selected by default.", text)
+        self.assertIn("SteamCMD for the New Server", text)
+        self.assertIn("App-managed SteamCMD is selected by default", text)
+        self.assertIn("SteamCmdChoiceBox.WordWrap := True;", text)
+        self.assertIn("ServerDirPage.SubCaptionLabel.Caption :=", text)
+        self.assertNotIn("Setup prefills a detected existing server.", text)
+
+    def test_required_steamcmd_hides_and_clears_the_no_configure_option(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("NoSteamCmdRadio.Visible := not InstallServer;", text)
+        self.assertIn("NoSteamCmdRadio.Enabled := not InstallServer;", text)
+        self.assertIn("if NoSteamCmdRadio.Checked then", text)
+        self.assertIn("NoSteamCmdRadio.Checked := False;", text)
+        self.assertIn(
+            "SteamCmdChoiceBox.Top := ExistingSteamCmdRadio.Top + ExistingSteamCmdRadio.Height + ScaleY(20);",
+            text,
+        )
+        self.assertIn("UpdateSteamCmdChoiceState;", text)
 
     def test_installer_filename_includes_version(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -139,6 +269,10 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("[UninstallDelete]", text)
         for folder in ("Logs", "Runtime", "SteamCMD"):
             self.assertIn(f'Type: filesandordirs; Name: "{{app}}\\{folder}"', text)
+        for folder in ("Controller", "Uninstall"):
+            self.assertIn(f'Name: "{{app}}\\{folder}"; Flags: uninsalwaysuninstall', text)
+            self.assertIn(f'Type: dirifempty; Name: "{{app}}\\{folder}"', text)
+        self.assertIn('Name: "{app}"; Flags: uninsalwaysuninstall', text)
         self.assertIn('Type: dirifempty; Name: "{app}"', text)
 
     def test_uninstaller_prompts_before_removing_backups_and_config(self) -> None:
@@ -158,7 +292,11 @@ class PackagingBuildTests(unittest.TestCase):
 
         self.assertIn("InstallServerRadio.Height := ScaleY(26);", text)
         self.assertIn("ExistingServerRadio.Height := ScaleY(26);", text)
-        self.assertIn("InstallServerBox.Height := ScaleY(56);", text)
+        self.assertIn("InstallServerBox.WordWrap := True;", text)
+        self.assertIn(
+            "InstallServerBox.Height := ServerChoicePage.SurfaceHeight - InstallServerBox.Top - ScaleY(8);",
+            text,
+        )
 
     def test_uninstaller_preserves_external_server_roots(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -193,14 +331,16 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("Result := AddBackslash(CurrentAppDir()) + 'Server';", text)
         self.assertIn("procedure SyncManagedServerDefault;", text)
         self.assertIn("CurPageID = ServerDirPage.ID", text)
-        self.assertIn("SteamCMD installs use the app-managed Server folder by default", text)
+        self.assertIn("Choose where SteamCMD should install the new Vein dedicated server.", text)
         self.assertNotIn("ServerDirPage.Values[0] := ExpandConstant('{sd}\\VeinServer');", text)
 
     def test_installer_defaults_to_guided_server_and_steamcmd_install(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("PrimaryIntentRadio.Checked := True;", text)
-        self.assertIn("SetupNewServer := PrimaryIntentRadio.Checked", text)
+        self.assertIn("SetupNewServer := InstallNewServer;", text)
+        self.assertIn("if not ExistingAppInstall then", text)
+        self.assertIn("InstallServerRadio.Checked := True;", text)
         self.assertIn("InstallServerRadio.Checked := False;", text)
         self.assertIn("ExistingServerRadio.Checked := True;", text)
         self.assertIn("AppSteamCmdRadio.Checked := True;", text)
@@ -239,7 +379,10 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("function ValidateExistingSteamCmdDir: Boolean;", text)
         self.assertIn("SteamCmdExe := AddBackslash(ExistingSteamCmdDirPage.Values[0]) + 'steamcmd.exe';", text)
         self.assertIn("if UseExistingSteamCmd then", text)
-        self.assertIn("Result := (not InstallServer) or (not UseExistingSteamCmd);", text)
+        self.assertIn(
+            "Result := (not InstallServer) or (not UseExistingSteamCmd) or",
+            text,
+        )
         self.assertIn("function ValidateSteamCmdChoice: Boolean;", text)
 
     def test_installer_derives_server_data_paths_from_server_root(self) -> None:
@@ -283,32 +426,89 @@ class PackagingBuildTests(unittest.TestCase):
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn("SteamCmdLog := ExpandConstant('{app}\\Logs\\steamcmd-install.log');", text)
-        self.assertIn('> "\' + SteamCmdLog + \'" 2>&1"', text)
+        self.assertIn("SteamCmdProgressLog := SteamCmdLog;", text)
+        self.assertIn("SaveStringToFile(SteamCmdProgressLog, S + #13#10, True);", text)
         self.assertIn("SteamCMD internal logs:", text)
         self.assertIn("AddBackslash(SteamCmdDir) + 'logs'", text)
 
-    def test_installer_hides_blank_steamcmd_console_and_sets_wait_status(self) -> None:
+    def test_installer_streams_steamcmd_status_to_animated_progress_page(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
+        self.assertIn("CreateOutputMarqueeProgressPage", text)
+        self.assertIn("SteamCmdProgressPage.Animate;", text)
+        self.assertIn("ExecAndLogOutput(", text)
+        self.assertIn("@SteamCmdOutput", text)
+        self.assertIn("Waiting for live SteamCMD status...", text)
+        self.assertIn("ExtractSteamCmdProgress", text)
+        self.assertIn("Downloading Vein server files...", text)
+        self.assertIn("Verifying Vein server files...", text)
+        self.assertIn("Updating or repairing the existing Vein dedicated server via SteamCMD", text)
+        self.assertNotIn("This can take several minutes...", text)
+
+    def test_installer_uses_owned_steamcmd_runner_and_preserves_config_on_failure(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("steamcmd-run --steamcmd-exe", text)
+        self.assertIn("--app-id {#SteamAppId} --cancel-file", text)
+        self.assertIn("FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.')", text)
         self.assertIn(
-            "Installing Vein dedicated server via SteamCMD. This can take several minutes...",
+            "SteamCMD could not install, update, or repair the VEIN dedicated server after two attempts.",
             text,
         )
-        self.assertIn("SW_HIDE", text)
-
-    def test_installer_uses_explicit_steamcmd_platform_and_preserves_config_on_failure(self) -> None:
-        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
-
-        self.assertIn("+@sSteamCmdForcePlatformType windows", text)
-        self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
-        self.assertIn("FileContainsText(SteamCmdLog, 'Success! App ''{#SteamAppId}'' fully installed.')", text)
-        self.assertIn("SteamCMD could not download the VEIN dedicated server.", text)
         self.assertIn("MB_RETRYCANCEL", text)
         self.assertIn("RetryResult = IDRETRY", text)
         self.assertIn("until InstallSucceeded or (RetryResult <> IDRETRY);", text)
         self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
         self.assertIn("SaveServerInstallPath(ServerDir);", text)
         self.assertIn("mbInformation", text)
+
+    def test_installer_does_not_offer_a_nonfunctional_steamcmd_cancel_control(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertNotIn("SteamCmdCancelButton", text)
+        self.assertNotIn("procedure SteamCmdCancelClick", text)
+        self.assertIn("SteamCMD cannot be cancelled safely from this installer step.", text)
+        self.assertIn("run Update/Repair later to resume and validate the partial files", text)
+        self.assertIn("type ''quit'' to exit", text)
+
+    def test_installer_pumps_button_events_while_waiting_for_steamcmd(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("SteamCmdMessagePumpPage := CreateOutputProgressPage('', '');", text)
+        self.assertIn("SteamCmdMessagePumpPage.SetProgress(SteamCmdMessagePumpStep, 1);", text)
+        self.assertIn("if CleanLine = '__VEIN_STEAMCMD_HEARTBEAT__' then", text)
+
+        callback_start = text.index("procedure SteamCmdOutput")
+        callback_end = text.index("function RunPowerShell", callback_start)
+        callback = text[callback_start:callback_end]
+        self.assertLess(callback.index("__VEIN_STEAMCMD_HEARTBEAT__"), callback.index("SaveStringToFile"))
+
+    def test_installer_restores_finish_page_interaction(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertNotIn("SteamCmdOperationActive", text)
+        self.assertNotIn("WizardForm.Enabled := False;", text)
+        self.assertIn("if CurPageID = wpFinished then", text)
+        self.assertIn("WizardForm.NextButton.Enabled := True;", text)
+
+    def test_installer_automatically_retries_first_steamcmd_failure_and_keeps_both_logs(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("AttemptNumber := AttemptNumber + 1;", text)
+        self.assertIn("if AttemptNumber = 1 then", text)
+        self.assertIn("RetryResult := IDRETRY;", text)
+        self.assertIn("retrying automatically", text.lower())
+        self.assertIn("after two attempts", text)
+        self.assertIn("===== SteamCMD attempt ", text)
+        self.assertEqual(text.count("DeleteFile(SteamCmdLog);"), 1)
+
+    def test_installer_distinguishes_steamcmd_initialization_from_server_download(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("__VEIN_STEAMCMD_PHASE__:", text)
+        self.assertIn("Initializing SteamCMD...", text)
+        self.assertIn("Updating SteamCMD...", text)
+        self.assertIn("SteamCMD is initialized. Starting the Vein server download", text)
 
     def test_cli_packaging_collects_dynamic_tools_subcommands(self) -> None:
         module = _load_build_module()

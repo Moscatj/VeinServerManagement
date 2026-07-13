@@ -6,6 +6,25 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.9.0 - 2026-07-13
+
+- Improved update/repair server detection by falling back to the installed YAML configuration when the runtime server-path record is unavailable, and clarified that the prefilled location is an existing server being maintained rather than a new server destination.
+- Streamlined in-place server maintenance by automatically reusing configured or app-managed SteamCMD and skipping redundant SteamCMD selection pages.
+- Clarified fresh side-by-side server setup with app-managed server and SteamCMD defaults, removed repair/autodetection wording from new-server pages, and hid the invalid no-SteamCMD option when installing a server.
+- Reworked installer routing so clean setup selects the management-app folder first and then offers new server, existing server, or skip-server outcomes. Detected installs can now be updated/repaired or launched through their own uninstaller, including installs discovered in a user-selected destination.
+- Added fresh-flow Vein server detection so an existing server under the selected managed or custom server location is offered update/repair instead of being mistaken for a new installation.
+- Added a clean-install Management Suite introduction and made the management-app destination an explicit fresh-install step before optional server setup.
+- Fixed the SteamCMD-choice explanation being clipped instead of wrapping on the clean-install wizard.
+- Added an animated SteamCMD installation page with live download/validation status, reported percentages when available, and continued logging to `steamcmd-install.log`.
+- Filtered console-only quit instructions from user-facing SteamCMD progress and retained backend cooperative cancellation support for future non-blocking installer work.
+- Fixed installer-launched uninstall by recording Inno Setup's actual uninstaller path and discovering numbered `unins*.exe` fallbacks for existing installations.
+- Fixed uninstall after upgrades leaving empty `Controller`, `Uninstall`, and management-app root directories while continuing to preserve non-empty config, backup, and server-data folders.
+- Removed the nonfunctional SteamCMD Cancel button from the blocking Inno Setup phase and replaced it with explicit guidance that interrupted downloads can be resumed through Update/Repair.
+- Added an explicit SteamCMD initialization pass before server installation so a newly downloaded copy can complete its own first-run update before the VEIN app command runs.
+- Explicitly restores the final Finish page and button after SteamCMD completes.
+- Added one automatic retry when the first SteamCMD server operation does not complete, retaining output from every attempt in `steamcmd-install.log` before offering further manual retry.
+- Allowed existing-install maintenance to repair or reinstall a missing dedicated server at its configured location through SteamCMD instead of blocking because the executable is absent. Missing-server maintenance is preselected and labeled separately from a clean new-server install.
+
 - Fixed clean-install live logging so the GUI begins watching before the game
   creates its first `Vein.log`, then attaches automatically when the file
   appears and reopens logs that are replaced or truncated.
@@ -34,9 +53,15 @@ This project uses a lightweight versioning approach suitable for a personal sour
   controlled shutdown succeeds.
 - Refined installer onboarding around an explicit first-step goal. Detected
   installations now default to a streamlined app-only update/repair that leaves
-  server configuration untouched, while a separate intentional workflow can
-  install a new server under a different root. Ready-page wording and subsequent
-  questions follow the selected goal.
+  server configuration untouched, while a separate intentional workflow creates
+  an independent management-app installation under another app root. Each
+  side-by-side app gets a stable directory-derived AppId, distinct uninstall and
+  shortcut identity, private config/runtime data, and its own subsequent server
+  install-or-connect choice. Ready-page wording follows the selected goal, and
+  intent helper text now consumes the remaining page height instead of clipping.
+- Made the diagnostic and coverage wrappers prefer the dependency-complete
+  Python 3.12 development runtime when multiple `py -3` installations compete
+  for the Windows launcher default.
 - Hardened the source-development GUI launcher so it deterministically selects
   a usable windowless Python runtime and captures failures that occur before the
   normal GUI logger starts. Silent bootstrap failures now produce an actionable

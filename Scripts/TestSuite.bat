@@ -23,7 +23,16 @@ set "CONFIG1=%MGMT%\Config\config.yaml"
 set "CONFIG_EXAMPLE=%MGMT%\Config\config.example.yaml"
 set "CONFIG2=%MGMT%\Config\config.json"
 set "CONFIG3=%CONTROLLER%\config.json"
-set "PYEXE=py -3"
+if defined PYTHON_BIN (
+  set "PYEXE=%PYTHON_BIN%"
+) else (
+  py -3.12 -c "import yaml, psutil, PySide6" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYEXE=py -3.12"
+  ) else (
+    set "PYEXE=py -3"
+  )
+)
 if not defined VEIN_CONFIG if exist "%CONFIG1%" set "VEIN_CONFIG=%CONFIG1%"
 if not defined VEIN_CONFIG if exist "%CONFIG_EXAMPLE%" set "VEIN_CONFIG=%CONFIG_EXAMPLE%"
 if not defined VEIN_CONFIG if exist "%CONFIG2%" set "VEIN_CONFIG=%CONFIG2%"
