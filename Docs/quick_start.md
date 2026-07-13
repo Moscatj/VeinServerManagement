@@ -10,13 +10,15 @@ config or guarded Vein server configuration files.
 answers such as:
 
 - server root
+- the automatically derived Vein SaveGames directory, with an optional advanced override
 - SteamCMD path
 - server name and description
 - public/private mode and password
 - max players
 - gameplay, Steam query, and HTTP API ports
 - bind address, VAC setting, heartbeat interval, and `-log` launch preference
-- save, log, runtime, and backup paths
+- save, runtime, management-log, and backup paths
+- the automatically derived Vein Game Log, with an optional advanced override
 - admin, super admin, and whitelist Steam IDs
 - Discord in-game chat and admin report webhook URLs
 - scoreboard badge visibility
@@ -90,6 +92,13 @@ is aligned with their setup guidance:
    after selecting a different installation. Loading reads `Game.ini` and
    `Engine.ini` in the background.
 4. Fill in new-server values or edit the imported existing-server values.
+   The read-only `Vein SaveGames folder` follows Server root as
+   `<server root>/Vein/Saved/SaveGames`. Expand its advanced override only for
+   a nonstandard installation; backups then read from that custom directory.
+   The read-only `Monitored Vein game log` field follows Server root as
+   `<server root>/Vein/Saved/Logs/Vein.log`. Expand the advanced override only
+   for a nonstandard installation; the selected file is then shared by server
+   launch and monitoring.
 5. Click `Build Preview`.
 6. Review blocking errors, warnings, management config updates, and proposed
    game config edits.
@@ -150,7 +159,8 @@ The intended GUI flow is:
 1. Choose app-managed or existing server location.
 2. Choose app-managed or existing SteamCMD.
 3. Enter required server identity and network fields.
-4. Confirm save, log, runtime, and backup locations.
+4. Confirm save, runtime, management-log, and backup locations. The Vein Game
+   Log is derived automatically unless an advanced override is required.
 5. Review management config updates and INI diffs.
 6. Run SteamCMD install/update when requested.
 7. Apply only after explicit confirmation.

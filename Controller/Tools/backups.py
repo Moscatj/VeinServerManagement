@@ -157,14 +157,19 @@ def _b(cfg_path: str, default=None):
 
 def _save_dir() -> Path:
     cfg = _cfg()
-    # Highest priority: backups.save_dir (if you expose it)
+    # The config loader projects automatic/advanced SaveGames into this single
+    # canonical value so backups cannot silently watch a different folder.
+    sd = cfg.get("save_dir")
+    if sd:
+        return Path(str(sd))
+
+    # Legacy compatibility for callers that provide an unresolved config.
     b = cfg.get("backups") or {}
     sd = b.get("save_dir")
     if sd:
         return Path(str(sd))
 
-    # Next: top-level or paths.save_dir
-    sd = cfg.get("save_dir") or (cfg.get("paths", {}) or {}).get("save_dir")
+    sd = (cfg.get("paths", {}) or {}).get("save_dir")
     if sd:
         return Path(str(sd))
 

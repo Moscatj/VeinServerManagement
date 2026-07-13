@@ -38,6 +38,7 @@ class PathsAndSummaryTests(unittest.TestCase):
                 self.assertEqual(paths.save_dir(), save_dir)
                 self.assertEqual(paths.resolve_save_file(), found)
                 self.assertEqual(paths.absolute_log_file(), str(base / "Logs" / "Vein.log"))
+                self.assertEqual(paths.game_log_file(), base / "Logs" / "Vein.log")
 
     def test_resolve_save_file_returns_first_candidate_when_none_exist(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -52,6 +53,41 @@ class PathsAndSummaryTests(unittest.TestCase):
                     paths.resolve_save_file(),
                     base / "Server" / "Vein" / "Saved" / "SaveGames" / "Server.vns",
                 )
+
+    def test_resolve_active_log_discovers_app_managed_server_log(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            server = base / "Server"
+            actual = server / "Vein" / "Saved" / "Logs" / "Vein.log"
+            actual.parent.mkdir(parents=True)
+            actual.write_text("started", encoding="utf-8")
+            cfg = {
+                "server_dir": str(server),
+                "logs_dir": str(base / "WrongLogs"),
+                "absolute_log_file": str(base / "WrongLogs" / "Vein.log"),
+            }
+            with mock.patch.dict(paths.config, cfg, clear=True), mock.patch.object(
+                paths,
+                "get_path",
+                side_effect=lambda key: cfg.get(key, ""),
+            ):
+                self.assertEqual(paths.resolve_active_log(), actual)
+
+    def test_resolve_active_log_returns_expected_path_before_first_log(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            expected = base / "Server" / "Vein" / "Saved" / "Logs" / "Vein.log"
+            cfg = {
+                "server_dir": str(base / "Server"),
+                "logs_dir": str(expected.parent),
+            }
+            with mock.patch.dict(paths.config, cfg, clear=True), mock.patch.object(
+                paths,
+                "get_path",
+                side_effect=lambda key: cfg.get(key, ""),
+            ):
+                self.assertIsNone(paths.resolve_active_log())
+                self.assertEqual(paths.resolve_active_log(allow_missing=True), expected)
 
     def test_summarize_config_projects_core_fields(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -73,8 +109,12 @@ class PathsAndSummaryTests(unittest.TestCase):
             }
             with mock.patch.object(config_summary.paths, "server_dir", return_value=base / "Server"), mock.patch.object(
                 config_summary.paths,
-                "logs_dir",
-                return_value=base / "Logs",
+                "game_log_file",
+                return_value=base / "GameLogs" / "Vein.log",
+            ), mock.patch.object(
+                config_summary.paths,
+                "game_log_override",
+                return_value="",
             ), mock.patch.object(
                 config_summary.paths,
                 "save_dir",
@@ -91,6 +131,8 @@ class PathsAndSummaryTests(unittest.TestCase):
                 summary = config_summary.summarize_config()
 
         self.assertEqual(summary["server_dir"], str(base / "Server"))
+        self.assertEqual(summary["game_log_file"], str(base / "GameLogs" / "Vein.log"))
+        self.assertEqual(summary["game_log_override"], "")
         self.assertEqual(summary["executable_selected"], str(exe))
         self.assertEqual(summary["map_url"], "/Game/Test")
         self.assertEqual(summary["max_players"], 12)

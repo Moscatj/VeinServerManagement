@@ -19,6 +19,7 @@ if str(CTRL) not in sys.path:
 from PySide6 import QtWidgets  # noqa: E402
 
 from GUI import status  # noqa: E402
+import vein_manager  # noqa: E402
 
 
 def app() -> QtWidgets.QApplication:
@@ -82,7 +83,12 @@ class StatusPollerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             snapshots: list[dict] = []
+            finished: list[bool] = []
             poller.signals.ready.connect(snapshots.append)
+            poller.signals.finished.connect(lambda: finished.append(True))
+            poller._load_any_config = mock.Mock(
+                side_effect=AssertionError("worker must not parse YAML")
+            )
             with mock.patch.object(poller, "_pid_alive", return_value=True):
                 poller.run()
 
@@ -96,6 +102,40 @@ class StatusPollerTests(unittest.TestCase):
         self.assertFalse(snap["backup"]["enabled"])
         self.assertEqual(snap["backup"]["last_zip"], "backup.zip")
         self.assertFalse(snap["server_available"])
+        self.assertEqual(finished, [True])
+        poller._load_any_config.assert_not_called()
+
+    def test_main_allows_only_one_status_worker_at_a_time(self) -> None:
+        class Signal:
+            def __init__(self) -> None:
+                self.callback = None
+
+            def connect(self, callback) -> None:
+                self.callback = callback
+
+        class Signals:
+            def __init__(self) -> None:
+                self.ready = Signal()
+                self.finished = Signal()
+
+        worker = mock.Mock()
+        worker.signals = Signals()
+        owner = mock.Mock()
+        owner._poller = None
+        owner.config_path = "config.yaml"
+        owner._apply_status_snapshot = mock.Mock()
+        owner._status_poll_finished = lambda: setattr(owner, "_poller", None)
+
+        with mock.patch.object(vein_manager, "StatusPoller", return_value=worker) as factory:
+            vein_manager.Main._kick_status_poll(owner)
+            vein_manager.Main._kick_status_poll(owner)
+
+        factory.assert_called_once()
+        owner._pool.start.assert_called_once_with(worker)
+        self.assertIs(owner._poller, worker)
+        assert worker.signals.finished.callback is not None
+        worker.signals.finished.callback()
+        self.assertIsNone(owner._poller)
 
 
 if __name__ == "__main__":

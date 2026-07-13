@@ -132,7 +132,7 @@ def build_log_panel(owner: "Main") -> QtWidgets.QWidget:
     owner.log_cm = QtWidgets.QPlainTextEdit()
     owner.log_cm.setReadOnly(True)
     owner.log_cm.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
-    owner.logTabs.addTab(owner.log_game, "Game Log")
+    owner.logTabs.addTab(owner.log_game, "Vein Game Log")
     owner.logTabs.addTab(owner.log_lm, "Log Monitor")
     owner.logTabs.addTab(owner.log_cm, "Crash Monitor")
 
@@ -192,7 +192,7 @@ def build_log_panel(owner: "Main") -> QtWidgets.QWidget:
     search_layout.addWidget(owner.log_search_results, 1)
     search_layout.addWidget(owner.log_search_status)
 
-    owner.logTabs.addTab(owner.log_search_tab, "Search Logs")
+    owner.logTabs.addTab(owner.log_search_tab, "Search Management Logs")
 
     owner.mgmt_log_tab = QtWidgets.QWidget()
     mgmt_layout = QtWidgets.QVBoxLayout(owner.mgmt_log_tab)
@@ -227,7 +227,7 @@ def build_log_panel(owner: "Main") -> QtWidgets.QWidget:
     mgmt_layout.addLayout(mgmt_controls)
     mgmt_layout.addWidget(owner.txt_mgmt_log, 1)
 
-    owner.logTabs.addTab(owner.mgmt_log_tab, "Subsystem Log")
+    owner.logTabs.addTab(owner.mgmt_log_tab, "Management Logs")
 
     owner.log_errors_tab = QtWidgets.QWidget()
     err_layout = QtWidgets.QVBoxLayout(owner.log_errors_tab)

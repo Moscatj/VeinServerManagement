@@ -24,6 +24,7 @@ class StatusBus(QtCore.QObject):
 
 class StatusSnapshot(QtCore.QObject):
     ready = QtCore.Signal(dict)
+    finished = QtCore.Signal()
 
 
 class StatusPoller(QtCore.QRunnable):
@@ -56,6 +57,8 @@ class StatusPoller(QtCore.QRunnable):
                 "save_dir": getattr(vcfg, "save_dir", ""),
             }
             self.selected_exe = getattr(vcfg, "selected_exe", "")
+            backups = getattr(vcfg, "backups", {}) or {}
+            self.backups_enabled = bool(backups.get("enable", True))
         else:
             obj, kind, _ = self._load_any_config(cfg_path)
             obj = obj if isinstance(obj, dict) else {}
@@ -92,6 +95,8 @@ class StatusPoller(QtCore.QRunnable):
 
             srv = obj.get("server", {}) or {}
             self.selected_exe = srv.get("preferred_exe", "")
+            backups = obj.get("backups", {}) or {}
+            self.backups_enabled = bool(backups.get("enable", True))
 
         for k, v in list(self.paths.items()):
             self.paths[k] = str(v or "").strip()
@@ -151,34 +156,10 @@ class StatusPoller(QtCore.QRunnable):
             return False
 
     def _hb_knobs(self) -> tuple[int, float]:
-        try:
-            obj, kind, _ = self._load_any_config(self.cfg_path)
-            obj = obj if isinstance(obj, dict) else {}
-            lm = obj.get("log_monitor", {}) or {}
-            mon = obj.get("monitor", {}) or {}
-            hb = int(
-                lm.get(
-                    "heartbeat_seconds",
-                    lm.get(
-                        "heartbeat_interval_seconds",
-                        mon.get(
-                            "heartbeat_seconds",
-                            mon.get("heartbeat_interval_seconds", self.hb_seconds),
-                        ),
-                    ),
-                )
-            )
-            hb = max(5, hb)
-            fresh_mult = float(
-                lm.get(
-                    "fresh_window_multiplier",
-                    mon.get("fresh_window_multiplier", self.fresh_mult),
-                )
-            )
-            fresh_mult = max(0.25, min(10.0, fresh_mult))
-            return hb, fresh_mult
-        except Exception:
-            return self.hb_seconds, self.fresh_mult
+        # Config is captured when the worker is created. Never invoke a YAML
+        # parser from this QRunnable: overlapping native/Python parser work has
+        # caused fatal interpreter access violations on Windows.
+        return self.hb_seconds, self.fresh_mult
 
     def _is_fresh(self, state_path: Path, hb_seconds: int, mult: float) -> bool:
         try:
@@ -227,15 +208,11 @@ class StatusPoller(QtCore.QRunnable):
                 (cs.get("status") or cs.get("mode") or "unknown") if cs else "unknown"
             )
 
-            cfg_obj, _, _ = self._load_any_config(self.cfg_path)
-            b = (cfg_obj.get("backups", {}) or {}) if isinstance(cfg_obj, dict) else {}
-            enabled = bool(b.get("enable", True))
-
             backup_state_path = rp["runtime_dir"] / "backup.state.json"
             bk = self._read_json(backup_state_path)
 
             snapshot_backup = {
-                "enabled": enabled,
+                "enabled": self.backups_enabled,
                 "last_utc": bk.get("last_utc"),
                 "last_zip": bk.get("last_zip"),
                 "counts": bk.get("counts") or {},
@@ -256,3 +233,5 @@ class StatusPoller(QtCore.QRunnable):
             self.signals.ready.emit(snapshot)
         except Exception:
             pass
+        finally:
+            self.signals.finished.emit()

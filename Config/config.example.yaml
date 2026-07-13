@@ -6,10 +6,17 @@ version: "2.2"
 paths:
   server_root: "Server"                           # Folder that contains the Vein dedicated server
   runtime_dir: "Runtime"
-  saves_dir: "Server/Vein/Saved/SaveGames"
-  logs_dir: "Server/Vein/Saved/Logs"
-  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"
   mgmt_log_dir: "Logs"
+
+# Vein stores worlds below server_root by default. Leave override blank unless
+# an advanced/custom server layout keeps SaveGames somewhere else.
+save_games:
+  override: ""
+
+# Vein writes its game log below server_root by default. Leave override blank
+# unless an advanced/custom server layout writes Vein.log somewhere else.
+game_log:
+  override: ""
 
 management_logs:
   root: "Logs"

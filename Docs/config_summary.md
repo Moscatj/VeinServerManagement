@@ -71,7 +71,22 @@ Also applies `DISCORD_WEBHOOK_URL` from the environment if present.
 Ensures all filesystem paths are **absolute and OS-safe**:
 - Normalizes path separators.
 - Expands relative paths.
-- Applies to keys such as `server_dir`, `backup_root`, `steamcmd_path`, `save_dir`, `logs_dir`, and `absolute_log_file`.
+- Applies to keys such as `server_dir`, `backup_root`, `steamcmd_path`, and the
+  optional `save_games.override` and `game_log.override` values.
+
+### `_resolve_save_games_path(cfg)`
+
+Resolves one canonical Vein SaveGames directory for backups and health checks.
+A blank `save_games.override` derives
+`<server root>/Vein/Saved/SaveGames`. Legacy save paths remain readable until
+Quick Start migrates the saved YAML.
+
+### `_resolve_game_log_paths(cfg)`
+
+Resolves one canonical Vein Game Log for launch and monitoring. A blank
+`game_log.override` derives `<server root>/Vein/Saved/Logs/Vein.log`. Legacy
+`logs_dir` and `absolute_log_file` values are projected for compatibility until
+Quick Start migrates the saved YAML.
 
 Prevents issues with relative CWD or mixed slash/backslash usage.
 

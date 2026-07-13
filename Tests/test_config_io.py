@@ -52,6 +52,9 @@ class ConfigIoTests(unittest.TestCase):
                 view = config_io.load_and_validate_config()
 
         self.assertEqual(view.selected_exe, base / "Server" / "B.exe")
+        self.assertEqual(view.game_log_file, base / "Logs" / "Vein.log")
+        self.assertIsNone(view.game_log_override)
+        self.assertIsNone(view.save_games_override)
         self.assertEqual(view.hb_seconds, 15)
         self.assertEqual(view.fresh_window_multiplier, 3.5)
         self.assertEqual(view.steam["app_id"], "123")

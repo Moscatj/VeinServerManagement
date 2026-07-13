@@ -21,6 +21,11 @@ echo [INFO] Package version: %PACKAGE_VERSION%
 if not defined PYTHON_BIN set "PYTHON_BIN=py -3"
 echo [INFO] Python command: %PYTHON_BIN%
 
+%PYTHON_BIN% --version >nul 2>&1
+if not "%errorlevel%"=="0" (
+  echo [ERROR] Python packaging runtime is unavailable: %PYTHON_BIN%
+  goto :error
+)
 for /f "delims=" %%V in ('%PYTHON_BIN% --version 2^>^&1') do set "PYTHON_VERSION=%%V"
 echo [INFO] %PYTHON_VERSION%
 echo %PYTHON_VERSION% | findstr /r "Python 3\.13" >nul
@@ -32,13 +37,13 @@ if not errorlevel 1 (
 
 echo [INFO] Checking for PyInstaller...
 %PYTHON_BIN% -m PyInstaller --version >nul 2>&1
-if errorlevel 1 (
+if not "%errorlevel%"=="0" (
   echo [ERROR] PyInstaller not found. Run: %PYTHON_BIN% -m pip install -r requirements-packaging.txt
   goto :error
 )
 echo [INFO] Step 1/2 - Building VeinManager/VeinTools bundle...
 %PYTHON_BIN% Controller\Tools\packing\build_gui_exe.py
-if errorlevel 1 goto :error
+if not "%errorlevel%"=="0" goto :error
 
 echo [INFO] Step 2/2 - Compiling installer via Inno Setup...
 set "ISCC_BIN=%ISCC%"
@@ -54,7 +59,7 @@ if not defined ISCC_BIN (
 )
 
 "%ISCC_BIN%" /DMyAppVersion=%PACKAGE_VERSION% "%ROOT%\Installer\VeinServerManager.iss"
-if errorlevel 1 goto :error
+if not "%errorlevel%"=="0" goto :error
 
 echo(
 echo [SUCCESS] Installer available in dist\installer\VeinServerManagement-Setup-v%PACKAGE_VERSION%.exe

@@ -73,7 +73,7 @@ Key folders and files:
 
 - `Logs/`
   - Per-subsystem management logs (GUI, monitors, controller helpers) plus `Archive/` for rotated history.
-  - This is separate from the Vein game install logs under the configured `paths.logs_dir`.
+  - This is separate from the read-only Vein Game Log resolved from the server root or advanced `game_log.override`.
   - `manifest.json` (metadata for every log emission) and `summary.json` (latest aggregated warnings/errors).
 
 - `Docs/`
@@ -200,13 +200,13 @@ These are examples of the kinds of work you’ll likely be asked to perform and 
 
 **Example prompt:**
 
-> I’d like to add a helper in config_helper.py to get an absolute path to the primary log file, respecting both logs_dir and absolute_log_file from config.  
+> I’d like to add a helper for the canonical Vein Game Log, respecting automatic server-root derivation and `game_log.override`.
 > Please:
 > - Read Controller/config.py, Controller/config_helper.py, and Docs/config_helper_summary.md.
 > - Implement a function `get_log_file_path()` that:
 >   - Returns pathlib.Path
->   - Prefers `paths.absolute_log_file` if set.
->   - Otherwise constructs a path from `paths.logs_dir` and `paths.log_file`.
+>   - Prefers `game_log.override` when set.
+>   - Otherwise derives `Vein/Saved/Logs/Vein.log` from the server root.
 > - Update any obvious call sites that manually perform this logic.
 
 ---

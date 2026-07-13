@@ -35,7 +35,10 @@ class ValidConfig:
     runtime_dir: Path
     logs_dir: Path
     save_dir: Path
+    save_games_override: Optional[Path]
     absolute_log_file: Optional[Path]
+    game_log_file: Path
+    game_log_override: Optional[Path]
 
     # Executable selection
     server_executables: List[str]
@@ -116,11 +119,24 @@ def load_and_validate_config(
     runtime_dir = Path(raw.get("runtime_dir", "")).expanduser()
     logs_dir = Path(raw.get("logs_dir", "")).expanduser()
     save_dir = Path(raw.get("save_dir", "")).expanduser()
+    save_games_override_raw = raw.get("save_games_override")
+    save_games_override = (
+        Path(save_games_override_raw).expanduser() if save_games_override_raw else None
+    )
 
     abs_log = raw.get("absolute_log_file") or (raw.get("paths") or {}).get(
         "absolute_log_file"
     )
     absolute_log_file = Path(abs_log).expanduser() if abs_log else None
+    game_log_file = Path(
+        raw.get("game_log_file")
+        or absolute_log_file
+        or (server_dir / "Vein" / "Saved" / "Logs" / "Vein.log")
+    ).expanduser()
+    game_log_override_raw = raw.get("game_log_override")
+    game_log_override = (
+        Path(game_log_override_raw).expanduser() if game_log_override_raw else None
+    )
 
     # Executables
     server_executables = list(raw.get("server_executables") or [])
@@ -166,7 +182,10 @@ def load_and_validate_config(
         runtime_dir=runtime_dir,
         logs_dir=logs_dir,
         save_dir=save_dir,
+        save_games_override=save_games_override,
         absolute_log_file=absolute_log_file,
+        game_log_file=game_log_file,
+        game_log_override=game_log_override,
         server_executables=server_executables,
         preferred_exe=preferred_exe,
         selected_exe=selected_exe,

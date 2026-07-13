@@ -343,8 +343,8 @@ def run_health_checks(
     results.append(_check_directory("paths.mgmt_log_dir", cfg.get("mgmt_log_dir"), writable_inside_repo=True))
     results.append(_check_directory("backups.root", cfg.get("backup_root"), writable_inside_repo=True))
     results.append(_check_directory("paths.saves_dir", cfg.get("save_dir")))
-    results.append(_check_directory("paths.logs_dir", cfg.get("logs_dir")))
-    results.append(_check_file("paths.absolute_log_file", cfg.get("absolute_log_file")))
+    results.append(_check_directory("game_log.directory", cfg.get("logs_dir")))
+    results.append(_check_file("game_log.active_file", cfg.get("game_log_file") or cfg.get("absolute_log_file")))
     results.append(check_server_executable(cfg))
     results.append(check_steamcmd(cfg))
     for check in validate_server_config(cfg):

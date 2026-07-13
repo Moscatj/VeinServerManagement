@@ -1,14 +1,13 @@
 """monitor_log.py — Vein log tailer
 
-- Tails the active Vein log file (auto-pick or config.absolute_log_file)
+- Tails the canonical Vein Game Log (server-root default or advanced override)
 - Detects ready state, player auth/join/character/disconnect, autosave, crashes
-- Posts Discord notifications via utils.send_discord_message() respecting feature flags
+- Posts Discord notifications via Tools.discord respecting feature flags
 - Writes a small PID file so GUI can see it's alive: <runtime>/log_monitor.pid
 """
 
 from __future__ import annotations
 
-import io
 import os
 import re
 import sys
@@ -17,14 +16,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Dict, Deque, List
-from glob import glob
 from collections import deque
 
 from Tools import backups as _bk
 from Tools import mgmt_logs
 
 from config_helper import config
-from Tools.paths import logs_dir, absolute_log_file
+from Tools.paths import log_file_candidates, resolve_active_log
 from Tools.process import is_server_running, current_headless_flag
 from Tools.discord import send_discord_message, is_discord_channel_enabled
 from Tools.discord import send_discord_message
@@ -36,8 +34,6 @@ from Tools.vein_http_api import (
     VeinHTTPClient,
 )
 
-LOGS_DIR = logs_dir()
-ABSOLUTE_LOG_FILE = absolute_log_file()
 PID_FILE = RUNTIME_DIR / "log_monitor.pid"
 ROOT_DIR = Path(__file__).resolve().parent.parent
 HTTP_LOG_FILE = mgmt_logs.subsystem_dir("http_api") / "http_api.log"
@@ -50,7 +46,6 @@ BACKUPS = dict(_MON.get("backups", {}))
 NOTIFY = dict(_MON.get("notify", {}))
 STATE_REFRESH_S = int(_MON.get("state_refresh_seconds", 15))
 LINGER_WHEN_SERVER_DOWN = bool(_MON.get("linger_when_server_down", True))
-RECHECK_NEWEST_EVERY_S = int(_MON.get("recheck_newest_every_seconds", 5))
 
 HEARTBEAT_INTERVAL_S = int(
     _MON.get(
@@ -196,58 +191,8 @@ def _same_file(a: Path, b: Path) -> bool:
 
 
 def _resolve_active_log() -> Path | None:
-    """
-    Pick the best current Vein log file to tail.
-    Priority:
-      1) config["absolute_log_file"] if set and exists
-      2) <logs_dir>/Vein.log if exists
-      3) Most-recent *.log under common UE folders:
-         - <server_dir>/Vein/Saved/Logs
-         - <server_dir>/Saved/Logs
-         - <logs_dir>/*.log
-    Returns Path or None if nothing found yet.
-    """
-    # 1) Absolute override (from config)
-    abs_log = (config.get("absolute_log_file") or "").strip()
-    if abs_log:
-        p = Path(abs_log)
-        if p.exists():
-            return p
-
-    # 2) Logs dir + Vein.log
-    logs_dir = Path(config.get("logs_dir") or "").expanduser()
-    if logs_dir:
-        p = logs_dir / "Vein.log"
-        if p.exists():
-            return p
-
-    # 3) Common Unreal log locations
-    server_dir = Path(config.get("server_dir") or "").expanduser()
-    candidates: list[str] = []
-
-    # e.g. <VEIN_INSTALL>/Saved/Logs/*.log
-    if server_dir:
-        candidates += glob(str(server_dir / "Vein" / "Saved" / "Logs" / "*.log"))
-        candidates += glob(str(server_dir / "Saved" / "Logs" / "*.log"))
-
-    # Fallback: any .log inside configured logs_dir
-    if logs_dir:
-        candidates += glob(str(logs_dir / "*.log"))
-
-    # Pick newest by mtime
-    newest: tuple[float, Path] | None = None
-    for s in candidates:
-        try:
-            p = Path(s)
-            mt = p.stat().st_mtime
-            if (newest is None) or (mt > newest[0]):
-                newest = (mt, p)
-        except FileNotFoundError:
-            continue
-
-    if newest is None:
-        return None
-    return newest[1]
+    """Compatibility wrapper around the shared clean-install log resolver."""
+    return resolve_active_log()
 
 
 def _runtime_paths() -> dict:
@@ -267,7 +212,7 @@ def _runtime_paths() -> dict:
         "runtime": base,
         "state_log": base / "log_monitor.state.json",  # GUI reads this
         "pid_log": base / "log_monitor.pid",  # GUI checks this
-        "stop_log": base / "log_monitor.stop",  # touch this to stop monitor
+        "stop_log": base / "stop_log_monitor.flag",  # canonical GUI/lifecycle stop flag
     }
 
 
@@ -727,6 +672,10 @@ def _write_logmon_state(
     active: bool,
     tailing_file: str | None,
     watching_server: bool,
+    status: str | None = None,
+    message: str | None = None,
+    last_line_at: str | None = None,
+    bytes_read: int = 0,
 ) -> None:
     rp = _runtime_paths()
     rp["state_log"].parent.mkdir(parents=True, exist_ok=True)
@@ -736,6 +685,11 @@ def _write_logmon_state(
         "tailing_file": tailing_file,
         "watching_server": bool(watching_server),
         "last_updated": now,  # ISO8601 with tzinfo
+        "status": status or ("tailing" if tailing_file else "waiting"),
+        "message": message or "",
+        "last_line_at": last_line_at,
+        "bytes_read": max(0, int(bytes_read)),
+        "expected_log_files": [str(path) for path in log_file_candidates()],
     }
     if _HTTP_STATE is not None:
         data["http_api"] = _HTTP_STATE
@@ -747,6 +701,11 @@ def _write_logmon_state(
             json.dump(data, f, indent=2, sort_keys=True)
     except Exception:
         pass
+
+
+def _monitor_output(message: str) -> None:
+    """Write an immediately visible diagnostic to packaged/source monitor logs."""
+    print(f"[Log Monitor] {message}", flush=True)
 
 
 def _write_pid() -> None:
@@ -771,16 +730,28 @@ def monitor() -> None:
 
     # announce + write pid once
     _write_pid()
-    _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+    expected = log_file_candidates()
+    expected_text = str(expected[0]) if expected else "no configured log path"
+    _monitor_output(f"Starting. Waiting for game log: {expected_text}")
+    _write_logmon_state(
+        active=True,
+        tailing_file=None,
+        watching_server=is_server_running(),
+        status="waiting_for_log",
+        message=f"Waiting for game log: {expected_text}",
+    )
 
     # cooldowns to avoid spammy loops
     last_hb = 0.0
-    last_status_announce = 0.0
     last_down_announce = 0.0
-    last_attach_announce = 0.0
+    last_wait_output = 0.0
+    wait_started = time.time()
 
     current_path: Path | None = None
+    current_identity: tuple[int, int] | None = None
     pos = 0
+    bytes_read = 0
+    last_line_at: str | None = None
 
     ready_announced = False
     current_players: set[str] = set()
@@ -857,11 +828,6 @@ def monitor() -> None:
             _refresh_http_api_state(http_client)
             last_http_refresh = now_ts
 
-    # rotation signature
-    def _sig(p: Path) -> tuple[int, float]:
-        st = p.stat()
-        return (st.st_size, st.st_mtime)
-
     try:
         while True:
             # External stop request
@@ -878,13 +844,14 @@ def monitor() -> None:
                 p = _resolve_active_log()
                 if p and p.exists():
                     current_path = p
+                    current_identity = None
                     pos = 0
-                    last_sig = None
+                    wait_started = time.time()
+                    _monitor_output(f"Attached to game log: {p}")
                     if NOTIFY_STATUS:
                         _discord(
                             f"📜 Log monitor attached to `{p.name}`", channel="monitor"
                         )
-                    last_attach_announce = time.time()
                 else:
                     # No log yet; optionally linger and announce occasionally
                     now = time.time()
@@ -897,7 +864,13 @@ def monitor() -> None:
                             )
                             last_down_announce = now
                         _write_logmon_state(
-                            active=False, tailing_file=None, watching_server=False
+                            active=True,
+                            tailing_file=None,
+                            watching_server=False,
+                            status="server_offline",
+                            message=f"Server is offline; waiting for {expected_text}",
+                            bytes_read=bytes_read,
+                            last_line_at=last_line_at,
                         )
                         time.sleep(1.0)
                         continue
@@ -908,14 +881,43 @@ def monitor() -> None:
                         )
                         last_down_announce = now
 
+                    if now - last_wait_output > 30:
+                        waited = int(now - wait_started)
+                        suffix = (
+                            " Check Server Quick Start paths if the server is already running."
+                            if waited >= WAIT_FOR_LOG_S
+                            else ""
+                        )
+                        _monitor_output(
+                            f"Waiting {waited}s for game log: {expected_text}.{suffix}"
+                        )
+                        last_wait_output = now
+
                     _write_logmon_state(
-                        active=False, tailing_file=None, watching_server=False
+                        active=True,
+                        tailing_file=None,
+                        watching_server=proc_up,
+                        status="waiting_for_log",
+                        message=f"Waiting for game log: {expected_text}",
+                        bytes_read=bytes_read,
+                        last_line_at=last_line_at,
                     )
                     time.sleep(1.0)
                     continue
 
             # Have a path; follow rotations/rewrites
             try:
+                stat_before = p.stat()
+                identity = (int(stat_before.st_dev), int(stat_before.st_ino))
+                if current_identity is None:
+                    current_identity = identity
+                elif identity != current_identity:
+                    current_identity = identity
+                    pos = 0
+                    _monitor_output(f"Game log was replaced; reopened from start: {p}")
+                elif stat_before.st_size < pos:
+                    pos = 0
+                    _monitor_output(f"Game log was truncated; reopened from start: {p}")
                 with p.open("rb") as f:
                     # Seek to last known position
                     f.seek(pos)
@@ -926,6 +928,10 @@ def monitor() -> None:
                             active=True,
                             tailing_file=str(p),
                             watching_server=True,
+                            status="tailing",
+                            message=f"Attached to game log: {p}",
+                            bytes_read=bytes_read,
+                            last_line_at=last_line_at,
                         )
                         _maybe_refresh_http_api()
                         time.sleep(TAIL_POLL_MS / 1000.0)
@@ -933,10 +939,35 @@ def monitor() -> None:
                     pos = f.tell()
             except FileNotFoundError:
                 # rotation mid-read; retry next loop
+                current_path = None
+                current_identity = None
                 time.sleep(0.3)
                 continue
+            except OSError as exc:
+                _monitor_output(f"Cannot read game log {p}: {exc}")
+                _write_logmon_state(
+                    active=True,
+                    tailing_file=str(p),
+                    watching_server=is_server_running(),
+                    status="read_error",
+                    message=f"Cannot read game log: {exc}",
+                    bytes_read=bytes_read,
+                    last_line_at=last_line_at,
+                )
+                time.sleep(1.0)
+                continue
 
-            _write_logmon_state(active=True, tailing_file=str(p), watching_server=True)
+            bytes_read += len(b)
+            last_line_at = datetime.now(timezone.utc).isoformat()
+            _write_logmon_state(
+                active=True,
+                tailing_file=str(p),
+                watching_server=True,
+                status="tailing",
+                message=f"Attached to game log: {p}",
+                bytes_read=bytes_read,
+                last_line_at=last_line_at,
+            )
             text = b.decode("utf-8", "replace")
             now = time.time()
             _maybe_refresh_http_api(now)
@@ -1126,7 +1157,16 @@ def monitor() -> None:
                     shutdown_backup_done = True
 
     finally:
-        _write_logmon_state(active=False, tailing_file=None, watching_server=False)
+        _monitor_output("Stopped.")
+        _write_logmon_state(
+            active=False,
+            tailing_file=None,
+            watching_server=False,
+            status="stopped",
+            message="Log monitor stopped.",
+            bytes_read=bytes_read,
+            last_line_at=last_line_at,
+        )
         _flush_player_snapshot_if_needed(force=True)
         _clear_pid()
 

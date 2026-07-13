@@ -14,6 +14,7 @@ import psutil  # type: ignore
 
 from config_helper import config, get_path
 from Tools.discord import send_discord_message
+from Tools.paths import game_log_file
 from Tools.runtime import (
     PID_SERVER,
     clear_runtime_markers,
@@ -31,7 +32,7 @@ MAX_PLAYERS: int = int(config.get("max_players", 8))
 GAME_PORT: int = int(config.get("game_port", 7777))
 QUERY_PORT: int = int(config.get("query_port", 27015))
 MULTI_HOME_IP: str = str(config.get("multi_home_ip", "0.0.0.0"))
-ABSOLUTE_LOG_FILE: str = str(config.get("absolute_log_file", "") or "")
+ABSOLUTE_LOG_FILE: str = str(game_log_file())
 EXTRA_LAUNCH_ARGS: List[str] = list(config.get("extra_launch_args", []))
 ENABLE_QUERY_PORT: bool = bool(config.get("enable_query_port", True))
 

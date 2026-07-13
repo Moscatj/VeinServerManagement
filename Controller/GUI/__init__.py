@@ -58,6 +58,8 @@ from .quickstart import (
     populate_existing_server_settings,
     quick_start_config_path,
     set_quick_start_mode,
+    update_quick_start_game_log_path,
+    update_quick_start_save_games_path,
 )
 from .about import about_text, show_about_dialog
 
@@ -109,6 +111,8 @@ __all__ = [
     "populate_existing_server_settings",
     "quick_start_config_path",
     "set_quick_start_mode",
+    "update_quick_start_game_log_path",
+    "update_quick_start_save_games_path",
     "about_text",
     "show_about_dialog",
 ]

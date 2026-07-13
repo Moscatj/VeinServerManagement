@@ -11,6 +11,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_SCRIPT = ROOT / "Controller" / "Tools" / "packing" / "build_gui_exe.py"
 INSTALLER_SCRIPT = ROOT / "Installer" / "VeinServerManager.iss"
+BUILD_INSTALLER_SCRIPT = ROOT / "Scripts" / "BuildInstaller.bat"
 CONFIG_TEMPLATE = ROOT / "Config" / "config.example.yaml"
 
 
@@ -25,6 +26,12 @@ def _load_build_module():
 
 
 class PackagingBuildTests(unittest.TestCase):
+    def test_installer_build_rejects_unavailable_python_and_nonzero_tools(self) -> None:
+        text = BUILD_INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Python packaging runtime is unavailable", text)
+        self.assertGreaterEqual(text.count('if not "%errorlevel%"=="0"'), 4)
+
     def test_installer_grants_modify_permissions_to_writable_app_dirs(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
@@ -34,7 +41,76 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_excludes_runtime_folder_contents(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*"', text)
+        self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*,Config\\config.yaml"', text)
+
+    def test_installer_preserves_local_config_during_upgrade_and_repair(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Config\\config.yaml", text)
+        self.assertIn("Flags: onlyifdoesntexist uninsneveruninstall", text)
+        self.assertIn("Update or repair the existing installation (recommended)", text)
+        self.assertIn("preserves local configuration, backups, runtime state, server data", text)
+        self.assertIn("FileExists(AddBackslash(AppDir) + 'Config\\config.yaml')", text)
+
+    def test_installer_detects_previous_server_and_steamcmd_paths(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("procedure DetectExistingInstall;", text)
+        self.assertIn("Runtime\\server_install_path.txt", text)
+        self.assertIn("ReadYamlScalar(ConfigPath, 'steamcmd_path', Candidate)", text)
+        self.assertIn("ServerDirPage.Values[0] := PreviousServerDir;", text)
+        self.assertIn("ExistingSteamCmdDirPage.Values[0] := ExtractFileDir(PreviousSteamCmdExe);", text)
+
+    def test_installer_offers_optional_server_update_and_repair(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Update or repair the existing dedicated server with SteamCMD", text)
+        self.assertIn("Leave the existing dedicated server unchanged (recommended)", text)
+        self.assertIn("+app_update {#SteamAppId} -beta public validate +quit", text)
+        self.assertIn("InstallServerRadio.Checked := False;", text)
+        self.assertIn("ExistingServerRadio.Checked := True;", text)
+        self.assertIn("Stopping monitors and the Vein server before SteamCMD maintenance", text)
+        self.assertIn("'uninstall-cleanup'", text)
+        self.assertIn("SteamCMD server maintenance was skipped", text)
+
+    def test_installer_prepares_running_app_for_in_place_upgrade(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("CloseApplications=yes", text)
+        self.assertIn("RestartApplications=no", text)
+        self.assertIn("CloseApplicationsFilter=VeinManager.exe,VeinTools.exe", text)
+        self.assertIn("function PrepareToInstall(var NeedsRestart: Boolean): String;", text)
+        self.assertIn("'stop-all-monitors'", text)
+
+    def test_installer_starts_with_an_explicit_installation_intent(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("CreateCustomPage(\n    wpWelcome,", text)
+        self.assertIn("Choose What Setup Should Do", text)
+        self.assertIn("Update or repair the existing installation (recommended)", text)
+        self.assertIn("set up a new server in a different folder", text)
+        self.assertIn("Install the management app and a new Vein dedicated server", text)
+        self.assertIn("connect it to an existing Vein server", text)
+
+    def test_upgrade_only_skips_irrelevant_new_install_pages(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("Result := ExistingAppInstall", text)
+        self.assertIn("Result := PreserveExistingServerConfig", text)
+        self.assertIn("Result := not InstallServer", text)
+        self.assertIn("else if not PreserveExistingServerConfig then", text)
+        self.assertIn("The existing server configuration and server files will be left unchanged.", text)
+
+    def test_existing_install_new_server_uses_a_separate_default(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function DefaultSeparateServerDir(): string;", text)
+        self.assertIn("BaseDir := AddBackslash(CurrentAppDir()) + 'Server-New';", text)
+        self.assertIn("while DirExists(Result) do", text)
+        self.assertIn("NextDefault := DefaultSeparateServerDir()", text)
+        self.assertIn("NormalizePathForCompare(ServerDir) = NormalizePathForCompare(PreviousServerDir)", text)
+        self.assertIn("Choose a different folder for the new server.", text)
+        self.assertIn("The new-server folder already contains a Vein dedicated server.", text)
 
     def test_installer_filename_includes_version(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -102,10 +178,10 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_configures_existing_server_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("ExistingServerRadio.Caption := 'Use an existing dedicated server folder';", text)
+        self.assertIn("ExistingServerRadio.Caption := 'Leave the existing dedicated server unchanged (recommended)';", text)
         self.assertIn("procedure ConfigureExistingServer;", text)
         self.assertIn("SteamCmdExe := SelectedSteamCmdExe();", text)
-        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
         self.assertIn("if CurStep = ssPostInstall then", text)
 
     def test_installer_defaults_steamcmd_server_to_app_managed_folder(self) -> None:
@@ -123,8 +199,10 @@ class PackagingBuildTests(unittest.TestCase):
     def test_installer_defaults_to_guided_server_and_steamcmd_install(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("InstallServerRadio.Checked := True;", text)
-        self.assertIn("ExistingServerRadio.Checked := False;", text)
+        self.assertIn("PrimaryIntentRadio.Checked := True;", text)
+        self.assertIn("SetupNewServer := PrimaryIntentRadio.Checked", text)
+        self.assertIn("InstallServerRadio.Checked := False;", text)
+        self.assertIn("ExistingServerRadio.Checked := True;", text)
         self.assertIn("AppSteamCmdRadio.Checked := True;", text)
         self.assertIn("NoSteamCmdRadio.Checked := False;", text)
 
@@ -132,18 +210,20 @@ class PackagingBuildTests(unittest.TestCase):
         text = CONFIG_TEMPLATE.read_text(encoding="utf-8")
 
         self.assertIn('  server_root: "Server"', text)
-        self.assertIn('  saves_dir: "Server/Vein/Saved/SaveGames"', text)
-        self.assertIn('  logs_dir: "Server/Vein/Saved/Logs"', text)
-        self.assertIn('  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"', text)
+        self.assertIn("save_games:", text)
+        self.assertIn("game_log:", text)
+        self.assertIn('  override: ""', text)
+        self.assertNotIn("  logs_dir:", text)
+        self.assertNotIn("  absolute_log_file:", text)
         self.assertIn('  steamcmd_path: "SteamCMD/steamcmd.exe"', text)
 
     def test_installer_rewrites_app_managed_template_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn('ReplaceConfigValue(Content, \'  server_root: "Server"\'', text)
-        self.assertIn('ReplaceConfigValue(Content, \'  saves_dir: "Server/Vein/Saved/SaveGames"\'', text)
-        self.assertIn('ReplaceConfigValue(Content, \'  logs_dir: "Server/Vein/Saved/Logs"\'', text)
-        self.assertIn('ReplaceConfigValue(Content, \'  absolute_log_file: "Server/Vein/Saved/Logs/Vein.log"\'', text)
+        self.assertNotIn("  saves_dir:", text)
+        self.assertNotIn("  logs_dir:", text)
+        self.assertNotIn("  absolute_log_file:", text)
         self.assertIn('ReplaceConfigValue(Content, \'  steamcmd_path: "SteamCMD/steamcmd.exe"\'', text)
         self.assertIn('\'  steamcmd_path: ""\'', text)
 
@@ -159,18 +239,18 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("function ValidateExistingSteamCmdDir: Boolean;", text)
         self.assertIn("SteamCmdExe := AddBackslash(ExistingSteamCmdDirPage.Values[0]) + 'steamcmd.exe';", text)
         self.assertIn("if UseExistingSteamCmd then", text)
-        self.assertIn("Result := not UseExistingSteamCmd;", text)
+        self.assertIn("Result := (not InstallServer) or (not UseExistingSteamCmd);", text)
         self.assertIn("function ValidateSteamCmdChoice: Boolean;", text)
 
-    def test_installer_supports_save_and_log_path_overrides(self) -> None:
+    def test_installer_derives_server_data_paths_from_server_root(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
-        self.assertIn("DataDirPage := CreateInputDirPage", text)
-        self.assertIn("DataDirPage.Add('SaveGames folder:');", text)
-        self.assertIn("DataDirPage.Add('Logs folder:');", text)
-        self.assertIn("procedure SyncDataPathDefaults;", text)
-        self.assertIn("function ValidateDataDirs: Boolean;", text)
-        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
+        self.assertNotIn("DataDirPage", text)
+        self.assertNotIn("SaveGames folder:", text)
+        self.assertNotIn("Logs folder:", text)
+        self.assertNotIn("procedure SyncDataPathDefaults;", text)
+        self.assertNotIn("function ValidateDataDirs: Boolean;", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
 
     def test_installer_validates_existing_server_executable_candidates(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
@@ -226,7 +306,7 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("MB_RETRYCANCEL", text)
         self.assertIn("RetryResult = IDRETRY", text)
         self.assertIn("until InstallSucceeded or (RetryResult <> IDRETRY);", text)
-        self.assertIn("UpdateConfigPaths(ServerDir, DataDirPage.Values[0], DataDirPage.Values[1], SteamCmdExe);", text)
+        self.assertIn("UpdateConfigPaths(ServerDir, SteamCmdExe);", text)
         self.assertIn("SaveServerInstallPath(ServerDir);", text)
         self.assertIn("mbInformation", text)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from PySide6 import QtCore, QtWidgets
@@ -93,6 +94,43 @@ def _add_path_row(
     _add_row(layout, row, label, path_widget)
 
 
+def update_quick_start_game_log_path(owner) -> None:
+    """Show the single game-log path that launch and monitoring will share."""
+    automatic = (
+        Path(owner.edQuickServerRoot.text().strip() or "Server")
+        / "Vein"
+        / "Saved"
+        / "Logs"
+        / "Vein.log"
+    )
+    override = owner.edQuickGameLogOverride.text().strip()
+    use_override = owner.grpQuickGameLogOverride.isChecked() and bool(override)
+    owner.edQuickGameLogResolved.setText(str(Path(override) if use_override else automatic))
+    owner.lblQuickGameLogMode.setText(
+        "Advanced override active. Vein launch and monitoring will both use this file."
+        if use_override
+        else "Automatic from Server root. Vein launch and monitoring will both use this file."
+    )
+
+
+def update_quick_start_save_games_path(owner) -> None:
+    """Show the SaveGames directory derived from the selected server root."""
+    automatic = (
+        Path(owner.edQuickServerRoot.text().strip() or "Server")
+        / "Vein"
+        / "Saved"
+        / "SaveGames"
+    )
+    override = owner.edQuickSaveGamesOverride.text().strip()
+    use_override = owner.grpQuickSaveGamesOverride.isChecked() and bool(override)
+    owner.edQuickSaveGamesResolved.setText(str(Path(override) if use_override else automatic))
+    owner.lblQuickSaveGamesMode.setText(
+        "Advanced override active. Backups will read worlds from this folder."
+        if use_override
+        else "Automatic from Server root. Backups will read Vein worlds from this folder."
+    )
+
+
 def set_quick_start_password_visibility(owner, visible: bool) -> None:
     owner.edQuickPassword.setEchoMode(
         QtWidgets.QLineEdit.Normal if visible else QtWidgets.QLineEdit.Password
@@ -170,6 +208,16 @@ def collect_quick_start_values(owner) -> dict[str, Any]:
         "server_description": owner.txtQuickServerDescription.toPlainText(),
         "server_root": owner.edQuickServerRoot.text(),
         "steamcmd_path": owner.edQuickSteamCmd.text(),
+        "save_games_override": (
+            owner.edQuickSaveGamesOverride.text().strip()
+            if owner.grpQuickSaveGamesOverride.isChecked()
+            else ""
+        ),
+        "game_log_override": (
+            owner.edQuickGameLogOverride.text().strip()
+            if owner.grpQuickGameLogOverride.isChecked()
+            else ""
+        ),
         "max_players": owner.spinQuickMaxPlayers.value(),
         "game_port": owner.spinQuickGamePort.value(),
         "query_port": owner.spinQuickQueryPort.value(),
@@ -289,6 +337,42 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner.btnQuickStartBrowseRoot.setToolTip("Select the Vein dedicated server folder")
     owner.btnQuickStartBrowseSteamCmd = QtWidgets.QPushButton("Browse…")
     owner.btnQuickStartBrowseSteamCmd.setToolTip("Select steamcmd.exe")
+    owner.edQuickSaveGamesResolved = _line_edit()
+    owner.edQuickSaveGamesResolved.setReadOnly(True)
+    owner.edQuickSaveGamesResolved.setToolTip(
+        "Vein stores worlds here. The management app reads this folder for backups."
+    )
+    owner.lblQuickSaveGamesMode = QtWidgets.QLabel()
+    owner.lblQuickSaveGamesMode.setWordWrap(True)
+    owner.grpQuickSaveGamesOverride = QtWidgets.QGroupBox("Advanced: override Vein SaveGames folder")
+    owner.grpQuickSaveGamesOverride.setCheckable(True)
+    owner.grpQuickSaveGamesOverride.setChecked(False)
+    save_override_layout = QtWidgets.QHBoxLayout(owner.grpQuickSaveGamesOverride)
+    owner.edQuickSaveGamesOverride = _line_edit()
+    owner.edQuickSaveGamesOverride.setPlaceholderText(
+        "Select a custom SaveGames folder only when required"
+    )
+    owner.btnQuickSaveGamesBrowse = QtWidgets.QPushButton("Browse…")
+    owner.btnQuickSaveGamesBrowse.setToolTip("Select the custom Vein SaveGames folder")
+    save_override_layout.addWidget(owner.edQuickSaveGamesOverride, 1)
+    save_override_layout.addWidget(owner.btnQuickSaveGamesBrowse)
+    owner.edQuickGameLogResolved = _line_edit()
+    owner.edQuickGameLogResolved.setReadOnly(True)
+    owner.edQuickGameLogResolved.setToolTip(
+        "Vein creates this log. The management app uses the same file for live monitoring."
+    )
+    owner.lblQuickGameLogMode = QtWidgets.QLabel()
+    owner.lblQuickGameLogMode.setWordWrap(True)
+    owner.grpQuickGameLogOverride = QtWidgets.QGroupBox("Advanced: override Vein game log")
+    owner.grpQuickGameLogOverride.setCheckable(True)
+    owner.grpQuickGameLogOverride.setChecked(False)
+    override_layout = QtWidgets.QHBoxLayout(owner.grpQuickGameLogOverride)
+    owner.edQuickGameLogOverride = _line_edit()
+    owner.edQuickGameLogOverride.setPlaceholderText("Select a custom Vein.log only when required")
+    owner.btnQuickGameLogBrowse = QtWidgets.QPushButton("Browse…")
+    owner.btnQuickGameLogBrowse.setToolTip("Select the custom Vein game log file")
+    override_layout.addWidget(owner.edQuickGameLogOverride, 1)
+    override_layout.addWidget(owner.btnQuickGameLogBrowse)
     owner.spinQuickMaxPlayers = _spin(8, 1, 200)
     owner.spinQuickGamePort = _spin(7777)
     owner.spinQuickQueryPort = _spin(27015)
@@ -340,6 +424,18 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
         _add_row(grid, row, label, field)
         row += 1
     _add_path_row(grid, row, "Server root", owner.edQuickServerRoot, owner.btnQuickStartBrowseRoot)
+    row += 1
+    _add_row(grid, row, "Vein SaveGames folder", owner.edQuickSaveGamesResolved)
+    row += 1
+    grid.addWidget(owner.lblQuickSaveGamesMode, row, 1)
+    row += 1
+    grid.addWidget(owner.grpQuickSaveGamesOverride, row, 0, 1, 2)
+    row += 1
+    _add_row(grid, row, "Monitored Vein game log", owner.edQuickGameLogResolved)
+    row += 1
+    grid.addWidget(owner.lblQuickGameLogMode, row, 1)
+    row += 1
+    grid.addWidget(owner.grpQuickGameLogOverride, row, 0, 1, 2)
     row += 1
     _add_path_row(grid, row, "SteamCMD", owner.edQuickSteamCmd, owner.btnQuickStartBrowseSteamCmd)
     row += 1
@@ -440,12 +536,28 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
         "whitelisted_players": owner.txtQuickWhitelist,
         "discord_chat_webhook_url": owner.edQuickDiscordChatWebhook,
         "discord_chat_admin_webhook_url": owner.edQuickDiscordAdminWebhook,
+        "game_log_override": owner.edQuickGameLogOverride,
+        "save_games_override": owner.edQuickSaveGamesOverride,
     }
     owner._quick_start_tracked_widgets = tracked_widgets
     for field, tracked in tracked_widgets.items():
         signal = getattr(tracked, "textChanged", None) or getattr(tracked, "valueChanged", None) or tracked.toggled
         signal.connect(lambda *_, field=field: mark_quick_start_field_changed(owner, field))
     owner.edQuickServerRoot.textChanged.connect(lambda: invalidate_existing_quick_start_load(owner))
+    owner.edQuickServerRoot.textChanged.connect(lambda: update_quick_start_game_log_path(owner))
+    owner.edQuickServerRoot.textChanged.connect(lambda: update_quick_start_save_games_path(owner))
+    owner.edQuickSaveGamesOverride.textChanged.connect(
+        lambda: update_quick_start_save_games_path(owner)
+    )
+    owner.grpQuickSaveGamesOverride.toggled.connect(
+        lambda: update_quick_start_save_games_path(owner)
+    )
+    owner.edQuickGameLogOverride.textChanged.connect(
+        lambda: update_quick_start_game_log_path(owner)
+    )
+    owner.grpQuickGameLogOverride.toggled.connect(
+        lambda: update_quick_start_game_log_path(owner)
+    )
     owner.edQuickPassword.textChanged.connect(lambda: update_quick_start_password_status(owner))
     owner.btnQuickPasswordVisibility.toggled.connect(
         lambda checked: set_quick_start_password_visibility(owner, checked)
@@ -472,6 +584,8 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     )
     update_quick_start_password_status(owner)
     update_quick_start_webhook_statuses(owner)
+    update_quick_start_save_games_path(owner)
+    update_quick_start_game_log_path(owner)
 
     scroll = QtWidgets.QScrollArea()
     scroll.setWidgetResizable(True)

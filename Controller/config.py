@@ -458,6 +458,81 @@ def _normalize_paths(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
         cm["state_file"] = _abs(cm["state_file"])
         cfg["crash_monitor"] = cm
 
+    game_log = cfg.get("game_log")
+    if isinstance(game_log, dict) and game_log.get("override"):
+        game_log["override"] = _abs(game_log["override"])
+        cfg["game_log"] = game_log
+
+    save_games = cfg.get("save_games")
+    if isinstance(save_games, dict) and save_games.get("override"):
+        save_games["override"] = _abs(save_games["override"])
+        cfg["save_games"] = save_games
+
+    return cfg
+
+
+def _resolve_game_log_paths(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Project the automatic/advanced game-log setting into legacy flat keys.
+
+    New configs use ``game_log.override``. A present ``game_log`` section with
+    a blank override explicitly selects automatic discovery below the server
+    root. Older configs retain their existing ``absolute_log_file`` or
+    ``logs_dir`` behavior until Quick Start migrates them.
+    """
+    server_root = Path(str(cfg.get("server_dir") or ""))
+    automatic = server_root / "Vein" / "Saved" / "Logs" / "Vein.log"
+    game_log = cfg.get("game_log")
+    uses_new_setting = isinstance(game_log, dict)
+
+    override = ""
+    if uses_new_setting:
+        override = str(game_log.get("override") or "").strip()
+    else:
+        override = str(cfg.get("absolute_log_file") or "").strip()
+        if not override and cfg.get("logs_dir"):
+            override = str(Path(str(cfg["logs_dir"])) / "Vein.log")
+
+    active = Path(override) if override else automatic
+    cfg["game_log"] = {**(game_log if isinstance(game_log, dict) else {}), "override": override}
+    cfg["game_log_override"] = override
+    cfg["game_log_file"] = str(active)
+
+    # Compatibility projection for existing controllers. These now describe
+    # the resolved Vein game log and never the app's management-log directory.
+    cfg["absolute_log_file"] = str(active)
+    cfg["logs_dir"] = str(active.parent)
+    return cfg
+
+
+def _resolve_save_games_path(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve Vein SaveGames from server root or an advanced override.
+
+    Older configs retain their explicit save path until Quick Start migrates
+    them. The compatibility ``save_dir`` projection keeps backup and health
+    helpers on the same canonical directory.
+    """
+    server_root = Path(str(cfg.get("server_dir") or ""))
+    automatic = server_root / "Vein" / "Saved" / "SaveGames"
+    save_games = cfg.get("save_games")
+    uses_new_setting = isinstance(save_games, dict)
+
+    override = ""
+    if uses_new_setting:
+        override = str(save_games.get("override") or "").strip()
+    else:
+        override = str(cfg.get("save_dir") or "").strip()
+        if not override:
+            backups = cfg.get("backups")
+            if isinstance(backups, dict):
+                override = str(backups.get("save_dir") or "").strip()
+
+    active = Path(override) if override else automatic
+    cfg["save_games"] = {
+        **(save_games if isinstance(save_games, dict) else {}),
+        "override": override,
+    }
+    cfg["save_games_override"] = override
+    cfg["save_dir"] = str(active)
     return cfg
 
 
@@ -608,6 +683,8 @@ def load_config() -> Dict[str, Any]:
     cfg = _with_defaults(cfg, mgmt)
     cfg = _resolve_env_values(cfg)
     cfg = _normalize_paths(cfg, mgmt)
+    cfg = _resolve_game_log_paths(cfg)
+    cfg = _resolve_save_games_path(cfg)
     _resolve_discord_webhook(cfg)
     _validate(cfg)
 

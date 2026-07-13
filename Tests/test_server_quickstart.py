@@ -52,8 +52,11 @@ class ServerQuickStartTests(unittest.TestCase):
 
         self.assertTrue(plan.can_apply)
         self.assertEqual(plan.config_updates["paths"]["server_root"], "Server")
-        self.assertEqual(plan.config_updates["paths"]["saves_dir"], "Server/Vein/Saved/SaveGames")
-        self.assertEqual(plan.config_updates["paths"]["logs_dir"], "Server/Vein/Saved/Logs")
+        self.assertNotIn("saves_dir", plan.config_updates["paths"])
+        self.assertEqual(plan.config_updates["save_games"]["override"], "")
+        self.assertNotIn("logs_dir", plan.config_updates["paths"])
+        self.assertNotIn("absolute_log_file", plan.config_updates["paths"])
+        self.assertEqual(plan.config_updates["game_log"]["override"], "")
         self.assertEqual(plan.config_updates["steam"]["steamcmd_path"], "SteamCMD/steamcmd.exe")
         self.assertEqual(plan.config_updates["server"]["game_port"], 7777)
         self.assertEqual(plan.config_updates["server"]["query_port"], 27015)
@@ -233,6 +236,74 @@ class ServerQuickStartTests(unittest.TestCase):
             self.assertIn("MissingServer", text)
             self.assertTrue(Path(result.config_backup).exists())
             self.assertFalse((base / "MissingServer" / "Vein").exists())
+
+    def test_apply_quick_start_plan_migrates_legacy_game_log_paths(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = base / "config.yaml"
+            cfg.write_text(
+                "\n".join(
+                    [
+                        "version: '2.2'",
+                        "paths:",
+                        "  runtime_dir: Runtime",
+                        "  logs_dir: OldLogs",
+                        "  absolute_log_file: OldLogs/Vein.log",
+                        "  saves_dir: OldSaves",
+                        "logs_dir: OlderLogs",
+                        "absolute_log_file: OlderLogs/Vein.log",
+                        "save_dir: OlderSaves",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            apply_quick_start_plan(
+                {
+                    "server_name": "Migrated Server",
+                    "server_root": str(base / "MissingServer"),
+                    "game_log_override": "",
+                    "http_api_enabled": False,
+                },
+                config_path=cfg,
+                config_backup_root=base / "config-backups",
+            )
+
+            text = cfg.read_text(encoding="utf-8")
+
+        self.assertIn("game_log:", text)
+        self.assertIn("override: ''", text)
+        self.assertNotIn("logs_dir:", text)
+        self.assertNotIn("absolute_log_file:", text)
+        self.assertNotIn("saves_dir:", text)
+        self.assertNotIn("save_dir:", text)
+        self.assertIn("save_games:", text)
+
+    def test_build_quick_start_plan_keeps_advanced_game_log_override(self) -> None:
+        plan = build_quick_start_plan(
+            {
+                "server_name": "Override Server",
+                "game_log_override": "D:/VeinLogs/Custom.log",
+            }
+        )
+
+        self.assertEqual(
+            plan.config_updates["game_log"]["override"],
+            "D:/VeinLogs/Custom.log",
+        )
+
+    def test_build_quick_start_plan_keeps_advanced_save_games_override(self) -> None:
+        plan = build_quick_start_plan(
+            {
+                "server_name": "Override Server",
+                "save_games_override": "D:/VeinWorlds/SaveGames",
+            }
+        )
+
+        self.assertEqual(
+            plan.config_updates["save_games"]["override"],
+            "D:/VeinWorlds/SaveGames",
+        )
 
     def test_apply_quick_start_plan_applies_guarded_server_config_when_root_exists(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

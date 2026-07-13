@@ -89,7 +89,7 @@ class HealthCheckTests(unittest.TestCase):
 
     def test_missing_optional_file_warns(self) -> None:
         result = health_check._check_file(
-            "paths.absolute_log_file",
+            "game_log.active_file",
             ROOT / "missing-health-check.log",
         )
 

@@ -483,9 +483,8 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
     query_port = _port(values.get("query_port"), 27015, field="query_port", issues=issues)
     http_port = _port(values.get("http_port"), 8080, field="http_port", issues=issues)
 
-    save_dir = _text(values.get("save_dir"), _subpath(server_root, "Vein", "Saved", "SaveGames"))
-    logs_dir = _text(values.get("logs_dir"), _subpath(server_root, "Vein", "Saved", "Logs"))
-    absolute_log_file = _text(values.get("absolute_log_file"), _subpath(logs_dir, "Vein.log"))
+    save_games_override = _text(values.get("save_games_override"))
+    game_log_override = _text(values.get("game_log_override"))
     backup_root = _text(values.get("backup_root"), "Backups")
     save_filenames = _strings(values.get("save_filenames")) or DEFAULT_SAVE_FILENAMES
     admin_ids = _strings(values.get("admin_steam_ids"))
@@ -545,12 +544,11 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
     config_updates: dict[str, Any] = {
         "paths": {
             "server_root": server_root,
-            "saves_dir": save_dir,
-            "logs_dir": logs_dir,
-            "absolute_log_file": absolute_log_file,
             "runtime_dir": _text(values.get("runtime_dir"), "Runtime"),
             "mgmt_log_dir": _text(values.get("mgmt_log_dir"), "Logs"),
         },
+        "save_games": {"override": save_games_override},
+        "game_log": {"override": game_log_override},
         "server": {
             "executables": list(executables),
             "preferred_exe": preferred_exe,
@@ -664,6 +662,28 @@ def apply_quick_start_plan(
     template = _config_template_for(target)
     base = _load_yaml_mapping(template or target)
     merged = _deep_merge(base, plan.config_updates)
+    if "game_log" in plan.config_updates:
+        # Quick Start owns the migration to the single canonical game-log
+        # setting. Remove obsolete values so the saved YAML cannot imply that
+        # users must maintain both a log directory and a log-file path.
+        paths = merged.get("paths")
+        if isinstance(paths, dict):
+            paths.pop("logs_dir", None)
+            paths.pop("absolute_log_file", None)
+        merged.pop("logs_dir", None)
+        merged.pop("absolute_log_file", None)
+    if "save_games" in plan.config_updates:
+        paths = merged.get("paths")
+        if isinstance(paths, dict):
+            paths.pop("saves_dir", None)
+            paths.pop("save_dir", None)
+        backups = merged.get("backups")
+        if isinstance(backups, dict):
+            backups.pop("save_dir", None)
+        backup = merged.get("backup")
+        if isinstance(backup, dict):
+            backup.pop("save_dir", None)
+        merged.pop("save_dir", None)
     before = _dump_yaml(base)
     after = _dump_yaml(merged)
     backup = _backup_file(target, Path(config_backup_root).expanduser() if config_backup_root else DEFAULT_CONFIG_BACKUP_ROOT)

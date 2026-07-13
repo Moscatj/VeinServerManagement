@@ -235,6 +235,12 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.btnQuickStartApply.property("buttonRole"), BUTTON_PRIMARY)
         self.assertEqual(values["setup_mode"], "new")
         self.assertFalse(owner.btnQuickStartApply.isEnabled())
+        self.assertTrue(owner.edQuickGameLogResolved.isReadOnly())
+        self.assertFalse(owner.grpQuickGameLogOverride.isChecked())
+        self.assertEqual(values["game_log_override"], "")
+        self.assertTrue(owner.edQuickSaveGamesResolved.isReadOnly())
+        self.assertFalse(owner.grpQuickSaveGamesOverride.isChecked())
+        self.assertEqual(values["save_games_override"], "")
         self.assertEqual(owner.btnQuickStartBrowseRoot.text(), "Browse…")
         self.assertEqual(owner.btnQuickStartBrowseSteamCmd.text(), "Browse…")
         self.assertEqual(values["server_name"], "Preview Server")
@@ -242,6 +248,55 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("Server Quick Start Preview", preview)
         self.assertIn("Preview Server", preview)
         self.assertIn("AdminSteamIDs", preview)
+
+    def test_quick_start_game_log_follows_server_root_until_overridden(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        owner.edQuickServerRoot.setText("D:/Servers/Vein")
+
+        self.assertEqual(
+            Path(owner.edQuickGameLogResolved.text()),
+            Path("D:/Servers/Vein/Vein/Saved/Logs/Vein.log"),
+        )
+        self.assertIn("Automatic from Server root", owner.lblQuickGameLogMode.text())
+
+        owner.grpQuickGameLogOverride.setChecked(True)
+        owner.edQuickGameLogOverride.setText("E:/Custom/Vein-server.log")
+        values = collect_quick_start_values(owner)
+
+        self.assertEqual(
+            Path(owner.edQuickGameLogResolved.text()),
+            Path("E:/Custom/Vein-server.log"),
+        )
+        self.assertEqual(values["game_log_override"], "E:/Custom/Vein-server.log")
+        self.assertIn("Advanced override active", owner.lblQuickGameLogMode.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_save_games_follows_server_root_until_overridden(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        owner.edQuickServerRoot.setText("D:/Servers/Vein")
+
+        self.assertEqual(
+            Path(owner.edQuickSaveGamesResolved.text()),
+            Path("D:/Servers/Vein/Vein/Saved/SaveGames"),
+        )
+        self.assertIn("Automatic from Server root", owner.lblQuickSaveGamesMode.text())
+
+        owner.grpQuickSaveGamesOverride.setChecked(True)
+        owner.edQuickSaveGamesOverride.setText("E:/Custom/Worlds")
+        values = collect_quick_start_values(owner)
+
+        self.assertEqual(Path(owner.edQuickSaveGamesResolved.text()), Path("E:/Custom/Worlds"))
+        self.assertEqual(values["save_games_override"], "E:/Custom/Worlds")
+        self.assertIn("Advanced override active", owner.lblQuickSaveGamesMode.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_quick_start_config_path_avoids_example_templates(self) -> None:
         class Owner:

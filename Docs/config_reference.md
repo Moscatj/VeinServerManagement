@@ -27,21 +27,10 @@ backups, Discord routing, and Steam update settings.
   • Where runtime flags, PIDs, and state JSONs are written.  
   • Current: Runtime
 
-- save_dir  
-  • Game save directory used for backup/restore.  
-  • Current: Server/Vein/Saved/SaveGames
-
 - save_filenames (list)  
-  • Candidate save file names in `save_dir`.  
+  • Candidate world-save file names in the resolved SaveGames directory.
   • Current: ["Server.vns", "Server.sav"]
 
-- logs_dir  
-  • Directory where Vein writes rolling logs.  
-  • Current: Server/Vein/Saved/Logs
-
-- absolute_log_file  
-  • If set, the log monitor tails this specific file instead of auto-picking the newest log.  
-  • Current: Server/Vein/Saved/Logs/Vein.log
 - mgmt_log_dir  
   • Root folder for management-suite stdout/stderr logs (VeinManager, monitors, helpers).  
   • Current: Logs
@@ -50,6 +39,37 @@ backups, Discord routing, and Steam update settings.
 - backup_root  
   • Root folder for all backup categories.  
   • Current: Backups
+
+---
+
+## Vein SaveGames
+
+- save_games.override
+  • Advanced override for the Vein-generated world-save directory.
+  • Leave blank for the recommended automatic path:
+    `<server root>/Vein/Saved/SaveGames`.
+  • Backups and health checks use the same resolved directory.
+  • Legacy `save_dir`, `paths.save_dir`, and `paths.saves_dir` values remain
+    readable, but Quick Start migrates them to this single setting.
+
+The installer derives SaveGames from Server root and does not ask novice users
+to select Vein's internal data folders.
+
+---
+
+## Vein Game Log
+
+- game_log.override
+  • Advanced override for the Vein-generated log read by the management app.
+  • Leave blank for the recommended automatic path:
+    `<server root>/Vein/Saved/Logs/Vein.log`.
+  • Server launch and log monitoring use the same resolved file.
+  • Legacy `logs_dir` and `absolute_log_file` values remain readable, but Quick
+    Start migrates them to this single setting.
+
+The Vein Game Log is read-only to the management suite. It is separate from
+app-owned Management Logs under `Logs/` and Runtime Status Data under
+`Runtime/`.
 
 ---
 
@@ -303,7 +323,7 @@ These drive which subsystems run, and which categories are allowed to post to Di
 ## Used By (quick map)
 
 - start_server.py → paths, executables, ports, Steam update, preboot_shutdown, startup_quiet_seconds  
-- monitor_log.py → logs_dir / absolute_log_file, monitor.* (track/notify/heartbeat), autosave backup policy  
+- monitor_log.py → resolved Vein Game Log, monitor.* (track/notify/heartbeat), autosave backup policy
 - crash_monitor.py → crash_monitor_interval_seconds, restart_throttle_seconds, startup_quiet_seconds  
 - shutdown_server.py → pre_shutdown_warning_seconds, backup paths, quiet/throttle during stop  
 - Controller/Tools/* → feature gates, backups, Discord channel gates
@@ -315,6 +335,6 @@ These drive which subsystems run, and which categories are allowed to post to Di
 
 - ENV indirection: set the REAL Discord URL in your environment as DISCORD_WEBHOOK_URL.  
 - If you change `server_dir` or executable names, verify in the GUI preflight.  
-- Keep `absolute_log_file` set to the main log for most stable tailing.  
+- Leave `game_log.override` blank unless a nonstandard server layout requires a custom file.
 - To avoid touching any Vein game files directly, the toolkit leaves Vein.log alone; use external tooling if you need log archival.
 - If crash monitor flaps, increase `startup_quiet_seconds` and/or `restart_throttle_seconds`.

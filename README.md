@@ -112,7 +112,13 @@ For normal users, use the Windows installer from the GitHub Releases page when a
 - `VeinTools.exe` for command-line operations such as health checks, server start/stop, monitor control, and backups.
 - A local `Config/config.yaml` copied from the sanitized app-managed template.
 - Optional full-package setup that keeps app-managed SteamCMD under `SteamCMD\` and installs a new dedicated server under `Server\` by default.
-- Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and override the SaveGames/log folders used by monitoring and backups.
+- Existing-install setup that can point at an existing dedicated server folder, reuse an existing SteamCMD folder, and automatically resolve Vein SaveGames and the Vein Game Log from that root.
+- In-place upgrade and repair using the same installer AppId. Existing local
+  config, backups, runtime state, and server data are preserved; SteamCMD server
+  update/validation remains an explicit installer choice. When an installation
+  is detected, the first setup page clearly separates an app-only update/repair
+  from setting up a new dedicated server in a different folder. App-only
+  maintenance skips unrelated server and SteamCMD questions.
 - Read-only diagnostics through `VeinTools.exe health-check` and `VeinTools.exe server-config-check`.
 
 The repository itself is the developer/source workflow. Clone it when you want to inspect code, run tests, or build the installer locally.

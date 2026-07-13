@@ -6,6 +6,46 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Fixed clean-install live logging so the GUI begins watching before the game
+  creates its first `Vein.log`, then attaches automatically when the file
+  appears and reopens logs that are replaced or truncated.
+- Hardened log discovery across configured and app-managed server paths, added
+  packaged monitor stdout diagnostics and actionable runtime state, and made
+  the Home dashboard distinguish waiting, tailing, offline, and read-error
+  states.
+- Aligned the log monitor's graceful-stop flag with the GUI and lifecycle
+  controllers. Packaged monitoring continues to run through bundled
+  `VeinTools.exe` without requiring Python or developer dependencies.
+- Made installer builds fail when the selected Python/PyInstaller command is
+  unavailable or exits nonzero, preventing an old staged bundle from being
+  mislabeled as a successful new build.
+- Simplified game-log configuration to one canonical Vein Game Log derived
+  from the selected server root, with a hidden advanced file override shared
+  by server launch and monitoring. Quick Start removes obsolete legacy log
+  keys when saving while older configs remain readable.
+- Removed the redundant installer log-folder prompt and clarified the GUI tabs
+  that show Vein Game Log output, management logs, and runtime monitor status.
+- Removed the installer SaveGames prompt and now derives Vein's world-save
+  directory from Server root. Quick Start shows the resolved directory and
+  keeps custom SaveGames locations behind an advanced folder override.
+- Added installer-driven in-place upgrade and repair detection. Existing local
+  config and server data are preserved, prior server/SteamCMD paths are reused,
+  and optional SteamCMD server repair/update runs only after the canonical
+  controlled shutdown succeeds.
+- Refined installer onboarding around an explicit first-step goal. Detected
+  installations now default to a streamlined app-only update/repair that leaves
+  server configuration untouched, while a separate intentional workflow can
+  install a new server under a different root. Ready-page wording and subsequent
+  questions follow the selected goal.
+- Hardened the source-development GUI launcher so it deterministically selects
+  a usable windowless Python runtime and captures failures that occur before the
+  normal GUI logger starts. Silent bootstrap failures now produce an actionable
+  dialog and a traceback under `Logs/gui/bootstrap/`.
+- Fixed a native Windows GUI crash caused by overlapping background status
+  workers reparsing YAML. Status polling now permits only one active worker,
+  captures its small config snapshot before execution, and never invokes a YAML
+  parser from the worker thread.
+
 ## 2.8.2 - 2026-07-11
 
 - Made the dedicated runtime binary

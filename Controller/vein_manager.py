@@ -99,6 +99,8 @@ try:
         StatusRenderer,
         show_about_dialog,
         set_quick_start_mode,
+        update_quick_start_game_log_path,
+        update_quick_start_save_games_path,
     )
 except Exception as e:
     print(f"[FATAL] Could not import Controller.GUI components: {e}")
@@ -616,22 +618,49 @@ def _runtime_paths(cfg_path: str) -> dict:
 
     monitor = cfg.get("log_monitor") or cfg.get("monitor") or {}
     monitor = monitor if isinstance(monitor, dict) else {}
+    game_log_cfg = cfg.get("game_log")
+    uses_game_log_setting = isinstance(game_log_cfg, dict)
+    game_log_override = (
+        str(game_log_cfg.get("override") or "").strip()
+        if uses_game_log_setting
+        else str(_cfg_path_value(cfg, "absolute_log_file") or "").strip()
+    )
+    if game_log_override:
+        resolved_game_log = Path(game_log_override)
+    elif not uses_game_log_setting and _cfg_path_value(
+        cfg, "logs_dir", aliases=("logs_dir", "logs")
+    ):
+        resolved_game_log = Path(
+            _cfg_path_value(cfg, "logs_dir", aliases=("logs_dir", "logs"))
+        ) / "Vein.log"
+    else:
+        resolved_game_log = server_dir / "Vein" / "Saved" / "Logs" / "Vein.log"
+
+    save_games_cfg = cfg.get("save_games")
+    uses_save_games_setting = isinstance(save_games_cfg, dict)
+    save_games_override = (
+        str(save_games_cfg.get("override") or "").strip()
+        if uses_save_games_setting
+        else str(_cfg_path_value(cfg, "save_dir", aliases=("saves_dir", "save_dir")) or "").strip()
+    )
+    resolved_save_games = (
+        Path(save_games_override)
+        if save_games_override
+        else server_dir / "Vein" / "Saved" / "SaveGames"
+    )
 
     return {
         "runtime_dir": rt,
+        "server_dir": server_dir,
         "state_flag": rt / "server_running.flag",
         "shutdown_flag": rt / "shutdown_in_progress.flag",
         "server_state": rt / "server_state.json",
         "crash_state": rt / "crash_monitor_state.json",
-        "logs_dir": Path(
-            _cfg_path_value(cfg, "logs_dir", aliases=("logs_dir", "logs"))
-            or (server_dir / "Vein" / "Saved" / "Logs")
-        ),
-        "absolute_log_file": (
-            Path(_cfg_path_value(cfg, "absolute_log_file"))
-            if _cfg_path_value(cfg, "absolute_log_file")
-            else None
-        ),
+        "logs_dir": resolved_game_log.parent,
+        "absolute_log_file": resolved_game_log,
+        "game_log_override": Path(game_log_override) if game_log_override else None,
+        "save_dir": resolved_save_games,
+        "save_games_override": Path(save_games_override) if save_games_override else None,
         "backup_root": backup_root,
         "features": cfg.get("features", {}),
         "log_monitor_enabled": bool(
@@ -647,11 +676,25 @@ def _runtime_paths(cfg_path: str) -> dict:
 
 def _resolve_logfile(cfg_path: str, overrides: Dict[str, str]) -> Path:
     rp = _runtime_paths(cfg_path)
-    if overrides.get("log_file"):
-        return Path(overrides["log_file"])
-    if rp["absolute_log_file"] and rp["absolute_log_file"].exists():
-        return rp["absolute_log_file"]
-    return rp["logs_dir"] / "Vein.log"
+    candidates = [
+        rp["absolute_log_file"],
+        rp["logs_dir"] / "Vein.log",
+        rp["server_dir"] / "Vein" / "Saved" / "Logs" / "Vein.log",
+        rp["server_dir"] / "Saved" / "Logs" / "Vein.log",
+    ]
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        key = str(candidate).casefold()
+        if key not in seen:
+            unique.append(candidate)
+            seen.add(key)
+    for candidate in unique:
+        if candidate.is_file():
+            return candidate
+    return unique[0] if unique else rp["logs_dir"] / "Vein.log"
 
 
 def _derived_scripts(cfg_path: str) -> Dict[str, Path]:
@@ -979,7 +1022,6 @@ class AdvancedDialog(QtWidgets.QDialog):
             ("Stop Server (shutdown_server.py)", "shutdown_server"),
             ("Log Monitor (monitor_log.py)", "monitor_log"),
             ("Crash Monitor (crash_monitor.py)", "crash_monitor"),
-            ("Log file (override)", "log_file"),
         ]
         self.edits: Dict[str, QtWidgets.QLineEdit] = {}
         row = 0
@@ -1011,18 +1053,11 @@ class AdvancedDialog(QtWidgets.QDialog):
 
     def _pick(self, key: str, le: QtWidgets.QLineEdit):
         cur = le.text().strip() or str(Path.home())
-        if key == "log_file":
-            p, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Select log file", cur, "Log files (*.log *.txt);;All files (*.*)"
-            )
-            if p:
-                le.setText(p)
-        else:
-            p, _ = QtWidgets.QFileDialog.getOpenFileName(
-                self, "Select python script", cur, "Python (*.py);;All files (*.*)"
-            )
-            if p:
-                le.setText(p)
+        p, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select python script", cur, "Python (*.py);;All files (*.*)"
+        )
+        if p:
+            le.setText(p)
 
     def _reset_defaults(self):
         q = QtCore.QSettings(APP_ORG, APP_NAME)
@@ -1038,7 +1073,7 @@ class AdvancedDialog(QtWidgets.QDialog):
         ov = q.value("overrides", {}) or {}
         resolved = _resolved_paths(self.cfg_path, ov if not use_defs else {})
         for k, le in self.edits.items():
-            le.setText(str(ov.get(k, "" if k == "log_file" else resolved.get(k, ""))))
+            le.setText(str(ov.get(k, resolved.get(k, ""))))
 
     def _sync_enabled(self):
         enabled = not self.chk_use_defaults.isChecked()
@@ -1478,7 +1513,7 @@ class Main(QtWidgets.QMainWindow):
             lambda: self._open_folder(self._resolved_paths()["log_file"].parent),
         )
         shortcuts.addAction(
-            "Open Runtime Folder",
+            "Open Runtime Status Folder",
             lambda: self._open_folder(_runtime_paths(self.config_path)["runtime_dir"]),
         )
         shortcuts.addAction(
@@ -1659,6 +1694,10 @@ class Main(QtWidgets.QMainWindow):
             self.btnQuickStartBrowseRoot.clicked.connect(self._browse_quick_start_server_root)
         if hasattr(self, "btnQuickStartBrowseSteamCmd"):
             self.btnQuickStartBrowseSteamCmd.clicked.connect(self._browse_quick_start_steamcmd)
+        if hasattr(self, "btnQuickGameLogBrowse"):
+            self.btnQuickGameLogBrowse.clicked.connect(self._browse_quick_start_game_log)
+        if hasattr(self, "btnQuickSaveGamesBrowse"):
+            self.btnQuickSaveGamesBrowse.clicked.connect(self._browse_quick_start_save_games)
         if hasattr(self, "btnQuickStartLoadExisting"):
             self.btnQuickStartLoadExisting.clicked.connect(self._load_existing_quick_start_settings)
         if hasattr(self, "edQuickServerRoot"):
@@ -2219,8 +2258,24 @@ class Main(QtWidgets.QMainWindow):
         self.lblLogDot.setStyleSheet(
             dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh))
         )
-        self.lblLogStatus.setText("running" if lm_on else "stopped")
-        self.lblLogLast.setText(f"Last update: {_age_str(last)}")
+        monitor_status = str(lms.get("status") or "").strip() if lms else ""
+        monitor_message = str(lms.get("message") or "").strip() if lms else ""
+        status_labels = {
+            "waiting_for_log": "waiting for game log",
+            "server_offline": "idle (server offline)",
+            "tailing": "tailing game log",
+            "read_error": "game log read error",
+            "stopped": "stopped",
+        }
+        self.lblLogStatus.setText(
+            status_labels.get(monitor_status, "running" if lm_on else "stopped")
+        )
+        self.lblLogStatus.setToolTip(monitor_message)
+        last_line = lms.get("last_line_at") if lms else None
+        if last_line:
+            self.lblLogLast.setText(f"Last game log activity: {_age_str(last_line)}")
+        else:
+            self.lblLogLast.setText(f"Last monitor update: {_age_str(last)}")
         runtime_labels = server_runtime_labels(server_on, st)
         self.lblLogJoin.setText(runtime_labels["joinable"])
         self.lblLogPlayers.setText(runtime_labels["players"])
@@ -2766,9 +2821,17 @@ class Main(QtWidgets.QMainWindow):
         return f"{seconds//3600:02d}:{(seconds%3600)//60:02d}:{seconds%60:02d}"
 
     def _kick_status_poll(self):
+        if self._poller is not None:
+            return
         worker = StatusPoller(self.config_path, _load_any_config)
         worker.signals.ready.connect(self._apply_status_snapshot)
+        worker.signals.finished.connect(self._status_poll_finished)
+        self._poller = worker
         self._pool.start(worker)
+
+    @QtCore.Slot()
+    def _status_poll_finished(self):
+        self._poller = None
 
     def _kick_preflight_check(self):
         if getattr(self, "_preflight_running", False):
@@ -2979,6 +3042,37 @@ class Main(QtWidgets.QMainWindow):
         if selected:
             self.edQuickSteamCmd.setText(selected)
 
+    def _browse_quick_start_game_log(self):
+        current = Path(
+            self.edQuickGameLogOverride.text().strip()
+            or self.edQuickGameLogResolved.text().strip()
+            or "Vein.log"
+        ).expanduser()
+        selected, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select Vein Game Log",
+            str(current.parent),
+            "Vein game log (Vein.log);;Log files (*.log);;All files (*)",
+        )
+        if selected:
+            self.grpQuickGameLogOverride.setChecked(True)
+            self.edQuickGameLogOverride.setText(selected)
+
+    def _browse_quick_start_save_games(self):
+        current = Path(
+            self.edQuickSaveGamesOverride.text().strip()
+            or self.edQuickSaveGamesResolved.text().strip()
+            or "SaveGames"
+        ).expanduser()
+        selected = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Select Vein SaveGames Folder",
+            str(current),
+        )
+        if selected:
+            self.grpQuickSaveGamesOverride.setChecked(True)
+            self.edQuickSaveGamesOverride.setText(selected)
+
     def _quick_start_runtime_paths(self):
         cfg = _load_cfg_for_runtime(self.config_path)
         configured_root = str(cfg.get("server_dir") or "").strip()
@@ -2986,13 +3080,27 @@ class Main(QtWidgets.QMainWindow):
             str(item) for item in (cfg.get("server_executables") or []) if str(item).strip()
         ]
         steamcmd_path = str(cfg.get("steamcmd_path") or "").strip()
+        game_log_override = str(cfg.get("game_log_override") or "").strip()
+        save_games_override = str(cfg.get("save_games_override") or "").strip()
         self._quick_start_existing_executables = executables
-        return configured_root, steamcmd_path, executables
+        return (
+            configured_root,
+            steamcmd_path,
+            executables,
+            game_log_override,
+            save_games_override,
+        )
 
     def _initialize_quick_start_mode(self):
-        configured_root, steamcmd_path, executables = self._quick_start_runtime_paths()
+        configured_root, steamcmd_path, executables, game_log_override, save_games_override = self._quick_start_runtime_paths()
         if steamcmd_path:
             self.edQuickSteamCmd.setText(steamcmd_path)
+        self.edQuickGameLogOverride.setText(game_log_override)
+        self.grpQuickGameLogOverride.setChecked(bool(game_log_override))
+        self.edQuickSaveGamesOverride.setText(save_games_override)
+        self.grpQuickSaveGamesOverride.setChecked(bool(save_games_override))
+        update_quick_start_save_games_path(self)
+        update_quick_start_game_log_path(self)
         if configured_root:
             inspection = inspect_server_root(configured_root, executables or None)
             if inspection.is_existing_server:
@@ -3003,7 +3111,7 @@ class Main(QtWidgets.QMainWindow):
         root = self.edQuickServerRoot.text().strip()
         if not root:
             return
-        _, _, executables = self._quick_start_runtime_paths()
+        _, _, executables, _, _ = self._quick_start_runtime_paths()
         inspection = inspect_server_root(root, executables or None)
         if enforce_quick_start_root_mode(self, inspection):
             if self.cmbQuickSetupMode.currentData() == "existing" and not getattr(
@@ -3024,7 +3132,7 @@ class Main(QtWidgets.QMainWindow):
             self._inspect_quick_start_server_root()
             return
 
-        configured_root, steamcmd_path, _ = self._quick_start_runtime_paths()
+        configured_root, steamcmd_path, _, _, _ = self._quick_start_runtime_paths()
         detected_root = str(getattr(self, "_quick_start_auto_detected_root", "") or "").strip()
         self._quick_start_auto_detected_root = ""
         current_root = self.edQuickServerRoot.text().strip()

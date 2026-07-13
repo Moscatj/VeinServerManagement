@@ -318,13 +318,13 @@ class LogPanelController(QtCore.QObject):
                 return self.owner._resolved_paths()["log_file"]
 
         gp = game_provider()
+        self.tail_game = FileTail(game_provider, parent=self)
+        self.tail_game.chunk.connect(self._on_game_line)
+        self.tail_game.start()
         if gp and gp.exists():
-            self.tail_game = FileTail(game_provider, parent=self)
-            self.tail_game.chunk.connect(self._on_game_line)
-            self.tail_game.start()
             self.owner._status(f"Tailing game: {gp}")
         else:
-            self.owner._status(f"Game log not found: {gp}")
+            self.owner._status(f"Waiting for game log to be created: {gp}")
 
         lm_provider = lambda: mgmt_logs.latest_log_path("monitor_log", "stdout")
         cm_provider = lambda: mgmt_logs.latest_log_path("crash_monitor", "stdout")

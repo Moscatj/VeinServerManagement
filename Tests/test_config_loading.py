@@ -102,6 +102,85 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertEqual(cfg["steamcmd_path"], str(steamcmd))
         self.assertEqual(cfg["steam"]["steamcmd_path"], str(steamcmd))
 
+    def test_blank_game_log_override_derives_log_from_server_root(self) -> None:
+        server_root = ROOT / "ExampleServer"
+        resolved = config_module._resolve_game_log_paths(
+            {
+                "server_dir": str(server_root),
+                "game_log": {"override": ""},
+                "absolute_log_file": "ignored/legacy.log",
+            }
+        )
+
+        expected = server_root / "Vein" / "Saved" / "Logs" / "Vein.log"
+        self.assertEqual(resolved["game_log_file"], str(expected))
+        self.assertEqual(resolved["absolute_log_file"], str(expected))
+        self.assertEqual(resolved["logs_dir"], str(expected.parent))
+        self.assertEqual(resolved["game_log_override"], "")
+
+    def test_game_log_override_is_canonical_when_configured(self) -> None:
+        override = ROOT / "CustomLogs" / "server-output.log"
+        resolved = config_module._resolve_game_log_paths(
+            {
+                "server_dir": str(ROOT / "ExampleServer"),
+                "game_log": {"override": str(override)},
+            }
+        )
+
+        self.assertEqual(resolved["game_log_file"], str(override))
+        self.assertEqual(resolved["game_log_override"], str(override))
+        self.assertEqual(resolved["logs_dir"], str(override.parent))
+
+    def test_legacy_game_log_path_remains_compatible_until_migrated(self) -> None:
+        legacy = ROOT / "LegacyLogs" / "Vein.log"
+        resolved = config_module._resolve_game_log_paths(
+            {
+                "server_dir": str(ROOT / "ExampleServer"),
+                "absolute_log_file": str(legacy),
+            }
+        )
+
+        self.assertEqual(resolved["game_log_file"], str(legacy))
+        self.assertEqual(resolved["game_log_override"], str(legacy))
+
+    def test_blank_save_games_override_derives_from_server_root(self) -> None:
+        server_root = ROOT / "ExampleServer"
+        resolved = config_module._resolve_save_games_path(
+            {
+                "server_dir": str(server_root),
+                "save_games": {"override": ""},
+                "save_dir": "ignored/legacy",
+            }
+        )
+
+        expected = server_root / "Vein" / "Saved" / "SaveGames"
+        self.assertEqual(resolved["save_dir"], str(expected))
+        self.assertEqual(resolved["save_games_override"], "")
+
+    def test_save_games_override_is_canonical_when_configured(self) -> None:
+        override = ROOT / "CustomWorlds" / "SaveGames"
+        resolved = config_module._resolve_save_games_path(
+            {
+                "server_dir": str(ROOT / "ExampleServer"),
+                "save_games": {"override": str(override)},
+            }
+        )
+
+        self.assertEqual(resolved["save_dir"], str(override))
+        self.assertEqual(resolved["save_games_override"], str(override))
+
+    def test_legacy_save_dir_remains_compatible_until_migrated(self) -> None:
+        legacy = ROOT / "LegacyWorlds"
+        resolved = config_module._resolve_save_games_path(
+            {
+                "server_dir": str(ROOT / "ExampleServer"),
+                "save_dir": str(legacy),
+            }
+        )
+
+        self.assertEqual(resolved["save_dir"], str(legacy))
+        self.assertEqual(resolved["save_games_override"], str(legacy))
+
 
 if __name__ == "__main__":
     unittest.main()

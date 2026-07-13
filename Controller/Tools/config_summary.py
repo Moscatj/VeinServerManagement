@@ -16,7 +16,7 @@ def resolve_save_file() -> Path:
 
 def summarize_config() -> Dict[str, object]:
     server_dir = paths.server_dir()
-    logs_dir = paths.logs_dir()
+    game_log = paths.game_log_file()
     save_dir = paths.save_dir()
     exe = resolve_server_executable(
         server_dir, list(config.get("server_executables", []))
@@ -27,7 +27,9 @@ def summarize_config() -> Dict[str, object]:
         "server_dir": str(server_dir),
         "backup_root": str(bview.get("root") or get_path("backup_root")),
         "save_dir": str(save_dir),
-        "logs_dir": str(logs_dir),
+        "save_games_override": paths.save_games_override(),
+        "game_log_file": str(game_log),
+        "game_log_override": paths.game_log_override(),
         "executable_selected": str(exe) if exe else None,
         "executable_candidates": list(config.get("server_executables", [])),
         "map_url": config.get("map_path", "/Game/Vein/Maps/ChamplainValley?listen"),
