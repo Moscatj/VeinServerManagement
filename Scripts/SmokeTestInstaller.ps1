@@ -36,7 +36,7 @@ $uninstallLog = Join-Path $logDir "uninstall.log"
 $installed = $false
 $uninstalled = $false
 
-function Invoke-CheckedExecutable {
+function Invoke-CheckedConsoleExecutable {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
         [Parameter(Mandatory = $true)][string[]]$Arguments,
@@ -54,15 +54,27 @@ function Invoke-CheckedExecutable {
     }
 }
 
+function Invoke-CheckedGuiExecutable {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "$FilePath exited with code $($process.ExitCode)."
+    }
+}
+
 try {
     Write-Host "[SMOKE] Installing management app only into $installDir"
-    Invoke-CheckedExecutable -FilePath $installer -Arguments @(
+    Invoke-CheckedGuiExecutable -FilePath $installer -Arguments @(
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
         "/MANAGEMENTAPPONLY=1",
-        "/DIR=$installDir",
-        "/LOG=$setupLog"
+        "/DIR=`"$installDir`"",
+        "/LOG=`"$setupLog`""
     )
     $installed = $true
 
@@ -85,8 +97,8 @@ try {
     }
 
     Write-Host "[SMOKE] Running packaged CLI help and health checks"
-    Invoke-CheckedExecutable -FilePath $tools -Arguments @("--help") -OutputPath $cliLog
-    Invoke-CheckedExecutable -FilePath $tools -Arguments @(
+    Invoke-CheckedConsoleExecutable -FilePath $tools -Arguments @("--help") -OutputPath $cliLog
+    Invoke-CheckedConsoleExecutable -FilePath $tools -Arguments @(
         "--config", $config, "health-check"
     ) -OutputPath $healthLog
 
@@ -101,11 +113,11 @@ try {
     }
 
     Write-Host "[SMOKE] Uninstalling the packaged management app"
-    Invoke-CheckedExecutable -FilePath $resolvedUninstaller -Arguments @(
+    Invoke-CheckedGuiExecutable -FilePath $resolvedUninstaller -Arguments @(
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
-        "/LOG=$uninstallLog"
+        "/LOG=`"$uninstallLog`""
     )
     $uninstalled = $true
 
@@ -128,7 +140,9 @@ finally {
                 $resolvedFallback = (Resolve-Path $fallbackUninstaller).Path
                 $installPrefix = $installDir.TrimEnd('\') + '\'
                 if ($resolvedFallback.StartsWith($installPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                    & $resolvedFallback /VERYSILENT /SUPPRESSMSGBOXES /NORESTART *> $null
+                    Start-Process -FilePath $resolvedFallback -ArgumentList @(
+                        "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+                    ) -Wait | Out-Null
                 }
             }
         }

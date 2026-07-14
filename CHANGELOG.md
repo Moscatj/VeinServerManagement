@@ -28,6 +28,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Added an isolated CI install/uninstall smoke test that skips SteamCMD, runs
   the packaged CLI and health check, verifies required package files, confirms
   config preservation, and retains installer diagnostics for seven days.
+- Fixed the smoke runner to wait for GUI-subsystem installer and uninstaller
+  processes and evaluate their actual exit codes.
 - Fixed the packaging runtime check so Python 3.12 no longer emits the Python
   3.13 compatibility warning.
 - Added a shared local/CI validation command and an owner publishing helper that

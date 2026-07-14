@@ -68,6 +68,9 @@ class PackagingBuildTests(unittest.TestCase):
             self.assertIn(value, text)
         self.assertIn("Installer smoke-test directory must be new or empty", text)
         self.assertIn("Recorded uninstaller escapes", text)
+        self.assertIn("Start-Process -FilePath $FilePath", text)
+        self.assertIn("-Wait -PassThru", text)
+        self.assertIn("$process.ExitCode", text)
 
     def test_installer_preserves_local_config_during_upgrade_and_repair(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
