@@ -192,6 +192,7 @@ subsystems:
       - Installer
       - Scripts/BuildInstaller.bat
       - Scripts/SmokeTestInstaller.ps1
+      - Tests/fixtures/fake_vein_server.py
       - Scripts/env_setup.bat
       - Scripts/SteamVersion.bat
       - Scripts/UpdateSteam.bat

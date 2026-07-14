@@ -33,6 +33,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Fixed silent uninstall hanging on custom preservation prompts by making those
   prompts suppressible with safe defaults that retain backups, configuration,
   and app-managed server data.
+- Expanded the isolated packaged-app smoke test with bounded process timeouts
+  and a deterministic fake Vein executable that verifies server start,
+  duplicate-start protection, log/crash monitor startup, live-log attachment,
+  restart, stop, runtime cleanup, and operation without source Python.
 - Fixed the packaging runtime check so Python 3.12 no longer emits the Python
   3.13 compatibility warning.
 - Added a shared local/CI validation command and an owner publishing helper that

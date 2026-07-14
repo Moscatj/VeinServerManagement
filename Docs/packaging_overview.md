@@ -294,9 +294,11 @@ Uninstall behavior:
 ## 4. Roadmap / Next Steps
 
 1. **Code signing** - eventually sign `VeinManager.exe`, `VeinTools.exe`, and the final installer, then verify signatures and publish checksums with releases.
-2. **Installer smoke tests** - keep packaging/build tests aligned with the
-   staged executables, required controller modules, docs, and sanitized config;
-   add clean-VM execution coverage where practical.
+2. **Installer smoke tests** - keep the isolated packaged lifecycle test aligned
+   with server/process/monitor contracts, and add clean-VM execution coverage
+   where practical. CI currently verifies install, health, synthetic server
+   start/duplicate protection/restart/stop, live-log attachment, monitor
+   cleanup, uninstall, and config preservation without source Python.
 3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
 4. **Fresh install validation** - repeat clean Windows profile/VM tests for
    fresh, side-by-side, maintenance, missing-server repair, and uninstall paths

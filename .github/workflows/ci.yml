@@ -99,6 +99,7 @@ jobs:
               '^Docs/',
               '^Installer/',
               '^Scripts/',
+              '^Tests/fixtures/fake_vein_server\.py$',
               '^requirements(?:-[^/]+)?\.txt$',
               '^(README|AGENTS|LICENSE|RELEASING)\.md$',
               '^\.github/workflows/(ci|release-installer)\.yml$'
@@ -144,6 +145,7 @@ jobs:
       - name: Smoke test packaged install and uninstall
         if: steps.scope.outputs.relevant == 'true'
         shell: pwsh
+        timeout-minutes: 12
         run: |
           $installer = Get-ChildItem dist\installer\VeinServerManagement-Setup-v*.exe |
             Sort-Object LastWriteTimeUtc -Descending |
@@ -151,7 +153,15 @@ jobs:
           if ($null -eq $installer) {
             throw "Built installer was not found."
           }
-          Scripts\SmokeTestInstaller.ps1 -InstallerPath $installer.FullName
+          python -m PyInstaller --noconfirm --clean --onefile `
+            --name VeinServer-Win64-Test `
+            --distpath dist\fake-server `
+            --workpath build\fake-server `
+            --specpath build\fake-server `
+            Tests\fixtures\fake_vein_server.py
+          Scripts\SmokeTestInstaller.ps1 `
+            -InstallerPath $installer.FullName `
+            -FakeServerPath dist\fake-server\VeinServer-Win64-Test.exe
 
       - name: Upload installer smoke diagnostics
         if: always() && steps.scope.outputs.relevant == 'true'

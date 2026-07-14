@@ -64,8 +64,11 @@ GitHub Actions runs on every push and pull request:
 - Builds and uploads a seven-day temporary installer artifact when staged
   bundle, installer, packaging, dependency, or workflow inputs change
 - Installs that package without SteamCMD in an isolated runner directory, runs
-  the packaged CLI and health check, uninstalls it, verifies app removal and
-  config preservation, and uploads seven-day diagnostic logs
+  the packaged CLI and health check, and launches a CI-built fake Vein process
+  to exercise start, duplicate-start protection, log/crash monitors, restart,
+  stop, runtime-marker cleanup, and log attachment without source Python
+- Applies hard child-process and job timeouts, uninstalls the package, verifies
+  app removal and config preservation, and uploads seven-day diagnostic logs
 
 The required `Unit Tests And Safety Checks` result aggregates compatibility,
 full validation, and the applicable installer build/install/uninstall smoke

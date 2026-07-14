@@ -13,6 +13,7 @@ BUILD_SCRIPT = ROOT / "Controller" / "Tools" / "packing" / "build_gui_exe.py"
 INSTALLER_SCRIPT = ROOT / "Installer" / "VeinServerManager.iss"
 BUILD_INSTALLER_SCRIPT = ROOT / "Scripts" / "BuildInstaller.bat"
 SMOKE_INSTALLER_SCRIPT = ROOT / "Scripts" / "SmokeTestInstaller.ps1"
+FAKE_SERVER_FIXTURE = ROOT / "Tests" / "fixtures" / "fake_vein_server.py"
 CONFIG_TEMPLATE = ROOT / "Config" / "config.example.yaml"
 
 
@@ -63,14 +64,29 @@ class PackagingBuildTests(unittest.TestCase):
             "Config\\config.yaml",
             "Runtime\\uninstaller_path.txt",
             '"--config", $config, "health-check"',
+            '"--config", $config, "start-server"',
+            '"--config", $config, "restart-server", "--restart-delay", "0"',
+            '"--config", $config, "stop-server"',
             "Uninstaller did not preserve local configuration",
         ):
             self.assertIn(value, text)
         self.assertIn("Installer smoke-test directory must be new or empty", text)
         self.assertIn("Recorded uninstaller escapes", text)
-        self.assertIn("Start-Process -FilePath $FilePath", text)
-        self.assertIn("-Wait -PassThru", text)
+        self.assertIn("ProcessTimeoutSeconds", text)
+        self.assertIn("WaitForExit($TimeoutSeconds * 1000)", text)
+        self.assertIn("$process.Kill($true)", text)
         self.assertIn("$process.ExitCode", text)
+        self.assertIn("Wait-ForLogMonitorAttachment", text)
+        self.assertIn("VeinTools\\.exe", text)
+        self.assertIn("unexpectedly depends on source Python", text)
+
+    def test_fake_server_fixture_only_writes_the_requested_synthetic_log(self) -> None:
+        text = FAKE_SERVER_FIXTURE.read_text(encoding="utf-8")
+
+        self.assertIn('argument.lower().startswith("-abslog=")', text)
+        self.assertIn("Fake Vein lifecycle fixture started", text)
+        self.assertNotIn("socket", text.lower())
+        self.assertNotIn("subprocess", text)
 
     def test_installer_preserves_local_config_during_upgrade_and_repair(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

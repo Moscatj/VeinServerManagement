@@ -35,6 +35,7 @@ class CiWorkflowTests(unittest.TestCase):
             "'^Docs/'",
             "'^Installer/'",
             "'^Scripts/'",
+            "'^Tests/fixtures/fake_vein_server\\.py$'",
             "'^requirements(?:-[^/]+)?\\.txt$'",
         ):
             self.assertIn(pattern, self.text)
@@ -51,6 +52,9 @@ class CiWorkflowTests(unittest.TestCase):
     def test_installer_check_smoke_tests_packaged_install_and_uninstall(self) -> None:
         self.assertIn("Smoke test packaged install and uninstall", self.text)
         self.assertIn("Scripts\\SmokeTestInstaller.ps1", self.text)
+        self.assertIn("Tests\\fixtures\\fake_vein_server.py", self.text)
+        self.assertIn("-FakeServerPath", self.text)
+        self.assertIn("timeout-minutes: 12", self.text)
         self.assertIn("Upload installer smoke diagnostics", self.text)
         self.assertIn("if: always() && steps.scope.outputs.relevant == 'true'", self.text)
         self.assertIn("dist/installer-smoke", self.text)
