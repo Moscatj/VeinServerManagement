@@ -23,7 +23,6 @@ PATTERNS = (
 IGNORED_PREFIXES = (
     "Controller/Tools/source_hygiene_check.py",
     "Config/Backup/",
-    "Controller/Legacy/WebAdmin/user_accounts.json",
 )
 
 BINARY_SUFFIXES = {

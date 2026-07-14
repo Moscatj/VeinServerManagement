@@ -70,7 +70,7 @@ When any start/stop script is run, the following occurs:
 ## Maintenance Tips
 - Do not hardcode `VEIN_MGMT_ROOT`; moving the repo is supported because it is derived.
 - If Python fails to launch, inspect the calling wrapper's Python selection.
-- If you add new submodules (e.g., WebAdmin), export new variables here so other scripts can locate them.  
+- Export a new variable only when multiple maintained source wrappers need it.
 - Avoid spaces in paths where possible—batch quoting rules can be brittle.
 
 ---

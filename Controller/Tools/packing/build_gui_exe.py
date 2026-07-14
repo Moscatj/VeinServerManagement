@@ -32,8 +32,6 @@ COMMON_IGNORE_PATTERNS: tuple[str, ...] = ("__pycache__", "*.pyc", "*.pyo")
 SUPPORT_IGNORE_PATTERNS: dict[str, tuple[str, ...]] = {
     "Controller": (
         "Backups",
-        "user_accounts.json",
-        "server_state.json",
         "*.log",
     ),
     "Config": (

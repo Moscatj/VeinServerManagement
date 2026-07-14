@@ -1,4 +1,5 @@
 @echo off
-call "%~dp0ShutdownServer.bat"
+call "%~dp0StopServer.bat"
+if errorlevel 1 exit /b %errorlevel%
 call "%~dp0StartServer.bat"
-exit /b 0
+exit /b %errorlevel%

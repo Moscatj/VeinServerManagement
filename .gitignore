@@ -22,6 +22,7 @@ __pycache__/
 dist/
 build/
 .eggs/
+*.spec
 
 # ===== Virtual environments =====
 .venv/
@@ -61,18 +62,11 @@ htmlcov/
 .env.*
 !.env.example
 
-# Continue local config/secrets
-.continue/.env
-.continue/**/*.env
-
 # Local config backups and legacy runtime credentials
 Config/config.yaml
 Config/Backup/
 Config/*.local.yaml
 Config/*.local.json
-Controller/Legacy/WebAdmin/user_accounts.json
-Controller/Legacy/WebAdmin/server_state.json
-
 # Local third-party reference material
 Reference/
 Refrence/

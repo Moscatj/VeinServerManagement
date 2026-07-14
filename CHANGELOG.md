@@ -51,6 +51,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
   removed duplicate prompt examples and approval loops, separated agent
   permissions from operator-initiated runtime capabilities, adopted risk-based
   validation, and aligned contributor/issue/PR guidance.
+- Removed the deprecated Continue extension configuration and its stale JSON,
+  `utils.py`, model, and workspace rules; Codex now uses root `AGENTS.md` and
+  the maintained AI project documentation as the sole repository workflow.
+- Removed the unused legacy Flask WebAdmin, broken and redundant batch
+  wrappers, accidental/empty script artifacts, and obsolete root PyInstaller
+  specs; repaired the maintained restart wrapper and added architecture checks
+  that reject missing repository-relative batch references.
 - Added documentation stewardship rules for automatic release-version sweeps,
   completed-roadmap updates, human-readable project context, and approval-first
   AI workflow governance with active improvement suggestions.

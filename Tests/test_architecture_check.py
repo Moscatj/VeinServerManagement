@@ -29,6 +29,7 @@ class ArchitectureCheckTests(unittest.TestCase):
         (root / "Scripts" / "feature.ps1").write_text(
             "Write-Output 'feature'\n", encoding="utf-8"
         )
+        (root / "Scripts" / "feature.bat").write_text("@echo off\n", encoding="utf-8")
         registry = {
             "version": 1,
             "coverage": {
@@ -37,7 +38,7 @@ class ArchitectureCheckTests(unittest.TestCase):
                 "tracked_groups": [
                     {"root": "Scripts", "patterns": ["*.bat", "*.ps1"]}
                 ],
-                "exclude": ["Controller/Legacy", "Controller/**/__init__.py"],
+                "exclude": ["Controller/**/__init__.py"],
             },
             "subsystems": {
                 "feature": {
@@ -45,6 +46,7 @@ class ArchitectureCheckTests(unittest.TestCase):
                     "source": [
                         "Controller/feature.py",
                         "Controller/GUI",
+                        "Scripts/feature.bat",
                         "Scripts/feature.ps1",
                     ],
                     "tests": ["Tests/test_feature.py"],
@@ -166,6 +168,7 @@ class ArchitectureCheckTests(unittest.TestCase):
             payload = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
             payload["subsystems"]["feature"]["source"] = [
                 "Controller",
+                "Scripts/feature.bat",
                 "Scripts/feature.ps1",
             ]
             payload["subsystems"]["feature"]["tests"] = ["Tests"]
@@ -181,7 +184,7 @@ class ArchitectureCheckTests(unittest.TestCase):
 
             self.assertEqual(architecture_check.check_architecture(root), [])
 
-    def test_explicit_legacy_directory_is_excluded(self) -> None:
+    def test_unowned_legacy_directory_is_rejected(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             root = Path(tmp)
             self._repo(root)
@@ -189,7 +192,21 @@ class ArchitectureCheckTests(unittest.TestCase):
             legacy.mkdir()
             (legacy / "old.py").write_text("VALUE = 1\n", encoding="utf-8")
 
-            self.assertEqual(architecture_check.check_architecture(root), [])
+            errors = architecture_check.check_architecture(root)
+
+            self.assertTrue(any("unowned source module" in error for error in errors))
+
+    def test_missing_relative_batch_reference_is_rejected(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            (root / "Scripts" / "feature.bat").write_text(
+                '@echo off\ncall "%~dp0MissingHelper.bat"\n', encoding="utf-8"
+            )
+
+            errors = architecture_check.check_architecture(root)
+
+            self.assertTrue(any("missing batch reference" in error for error in errors))
 
     def test_new_tracked_infrastructure_file_requires_ownership(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

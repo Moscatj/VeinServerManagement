@@ -23,8 +23,6 @@ coverage:
         - "*.yml"
         - "*.yaml"
   exclude:
-    # Legacy code is reference-only unless a task explicitly reactivates it.
-    - Controller/Legacy
     # Package markers contain no owned behavior and generated caches are not tracked.
     - Controller/**/__init__.py
     - Tests/__init__.py
@@ -65,9 +63,7 @@ subsystems:
       - Controller/Tools/monitors.py
       - Controller/Tools/uninstall_cleanup.py
       - Scripts/RestartServer.bat
-      - Scripts/ServerControlMenu.bat
       - Scripts/StartServer.bat
-      - Scripts/StartServerWithMonitors.bat
       - Scripts/StopServer.bat
     tests:
       - Tests/test_launch_manager.py
@@ -94,13 +90,11 @@ subsystems:
       - Controller/Tools/vein_http_api.py
       - Controller/Tools/discord.py
       - Scripts/StartAllMonitors.bat
-      - Scripts/StartAllMonitors_tabs.bat
       - Scripts/StartCrashMonitor.bat
       - Scripts/StartLogMonitor.bat
       - Scripts/StopAllMonitors.bat
       - Scripts/StopCrashMonitor.bat
       - Scripts/StopLogMonitor.bat
-      - Scripts/StopMonitors.bat
     tests:
       - Tests/test_log_events.py
       - Tests/test_discord.py
@@ -220,7 +214,6 @@ subsystems:
       - Controller/log_summary.py
       - Controller/migrate_mgmt_logs.py
       - Controller/vein_tools.py
-      - Scripts/StartWebAdmin.bat
     tests:
       - Tests/test_cli_wrappers.py
       - Tests/test_log_search.py

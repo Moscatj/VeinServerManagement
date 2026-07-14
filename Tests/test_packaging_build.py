@@ -614,9 +614,6 @@ class PackagingBuildTests(unittest.TestCase):
             controller = root / "Controller"
             (controller / "Backups" / "Configs").mkdir(parents=True)
             (controller / "Backups" / "Configs" / "config-secret.yaml").write_text("secret", encoding="utf-8")
-            (controller / "Legacy" / "WebAdmin").mkdir(parents=True)
-            (controller / "Legacy" / "WebAdmin" / "user_accounts.json").write_text("secret", encoding="utf-8")
-            (controller / "Legacy" / "WebAdmin" / "web_admin.py").write_text("ok", encoding="utf-8")
 
             config = root / "Config"
             (config / "Backup").mkdir(parents=True)
@@ -644,8 +641,6 @@ class PackagingBuildTests(unittest.TestCase):
                 module.CONFIG_TEMPLATE = original_template
 
             self.assertFalse((bundle / "Controller" / "Backups").exists())
-            self.assertFalse((bundle / "Controller" / "Legacy" / "WebAdmin" / "user_accounts.json").exists())
-            self.assertTrue((bundle / "Controller" / "Legacy" / "WebAdmin" / "web_admin.py").exists())
             self.assertFalse((bundle / "Config" / "Backup").exists())
             self.assertEqual((bundle / "Config" / "config.yaml").read_text(encoding="utf-8"), "secret: false\n")
             self.assertTrue((bundle / "Scripts" / "StartServer.bat").exists())

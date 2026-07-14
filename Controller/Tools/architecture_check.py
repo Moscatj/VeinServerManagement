@@ -15,6 +15,9 @@ import yaml
 ALLOWED_RISKS = {"low", "medium", "high"}
 REQUIRED_SUBSYSTEM_FIELDS = {"risk", "source", "tests", "docs", "invariants"}
 DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
+BATCH_RELATIVE_REFERENCE_RE = re.compile(
+    r'%~dp0([^"\r\n]*?\.bat)', re.IGNORECASE
+)
 CONFIG_EDITOR_CONSUMERS = {
     "Controller/GUI/server_config_view.py",
     "Controller/Tools/server_quickstart.py",
@@ -399,6 +402,35 @@ def _check_config_editor_ownership(root: Path, errors: list[str]) -> None:
                     )
 
 
+def _check_batch_references(root: Path, errors: list[str]) -> None:
+    scripts_root = root / "Scripts"
+    if not scripts_root.is_dir():
+        return
+    for path in scripts_root.rglob("*.bat"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            errors.append(f"{path.relative_to(root)}: could not read batch file: {exc}")
+            continue
+        for match in BATCH_RELATIVE_REFERENCE_RE.finditer(text):
+            value = match.group(1).strip().replace("\\", "/")
+            if not value or "%" in value:
+                continue
+            target = (path.parent / Path(value)).resolve()
+            try:
+                relative_target = target.relative_to(root).as_posix()
+            except ValueError:
+                errors.append(
+                    f"{path.relative_to(root)}: batch reference escapes repository: {value}"
+                )
+                continue
+            if not target.is_file():
+                line = text.count("\n", 0, match.start()) + 1
+                errors.append(
+                    f"{path.relative_to(root)}:{line}: missing batch reference: {relative_target}"
+                )
+
+
 def check_architecture(root: Path) -> list[str]:
     """Return architecture and registry violations for a repository root."""
 
@@ -411,6 +443,7 @@ def check_architecture(root: Path) -> list[str]:
     _check_absolute_paths(root, errors)
     _check_gui_process_control(root, errors)
     _check_config_editor_ownership(root, errors)
+    _check_batch_references(root, errors)
     return errors
 
 

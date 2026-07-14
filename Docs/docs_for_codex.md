@@ -96,9 +96,6 @@ python Controller\Tools\architecture_check.py --route Controller/start_server.py
 The read-only report lists every matching subsystem, risk, focused tests,
 documentation, and invariants. Multiple paths may follow `--route`.
 
-Legacy modules under `Controller/Legacy/` are reference-only unless the user
-explicitly requests work there.
-
 ## Efficient Workflow
 
 1. Read `AGENTS.md`, inspect `git status`, and identify the subsystem from the

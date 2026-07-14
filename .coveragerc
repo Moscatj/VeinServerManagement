@@ -8,7 +8,6 @@ omit =
     Controller/monitor_log.py
     Controller/nightly_backup.py
     Controller/vein_manager.py
-    Controller/Legacy/*
     Controller/Tools/packing/*
 
 [report]

@@ -272,14 +272,11 @@ Commercial use is not permitted without a separate written commercial license fr
 Tracked files are scanned for high-confidence secret patterns and local markers in CI. The repository ignores common local-sensitive files including:
 
 - `.env`
-- `.continue/.env`
 - `.coverage`
 - `Config/config.yaml`
 - `Config/Backup/`
 - `Config/*.local.yaml`
 - `Config/*.local.json`
-- `Controller/Legacy/WebAdmin/user_accounts.json`
-- `Controller/Legacy/WebAdmin/server_state.json`
 
 If a real secret is ever committed, revoke it immediately. Removing a secret from the current tree does not remove it from Git history.
 
