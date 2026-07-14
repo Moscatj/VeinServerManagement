@@ -9,7 +9,7 @@ parsing, Steam helpers, HTTP API helpers, and CLI wrappers.
 
 ## Current Baseline
 
-Measured on the v2.9.0 codebase during the 2026-07-14 documentation audit:
+Measured for the v2.9.1 release candidate on 2026-07-14:
 
 - Total tests: 399 passing, 2 skipped
 - Overall coverage: 74%

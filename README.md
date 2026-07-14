@@ -12,7 +12,7 @@ This repository does not contain the game server. It is a management layer that 
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
-The current stable release is **v2.9.0**. Windows users can install it without
+The current stable release is **v2.9.1**. Windows users can install it without
 Python or other developer tools from the
 [GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 

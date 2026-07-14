@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.9.1 - 2026-07-14
+
 - Added an authoritative subsystem registry that maps change areas to source,
   focused tests, documentation, risk, and invariants for fast human and AI task
   routing.

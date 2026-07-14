@@ -38,7 +38,7 @@ The GUI should help an operator answer three questions quickly:
 
 ## Phases
 
-Status at v2.9.0: Phase 1 is implemented. Parts of Phases 2, 3, 4, 6, and 7
+Status at v2.9.1: Phase 1 is implemented. Parts of Phases 2, 3, 4, 6, and 7
 have landed through reusable GUI modules, the Home dashboard, scroll-safe Quick
 Start, status-aware process buttons, and consolidated log views. The remaining
 items below describe the target experience, not a claim that each phase is

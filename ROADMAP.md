@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.9.0`:
+Released through `v2.9.1`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -45,6 +45,12 @@ Released through `v2.9.0`:
 - Packaged lifecycle and monitor commands run through `VeinTools.exe`; normal
   users do not need Python. Log and save locations derive from the selected
   server root unless an advanced override is configured.
+- CI installs the packaged application in isolation and verifies server start,
+  duplicate-start protection, log/crash monitors, live-log attachment,
+  restart, stop, runtime cleanup, and uninstall without source Python.
+- Subsystem ownership, documentation/version consistency, source hygiene, and
+  batch-wrapper references are validated automatically. Obsolete Continue,
+  WebAdmin, wrapper, and generated-spec artifacts have been retired.
 
 ## Near-Term Priorities
 
@@ -56,8 +62,6 @@ Released through `v2.9.0`:
   compatibility and path-aware installer compilation, without blocking the
   separate tag-driven release workflow.
 - Continue focused unit coverage for non-GUI controller and Tools modules.
-- Review legacy modules and document what is retained for reference versus
-  still supported.
 - Continue clean-machine installer tests for fresh install, side-by-side
   install, update/repair, missing-server reinstall, uninstall, and interrupted
   SteamCMD recovery.

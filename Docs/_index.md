@@ -1,6 +1,6 @@
 # Vein Server Management Suite Documentation
 
-> **Version baseline:** v2.9.0
+> **Version baseline:** v2.9.1
 > **Maintainers:** Project contributors
 > **Purpose:** Central index for all project documentation files.
 > Start here when operating, exploring, or extending the management suite.
@@ -97,6 +97,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 | Version | Date | Summary |
 |----------|------|----------|
+| **v2.9.1** | 2026-07-14 | Packaged lifecycle CI, documentation/AI workflow hardening, and obsolete-code cleanup |
 | **v2.9.0** | 2026-07-13 | Guided installer maintenance, SteamCMD progress/retry, and packaged monitoring/path hardening |
 | **v2.8.x** | 2026-07 | GUI foundation, clean-machine lifecycle support, Linux roadmap, and launch hardening |
 | **v2.7.0** | 2026-07-10 | Guarded Quick Start for new and existing servers |
