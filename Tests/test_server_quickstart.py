@@ -24,6 +24,7 @@ from Tools.server_quickstart import (  # noqa: E402
     build_quick_start_plan,
     inspect_server_root,
     load_existing_server_settings,
+    management_webhook_summary,
     ServerRootInspection,
 )
 
@@ -198,6 +199,57 @@ class ServerQuickStartTests(unittest.TestCase):
             {(issue.field, issue.severity) for issue in plan.issues},
         )
 
+    def test_management_webhook_updates_config_and_can_be_reused_for_game_ini(self) -> None:
+        webhook = _sample_discord_webhook()
+        plan = build_quick_start_plan(
+            {
+                "server_name": "Webhook Test",
+                "management_discord_webhook": webhook,
+                "discord_chat_webhook_url": webhook,
+                "discord_chat_admin_webhook_url": webhook,
+            }
+        )
+
+        edits = {(edit.source, edit.key): edit.values for edit in plan.server_config_edits}
+        self.assertEqual(plan.config_updates["discord"]["webhooks"]["default"], webhook)
+        self.assertTrue(plan.config_updates["discord"]["enabled"])
+        self.assertEqual(
+            edits[("Game.ini", "DiscordChatWebhookURL")],
+            (f'"{webhook}"',),
+        )
+        self.assertEqual(
+            edits[("Game.ini", "DiscordChatAdminWebhookURL")],
+            (f'"{webhook}"',),
+        )
+
+    def test_management_webhook_accepts_env_reference_without_writing_it_to_game_ini(self) -> None:
+        plan = build_quick_start_plan(
+            {
+                "server_name": "Webhook Test",
+                "server_root": "MissingWebhookServer",
+                "management_discord_webhook": "ENV:DISCORD_WEBHOOK_URL",
+            }
+        )
+
+        self.assertTrue(plan.can_apply)
+        self.assertEqual(
+            plan.config_updates["discord"]["webhooks"]["default"],
+            "ENV:DISCORD_WEBHOOK_URL",
+        )
+
+    def test_management_webhook_summary_never_returns_the_secret(self) -> None:
+        webhook = _sample_discord_webhook()
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(
+                f"discord:\n  webhooks:\n    default: '{webhook}'\n",
+                encoding="utf-8",
+            )
+            summary = management_webhook_summary(path)
+
+        self.assertIn("stored webhook is configured", summary)
+        self.assertNotIn(webhook, summary)
+
     def test_build_quick_start_plan_serializes_to_dict(self) -> None:
         with mock.patch(
             "Tools.server_quickstart.inspect_server_root",
@@ -222,6 +274,7 @@ class ServerQuickStartTests(unittest.TestCase):
                     "server_name": "New Server",
                     "server_root": str(base / "MissingServer"),
                     "http_api_enabled": False,
+                    "management_discord_webhook": "ENV:APP_DISCORD_WEBHOOK",
                 },
                 config_path=cfg,
                 config_backup_root=base / "config-backups",
@@ -234,6 +287,8 @@ class ServerQuickStartTests(unittest.TestCase):
             self.assertTrue(result.messages)
             self.assertIn("New Server", text)
             self.assertIn("MissingServer", text)
+            self.assertIn("ENV:APP_DISCORD_WEBHOOK", text)
+            self.assertTrue(any("Restart already-running monitors" in item for item in result.messages))
             self.assertTrue(Path(result.config_backup).exists())
             self.assertFalse((base / "MissingServer" / "Vein").exists())
 

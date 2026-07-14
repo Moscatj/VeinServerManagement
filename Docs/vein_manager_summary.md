@@ -31,13 +31,11 @@ Core goals:
 ## Key Components
 
 ### 1. **Main Window (`Main` class)**
-Central application controller handling layout, config selection, button wiring, JSON I/O, and background polling. The window is now organized around three persistent zones:
+Central application controller handling layout, config selection, button wiring, JSON I/O, and background polling. The window is organized around three persistent elements:
 
-1. **Command Ribbon** – compact bar with start/stop/restart buttons, LogMon/CrashMon toggles, and a selectable status label so errors can be copied into Discord or issue trackers.
-2. **Navigation Column** – shortcut buttons (logs/runtime/backups/controller), a collapsible “Config Source” picker (folder + file combo box), and the `NavigationPanel` with two sections:
-   - **Monitoring**: currently hosts the “Server Dashboard” view (live server state, monitors, players, backups).
-   - **Configuration**: jump links for `Paths`, `Server`, `Steam/Updates`, `Backups`, `Monitor (simple)`, `Monitor (advanced)`, `Features`, `Top-level`, and the dynamic `Search` tab.
-3. **Content Stack + Log Tail** – central stack swaps between the monitoring dashboard and the auto-built config editor while the right-hand log tail stays visible (and collapsible) regardless of view.
+1. **Server Control Bar** – persistent `Running`, `Stopped`, or `Setup required` state with one primary action that becomes Set Up, Start, or Stop. Restart remains secondary; log/crash monitor commands live in a compact menu beside a readable monitor summary and selectable result label.
+2. **Navigation Column** – task-oriented links for Home, Logs, Setup, Server Settings, and Advanced Config.
+3. **Content Stack** – one authoritative workspace that shows the selected page. Logs and Advanced Config are full pages rather than duplicate side-panel tabs, and unfinished destinations are not exposed in normal navigation.
 
 The monitoring dashboard replaces the old “Monitors” tab. It still surfaces log/Crash monitor health, HTTP API world details, the player/character browser (fed by `Runtime/player_characters.json`), and backup status/controls—just with more breathing room for the growing data set. Double-clicking players still opens the detail dialog. Backup buttons live in the dashboard card but the logic (`_on_backup_now_clicked`, `_on_open_backups_clicked`) is unchanged.
 
@@ -47,6 +45,11 @@ The configuration editor itself still relies on the generated tabs listed above;
 
 ### 2. **Subprocess Management**
 Handles launching and stopping of server and monitors.
+
+Source-mode helpers use the same Python environment that launched the GUI. A
+windowless `pythonw.exe` GUI resolves its sibling `python.exe` for captured
+helper output; `PYEXE` remains an explicit developer override. Packaged actions
+continue to use `VeinTools.exe`.
 
 | Function | Purpose |
 |-----------|----------|
@@ -122,12 +125,17 @@ Watches the selected log file and streams content into the GUI in real time:
   for page headers, inline notices, status badges, and primary/secondary/danger
   action roles. Styling is narrowly targeted so it follows the active Qt
   palette instead of replacing server workflows or backend behavior.
-- Three-way splitter layout: left navigation column (shortcuts + config picker + `NavigationPanel`), center content stack (monitor dashboard + config editor), right live log tail (collapsible but tailer keeps running).
+- Single-workspace layout: a collapsible left navigation column and one content
+  stack for Home, Logs, Setup, Server Settings, and Advanced Config. The server
+  state and lifecycle controls remain visible above every page.
 - The monitor dashboard includes a read-only Server Preflight card that checks
   the selected server root, executable files, Steam API DLL, and key
   `Game.ini` / `Engine.ini` settings off the UI thread. It runs after config
   saves and when the user presses Refresh; it does not run at startup or
   continuously poll static server config files.
+- Home begins with an At a Glance summary of server, log monitor, crash monitor,
+  and backup health. Its guidance reflects the current runtime state and links
+  directly to Setup and Logs when operator attention is needed.
 - The Server Config navigation view shows a read-only table of important
   `Game.ini` and `Engine.ini` values from the selected server root. Documented
   settings are shown even when missing, and any additional keys already present
@@ -144,7 +152,12 @@ Watches the selected log file and streams content into the GUI in real time:
   installations to Existing Server mode, can update the local management
   config, and applies game config changes only through the guarded
   backup/diff/validation path when the selected server root exists.
-- Command ribbon condenses all process buttons and exposes a copy-friendly status label.
+- Command ribbon condenses all process buttons and exposes a copy-friendly
+  status label. A persistent startup strip reports preparation, safeguards,
+  process detection, joinable readiness, and failures without blocking the GUI;
+  its View Logs action opens the consolidated log workspace. Joinable readiness
+  comes from the log monitor's persisted observation of VEIN's ready signature,
+  rather than an assumed process state.
 - User preferences (geometry, state, last-used paths) persist automatically.
 - Shortcut buttons open Logs, Runtime, Backups, or Controller directories.
 - Supports dynamic dark/light themes and Windows Fusion style.

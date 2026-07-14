@@ -38,13 +38,19 @@ from Tools.process import (
 )
 from Tools.backups_api import make_backup as backup_save_file
 from Tools.features import is_feature_enabled
-from Tools.monitors import stop_log_monitor, stop_crash_monitor
+from Tools.monitors import (
+    mark_monitor_stopped,
+    request_monitor_stop_flags,
+    stop_log_monitor,
+    stop_crash_monitor,
+)
 from Tools.runtime import (
     clear_flag,
     begin_intentional_shutdown,
     end_intentional_shutdown,
     set_server_state,
     PID_SERVER,
+    RUNTIME_DIR,
 )
 
 from config_helper import config
@@ -154,32 +160,29 @@ def _normal_shutdown() -> None:
 
     # 2) Stop monitors first
     try:
-        rt = (
-            Path(os.environ.get("VEIN_CONFIG") or "").resolve().parent.parent
-            / "Runtime"
-        )
+        request_monitor_stop_flags(Path(RUNTIME_DIR))
     except Exception:
-        rt = CONTROLLER_DIR.parent / "Runtime"
-    for fn in (
-        "stop_log_monitor.flag",
-        "log_monitor.pid",
-        "stop_crash_monitor.flag",
-        "crash_monitor.pid",
-    ):
-        try:
-            (rt / fn).unlink(missing_ok=True)
-        except Exception:
-            pass
+        pass
 
     print("[Shutdown] Stopping monitors…")
     monitors_stopped = True
     try:
-        stop_log_monitor()
+        log_stopped = stop_log_monitor()
+        monitors_stopped = monitors_stopped and log_stopped
+        if log_stopped:
+            mark_monitor_stopped(Path(RUNTIME_DIR), "log")
+        else:
+            _stop_py_process("monitor_log.py")
     except Exception:
         monitors_stopped = False
         _stop_py_process("monitor_log.py")
     try:
-        stop_crash_monitor()
+        crash_stopped = stop_crash_monitor()
+        monitors_stopped = monitors_stopped and crash_stopped
+        if crash_stopped:
+            mark_monitor_stopped(Path(RUNTIME_DIR), "crash")
+        else:
+            _stop_py_process("crash_monitor.py")
     except Exception:
         monitors_stopped = False
         _stop_py_process("crash_monitor.py")

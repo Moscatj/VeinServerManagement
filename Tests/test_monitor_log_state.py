@@ -38,6 +38,7 @@ class MonitorLogStateTests(unittest.TestCase):
                     watching_server=True,
                     status="waiting_for_log",
                     message=f"Waiting for game log: {expected}",
+                    server_joinable=True,
                 )
 
             payload = json.loads(state.read_text(encoding="utf-8"))
@@ -46,6 +47,7 @@ class MonitorLogStateTests(unittest.TestCase):
         self.assertEqual(payload["status"], "waiting_for_log")
         self.assertEqual(payload["expected_log_files"], [str(expected)])
         self.assertIn(str(expected), payload["message"])
+        self.assertTrue(payload["server_joinable"])
 
 
 if __name__ == "__main__":

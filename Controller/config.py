@@ -320,8 +320,14 @@ def _migrate_v2_layout(cfg: Dict[str, Any], mgmt_root: Path) -> Dict[str, Any]:
 
     # Discord block can now express enable/disable
     discord_cfg = cfg.get("discord")
-    if isinstance(discord_cfg, dict) and "enabled" in discord_cfg:
-        features.setdefault("enable_discord", bool(discord_cfg["enabled"]))
+    if isinstance(discord_cfg, dict):
+        if "enabled" in discord_cfg:
+            features.setdefault("enable_discord", bool(discord_cfg["enabled"]))
+        webhooks = discord_cfg.get("webhooks")
+        if isinstance(webhooks, dict) and "discord_webhook" not in cfg:
+            default_webhook = webhooks.get("default")
+            if default_webhook:
+                cfg["discord_webhook"] = default_webhook
 
     return cfg
 

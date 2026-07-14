@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -343,6 +344,64 @@ def _optional_webhook(value: Any, *, field: str, issues: list[QuickStartIssue]) 
     return url
 
 
+def _optional_management_webhook(
+    value: Any, *, issues: list[QuickStartIssue]
+) -> str:
+    url = _text(value)
+    if not url:
+        return ""
+    lowered = url.lower()
+    if lowered.startswith("env:"):
+        if not url.split(":", 1)[1].strip():
+            issues.append(
+                QuickStartIssue(
+                    "management_discord_webhook",
+                    "ERROR",
+                    "App notifications ENV reference must name an environment variable.",
+                )
+            )
+    elif not lowered.startswith(
+        (
+            "https://discord.com/api/" + "webhooks/",
+            "https://discordapp.com/api/" + "webhooks/",
+        )
+    ):
+        issues.append(
+            QuickStartIssue(
+                "management_discord_webhook",
+                "WARN",
+                "App notifications webhook should be an ENV: reference or Discord webhook URL.",
+            )
+        )
+    return url
+
+
+def management_webhook_summary(config_path: str | Path | None) -> str:
+    """Describe app-notification webhook state without returning its secret."""
+    if not config_path:
+        return "App notifications: no active management config is selected."
+    try:
+        data = _load_yaml_mapping(Path(config_path))
+    except Exception:
+        return "App notifications: current configuration could not be inspected."
+    discord = data.get("discord") if isinstance(data.get("discord"), Mapping) else {}
+    webhooks = (
+        discord.get("webhooks")
+        if isinstance(discord.get("webhooks"), Mapping)
+        else {}
+    )
+    value = webhooks.get("default") or data.get("discord_webhook")
+    if not value:
+        return "App notifications: no management webhook is configured."
+    text = str(value).strip()
+    if text.upper().startswith("ENV:"):
+        name = text.split(":", 1)[1].strip()
+        if name and os.getenv(name, "").strip():
+            return f"App notifications: configured through environment variable {name}."
+        return f"App notifications: environment variable {name or '(missing name)'} is not set."
+    return "App notifications: a stored webhook is configured and will be preserved."
+
+
 def _subpath(server_root: str, *parts: str) -> str:
     root = Path(server_root)
     for part in parts:
@@ -496,6 +555,10 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
         field="discord_chat_admin_webhook_url",
         issues=issues,
     )
+    management_webhook = _optional_management_webhook(
+        values.get("management_discord_webhook"),
+        issues=issues,
+    )
     heartbeat_interval = _positive_int(
         values.get("heartbeat_interval"),
         5,
@@ -580,7 +643,15 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
         "discord": {
             "defaults": {
                 "server_name": server_name or "Your Vein Server",
-            }
+            },
+            **(
+                {
+                    "enabled": True,
+                    "webhooks": {"default": management_webhook},
+                }
+                if management_webhook
+                else {}
+            ),
         },
     }
 
@@ -692,6 +763,11 @@ def apply_quick_start_plan(
         _atomic_write(target, after)
 
     messages: list[str] = []
+    discord_updates = plan.config_updates.get("discord", {})
+    if isinstance(discord_updates, Mapping) and discord_updates.get("webhooks"):
+        messages.append(
+            "App notifications webhook updated. Restart already-running monitors so they reload the management config."
+        )
     server_result: dict[str, Any] | None = None
     validation: tuple[ServerConfigCheck, ...] = ()
     server_config_applied = False

@@ -6,6 +6,43 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.10.0 - 2026-07-14
+
+- Simplified the GUI into one task-oriented workspace with direct Home, Logs,
+  Setup, Server Settings, and Advanced Config navigation. Removed the duplicate
+  side-tab/pinning interface and unfinished navigation placeholders, and added
+  explicit Running, Stopped, and Setup required text beside the persistent
+  server start/stop controls.
+- Replaced the crowded process ribbon with one state-aware Set Up, Start, or
+  Stop Server action, retained Restart as a secondary action, and moved log and
+  crash monitor commands into a compact menu with a readable status summary.
+- Fixed source-mode server and monitor actions selecting a different default
+  Python installation than the GUI. Helpers now inherit the GUI's Python
+  environment, using `python.exe` beside `pythonw.exe`, while retaining the
+  explicit `PYEXE` override.
+- Unified Discord webhook setup in Quick Start with clearly separated App
+  Notifications (`config.yaml`), VEIN Game Chat (`Game.ini`), and VEIN Admin
+  Reports (`Game.ini`) fields. App webhooks may use `ENV:` references or stored
+  URLs, newly entered literal app webhooks can be reused for either VEIN field,
+  previews remain masked, and Server Settings explains its VEIN-only scope.
+- Fixed structured `discord.webhooks.default` values not reaching management
+  notification senders after the legacy environment override was removed.
+- Added an At a Glance Home summary for server, log monitor, crash monitor, and
+  backup health. Runtime-aware guidance now calls out setup or safeguard issues
+  and provides direct links to Setup and Logs.
+- Added persistent GUI startup progress beneath the server controls. It now
+  reports preparation, monitor startup, process launch, joinable readiness, and
+  failures while keeping the primary action visibly busy during the helper run.
+- Fixed the startup button displaying a mis-encoded ellipsis and fixed joinable
+  readiness remaining stuck in the waiting state. The log monitor now persists
+  its observed readiness for the GUI and clears it when the server stops.
+- Fixed the GUI auto-starting a replacement log monitor during the controlled
+  shutdown warning window. Start/stop transitions now keep the primary action
+  busy, and controlled shutdown holds both monitor stop flags until next start.
+- Fixed stale crash/log monitor state remaining active after confirmed process
+  termination. Controlled shutdown now records terminal monitor state and
+  removes stale PID markers only after the corresponding stop succeeds.
+
 ## 2.9.1 - 2026-07-14
 
 - Added an authoritative subsystem registry that maps change areas to source,

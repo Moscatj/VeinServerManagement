@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .design_system import PAGE_MARGIN, SECTION_SPACING, PageHeader
 from .widgets import CollapsibleBox
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -20,8 +21,14 @@ if TYPE_CHECKING:  # pragma: no cover
 def build_config_editor(owner: "Main") -> QtWidgets.QWidget:
     page = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(page)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(6)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(SECTION_SPACING)
+    layout.addWidget(
+        PageHeader(
+            "Advanced Config",
+            "Inspect and edit the management configuration. Validate changes before saving.",
+        )
+    )
 
     cfg_box = CollapsibleBox("Config Source")
     cfg_box.toggle.setChecked(False)

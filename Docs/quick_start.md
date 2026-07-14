@@ -20,7 +20,11 @@ answers such as:
 - save, runtime, management-log, and backup paths
 - the automatically derived Vein Game Log, with an optional advanced override
 - admin, super admin, and whitelist Steam IDs
-- Discord in-game chat and admin report webhook URLs
+- three clearly separated Discord destinations:
+  - App Notifications in `config.yaml` for startup, shutdown, crash, backup,
+    player, and monitor messages sent by Vein Server Manager
+  - VEIN Game Chat in `Game.ini`
+  - VEIN Admin Reports in `Game.ini`
 - scoreboard badge visibility
 - PvP console variable
 
@@ -54,9 +58,14 @@ Quick Start must preserve the same write boundaries as the rest of the suite:
   silently created outside the app-managed layout.
 - The HTTP API should be treated as local/private by default because the Vein
   developer documentation describes it as unauthenticated.
-- Environment-backed Discord webhooks remain preferred for management-suite
-  notifications, but Vein's in-game chat integration requires the actual
-  webhook URL in `Game.ini`.
+- App Notifications accepts either an `ENV:VARIABLE_NAME` reference or a
+  literal Discord webhook URL. VEIN Game Chat and VEIN Admin Reports require
+  literal URLs in `Game.ini`.
+- A newly entered literal App Notifications webhook can be reused for either
+  VEIN destination. Stored secrets are never loaded back into form fields, so
+  reuse requires entering the replacement webhook during that Quick Start run.
+- Blank replacement fields preserve existing webhook values. Copyable previews
+  mask literal webhook URLs.
 
 ## Reference Mapping
 

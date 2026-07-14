@@ -5,33 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from PySide6 import QtCore, QtGui, QtWidgets
-
-
-class NavList(QtWidgets.QListWidget):
-    """List widget that supports drag without forcing selection changes mid-drag."""
-
-    def __init__(self, owner: "NavigationPanel", *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self._owner = owner
-
-    def startDrag(self, supportedActions):  # type: ignore[override]
-        item = self.currentItem()
-        if not item:
-            return
-        view_id = item.data(QtCore.Qt.UserRole)
-        if not view_id:
-            return
-        mime = QtCore.QMimeData()
-        mime.setData("application/x-vein-view", str(view_id).encode("utf-8"))
-        mime.setText(item.text())
-        drag = QtGui.QDrag(self)
-        drag.setMimeData(mime)
-        self._owner._dragging = True
-        try:
-            drag.exec(QtCore.Qt.CopyAction)
-        finally:
-            self._owner._dragging = False
+from PySide6 import QtCore, QtWidgets
 
 
 @dataclass(frozen=True)
@@ -60,8 +34,6 @@ class NavigationPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self._monitor_items = list(monitor_items)
         self._config_items = list(config_items)
-        self._dragging = False
-
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
@@ -87,10 +59,6 @@ class NavigationPanel(QtWidgets.QWidget):
         self.config_list.itemSelectionChanged.connect(
             lambda: self._emit_selected(self.config_list.currentItem())
         )
-        self.monitor_list.setDragEnabled(True)
-        self.config_list.setDragEnabled(True)
-        self.monitor_list.setDragDropMode(QtWidgets.QAbstractItemView.DragOnly)
-        self.config_list.setDragDropMode(QtWidgets.QAbstractItemView.DragOnly)
 
     def _build_section(
         self, title: str, items: list[NavigationItem]
@@ -105,7 +73,7 @@ class NavigationPanel(QtWidgets.QWidget):
         frame_layout.setContentsMargins(6, 4, 6, 6)
         frame_layout.setSpacing(4)
 
-        lst = NavList(self)
+        lst = QtWidgets.QListWidget()
         lst.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         lst.setAlternatingRowColors(True)
         lst.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -136,30 +104,9 @@ class NavigationPanel(QtWidgets.QWidget):
                     lst.setCurrentRow(i)
                     return
 
-    def startDrag(self, supportedActions):  # type: ignore[override]
-        lst: QtWidgets.QListWidget = self.sender()  # type: ignore
-        if not isinstance(lst, QtWidgets.QListWidget):
-            return super().startDrag(supportedActions)
-        item = lst.currentItem()
-        if not item:
-            return
-        view_id = item.data(QtCore.Qt.UserRole)
-        if not view_id:
-            return
-        mime = QtCore.QMimeData()
-        mime.setData("application/x-vein-view", str(view_id).encode("utf-8"))
-        mime.setText(item.text())
-        drag = QtGui.QDrag(lst)
-        drag.setMimeData(mime)
-        self._dragging = True
-        try:
-            drag.exec(QtCore.Qt.CopyAction)
-        finally:
-            self._dragging = False
-
     # ------------------------------------------------------------------ helpers
     def _emit_selected(self, item: Optional[QtWidgets.QListWidgetItem]) -> None:
-        if not item or self._dragging:
+        if not item:
             return
         view_id = item.data(QtCore.Qt.UserRole)
         if view_id:

@@ -12,7 +12,7 @@ This repository does not contain the game server. It is a management layer that 
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
-The current stable release is **v2.9.1**. Windows users can install it without
+The current stable release is **v2.10.0**. Windows users can install it without
 Python or other developer tools from the
 [GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 
@@ -22,7 +22,9 @@ Python or other developer tools from the
 - Crash monitoring with restart throttling and intentional-shutdown guards.
 - Log monitoring for server health and player events.
 - Manual, event-driven, and scheduled backups.
-- Discord notifications through environment-backed webhook configuration.
+- Clearly separated Discord webhook setup for app notifications, VEIN game
+  chat, and VEIN admin reports, with protected environment references supported
+  for app notifications.
 - PySide6 GUI for local administration.
 - Unit test and coverage foundation for hardening future changes.
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.

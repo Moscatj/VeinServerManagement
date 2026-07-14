@@ -676,6 +676,7 @@ def _write_logmon_state(
     message: str | None = None,
     last_line_at: str | None = None,
     bytes_read: int = 0,
+    server_joinable: bool = False,
 ) -> None:
     rp = _runtime_paths()
     rp["state_log"].parent.mkdir(parents=True, exist_ok=True)
@@ -689,6 +690,7 @@ def _write_logmon_state(
         "message": message or "",
         "last_line_at": last_line_at,
         "bytes_read": max(0, int(bytes_read)),
+        "server_joinable": bool(server_joinable),
         "expected_log_files": [str(path) for path in log_file_candidates()],
     }
     if _HTTP_STATE is not None:
@@ -856,6 +858,8 @@ def monitor() -> None:
                     # No log yet; optionally linger and announce occasionally
                     now = time.time()
                     proc_up = is_server_running()
+                    if not proc_up:
+                        ready_announced = False
                     if not proc_up and not LINGER_WHEN_SERVER_DOWN:
                         if NOTIFY_STATUS and (now - last_down_announce > 30):
                             _discord(
@@ -871,6 +875,7 @@ def monitor() -> None:
                             message=f"Server is offline; waiting for {expected_text}",
                             bytes_read=bytes_read,
                             last_line_at=last_line_at,
+                            server_joinable=ready_announced,
                         )
                         time.sleep(1.0)
                         continue
@@ -901,6 +906,7 @@ def monitor() -> None:
                         message=f"Waiting for game log: {expected_text}",
                         bytes_read=bytes_read,
                         last_line_at=last_line_at,
+                        server_joinable=ready_announced,
                     )
                     time.sleep(1.0)
                     continue
@@ -924,14 +930,18 @@ def monitor() -> None:
                     b = f.read(64 * 1024)
                     if not b:
                         # nothing new, small sleep
+                        proc_up = is_server_running()
+                        if not proc_up:
+                            ready_announced = False
                         _write_logmon_state(
                             active=True,
                             tailing_file=str(p),
-                            watching_server=True,
+                            watching_server=proc_up,
                             status="tailing",
                             message=f"Attached to game log: {p}",
                             bytes_read=bytes_read,
                             last_line_at=last_line_at,
+                            server_joinable=ready_announced,
                         )
                         _maybe_refresh_http_api()
                         time.sleep(TAIL_POLL_MS / 1000.0)
@@ -953,6 +963,7 @@ def monitor() -> None:
                     message=f"Cannot read game log: {exc}",
                     bytes_read=bytes_read,
                     last_line_at=last_line_at,
+                    server_joinable=ready_announced,
                 )
                 time.sleep(1.0)
                 continue
@@ -967,6 +978,7 @@ def monitor() -> None:
                 message=f"Attached to game log: {p}",
                 bytes_read=bytes_read,
                 last_line_at=last_line_at,
+                server_joinable=ready_announced,
             )
             text = b.decode("utf-8", "replace")
             now = time.time()
@@ -1138,6 +1150,8 @@ def monitor() -> None:
             if proc_up:
                 seen_server_up_once = True
                 last_seen_server_up = now
+            else:
+                ready_announced = False
 
             if SHUT_ENABLED and SHUTDOWN_FLAG.exists():
                 try:

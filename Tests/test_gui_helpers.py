@@ -43,7 +43,7 @@ from GUI.design_system import (  # noqa: E402
     set_button_role,
 )
 from GUI.dashboard import build_dashboard  # noqa: E402
-from GUI.panels import build_command_bar  # noqa: E402
+from GUI.panels import build_command_bar, set_startup_feedback  # noqa: E402
 
 
 def app() -> QtWidgets.QApplication:
@@ -122,6 +122,25 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.dashboardScroll.frameShape(), QtWidgets.QFrame.NoFrame)
         self.assertEqual(content.objectName(), "dashboardContent")
         self.assertEqual(content.layout().sizeConstraint(), QtWidgets.QLayout.SetMinimumSize)
+        self.assertEqual(owner.badgeHomeServer.text(), "Checking")
+        self.assertEqual(owner.badgeHomeLogMonitor.text(), "Checking")
+        self.assertEqual(owner.badgeHomeCrashMonitor.text(), "Checking")
+        self.assertEqual(owner.badgeHomeBackups.text(), "Checking")
+        self.assertEqual(owner.btnHomeSetup.text(), "Open Setup")
+        self.assertEqual(owner.btnHomeLogs.text(), "View Logs")
+        self.assertTrue(owner.noticeHomeGuidance.wordWrap())
+
+        class Navigation:
+            selected = None
+
+            def set_default_selection(self, view_id: str) -> None:
+                self.selected = view_id
+
+        owner.nav_panel = Navigation()
+        owner.btnHomeSetup.click()
+        self.assertEqual(owner.nav_panel.selected, "monitor.quick_start")
+        owner.btnHomeLogs.click()
+        self.assertEqual(owner.nav_panel.selected, "monitor.logs")
 
     def test_command_bar_reserves_readable_status_width(self) -> None:
         class Owner:
@@ -133,6 +152,28 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIsInstance(bar, QtWidgets.QWidget)
         self.assertGreaterEqual(owner.status_label.minimumWidth(), 260)
         self.assertTrue(owner.status_label.wordWrap())
+        self.assertEqual(owner.lbl_server_state.text(), "Checking…")
+        self.assertGreaterEqual(owner.lbl_server_state.minimumWidth(), 92)
+        self.assertEqual(owner.b_server_action.text(), "Checking…")
+        self.assertEqual(owner.b_server_action.property("serverAction"), "checking")
+        self.assertEqual(owner.b_monitors.text(), "Monitors…")
+        self.assertEqual(len(owner.monitor_menu.actions()), 5)
+        self.assertEqual(owner.a_lm_on.text(), "Start Log Monitor")
+        self.assertEqual(owner.a_cm_off.text(), "Stop Crash Monitor")
+        self.assertFalse(owner.startup_feedback_panel.isVisible())
+
+        set_startup_feedback(
+            owner,
+            "Server process started; waiting for joinable.",
+            step=4,
+        )
+        self.assertFalse(owner.startup_feedback_panel.isHidden())
+        self.assertEqual(owner.startup_progress.value(), 4)
+        self.assertIn("waiting for joinable", owner.lbl_startup_stage.text())
+        set_startup_feedback(owner, "Server ready.", step=5, state="complete")
+        self.assertEqual(
+            owner.startup_feedback_panel.property("startupState"), "complete"
+        )
 
     def test_navigation_panel_emits_selected_view(self) -> None:
         panel = NavigationPanel(
@@ -147,6 +188,8 @@ class GuiHelperTests(unittest.TestCase):
 
         self.assertEqual(panel.config_list.currentItem().text(), "Config")
         self.assertIn("config.main", selected)
+        self.assertFalse(panel.monitor_list.dragEnabled())
+        self.assertFalse(panel.config_list.dragEnabled())
 
     def test_status_renderer_delegates_to_owner_impl(self) -> None:
         class Owner:
@@ -385,6 +428,35 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("replacement URL entered", owner.lblQuickDiscordChatWebhookStatus.text())
         self.assertEqual(owner.edQuickDiscordChatWebhook.echoMode(), QtWidgets.QLineEdit.Normal)
         self.assertEqual(owner.btnQuickDiscordChatWebhookVisibility.text(), "Hide")
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_separates_app_and_game_webhooks_with_reuse_options(self) -> None:
+        class Owner:
+            config_path = ""
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        webhook = "https://discord.com/api/" + "webhooks/1/token"
+        owner.edQuickManagementWebhook.setText(webhook)
+        owner.chkQuickUseManagementForChat.setChecked(True)
+        owner.chkQuickUseManagementForAdmin.setChecked(True)
+
+        values = collect_quick_start_values(owner)
+        preview = build_quick_start_preview(owner)
+
+        self.assertEqual(values["management_discord_webhook"], webhook)
+        self.assertEqual(values["discord_chat_webhook_url"], webhook)
+        self.assertEqual(values["discord_chat_admin_webhook_url"], webhook)
+        self.assertFalse(owner.edQuickDiscordChatWebhook.isEnabled())
+        self.assertFalse(owner.edQuickDiscordAdminWebhook.isEnabled())
+        self.assertIn("<configured, masked>", preview)
+        self.assertNotIn(webhook, preview)
+
+        owner.edQuickManagementWebhook.setText("ENV:DISCORD_WEBHOOK_URL")
+        self.assertIn(
+            "ENV reference cannot be reused",
+            owner.lblQuickDiscordChatWebhookStatus.text(),
+        )
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_quick_start_detected_server_forces_existing_mode(self) -> None:

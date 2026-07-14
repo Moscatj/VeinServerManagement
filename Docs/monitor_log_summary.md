@@ -24,11 +24,14 @@ cleanly when a stop flag is set.
 ## Key Files & Paths
 - **PID:** `Runtime/log_monitor.pid` — PID of the running log monitor (GUI uses this).
 - **State:** `Runtime/log_monitor.state.json` — includes `last_updated`,
-  `active`, `tailing_file`, `watching_server`, `status`, `message`,
+  `active`, `tailing_file`, `watching_server`, `server_joinable`, `status`, `message`,
   `last_line_at`, `bytes_read`, and the paths checked during discovery, plus an
   optional `http_api` payload when HTTP polling is enabled.
 - **Stop flag:** `Runtime/stop_log_monitor.flag` — if present, the monitor stops
   gracefully. This is the same flag used by the GUI and packaged helper.
+  Controlled shutdown also normalizes the final monitor state after confirmed
+  process termination, covering forced termination paths that cannot execute a
+  monitor's normal cleanup block.
 - **Log paths:** resolved through `Controller/Tools/paths.py`. Discovery checks
   the explicit log path, the configured log directory, and both conventional
   Unreal log layouts below the selected server root.

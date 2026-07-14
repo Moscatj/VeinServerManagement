@@ -72,12 +72,16 @@ try:
         apply_quick_start,
         build_config_editor,
         build_dashboard,
+        home_health_state,
         normalize_player_snapshot,
+        runtime_server_joinable,
+        server_action_state,
         server_runtime_labels,
+        should_autostart_log_monitor,
+        startup_runtime_feedback,
         build_command_bar,
         build_left_panel,
         build_log_panel,
-        build_placeholder_view,
         CollapsibleBox,
         KVRow,
         handle_player_tree_double_click,
@@ -98,6 +102,8 @@ try:
         ConfigController,
         StatusRenderer,
         show_about_dialog,
+        set_button_role,
+        set_startup_feedback,
         set_quick_start_mode,
         update_quick_start_game_log_path,
         update_quick_start_save_games_path,
@@ -107,8 +113,25 @@ except Exception as e:
     sys.exit(1)
 
 
+def _source_python_executable(
+    executable: str | Path, *, windows: bool | None = None
+) -> Path:
+    """Return the console interpreter beside a source GUI's Python runtime."""
+    path = Path(executable)
+    is_windows = os.name == "nt" if windows is None else windows
+    if is_windows and path.name.lower() == "pythonw.exe":
+        console_path = path.with_name("python.exe")
+        if console_path.is_file():
+            return console_path
+    return path
+
+
 def _pyexe() -> str:
-    return PYEXE_ENV.strip() or ("py -3" if os.name == "nt" else sys.executable)
+    override = PYEXE_ENV.strip()
+    if override:
+        return override
+    executable = _source_python_executable(sys.executable)
+    return subprocess.list2cmdline([str(executable)])
 
 
 # --- move these helpers ABOVE DEFAULT_CONFIG ---
@@ -1100,7 +1123,6 @@ class Main(QtWidgets.QMainWindow):
         self.resize(1380, 900)
         self.setMinimumSize(1200, 720)  # keep the frame from collapsing/expanding
         self._default_primary_sizes = [170, 1130]
-        self._default_main_sizes = [1120, 420]
 
         # basic state
         self.config_dir = str(CONFIG_DIR)
@@ -1127,9 +1149,6 @@ class Main(QtWidgets.QMainWindow):
 
         self._player_tree_signature = None
         self._status_icon_cache = {}
-        self._sync_guard = False
-        self._view_factories: dict[str, Callable[[], QtWidgets.QWidget]] = {}
-        self._side_tab_store: dict[str, QtWidgets.QWidget] = {}
         self._sync_guard = False
         self.nav_ctl = NavigationController(self)
         self.logs = LogPanelController(self)
@@ -1208,61 +1227,41 @@ class Main(QtWidgets.QMainWindow):
         self.btn_toggle_left.setText("Show Navigation")
         self.btn_toggle_left.setCheckable(True)
         self.btn_toggle_left.setChecked(False)
-        self.btn_toggle_right = QtWidgets.QToolButton()
-        self.btn_toggle_right.setText("Hide Side Panel")
-        self.btn_toggle_right.setCheckable(True)
-        self.btn_toggle_right.setChecked(True)
         views_bar.addWidget(self.btn_toggle_left)
-        views_bar.addWidget(self.btn_toggle_right)
         views_bar.addStretch(1)
         root.addLayout(views_bar)
-
-        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        root.addWidget(self.main_splitter, 1)
 
         monitor_items = [
             NavigationItem(
                 "monitor.dashboard",
-                "Server Dashboard",
-                "Live server stats, monitors, and players",
+                "Home",
+                "Server state, primary controls, monitors, and players",
             ),
             NavigationItem(
                 "monitor.logs",
                 "Logs",
-                "Log tails and searches",
+                "Live server output, management logs, and errors",
             ),
+        ]
+        config_items = [
             NavigationItem(
-                "monitor.config",
-                "Config",
-                "Config editor",
+                "monitor.quick_start",
+                "Setup",
+                "Install, select, or configure a Vein server",
             ),
             NavigationItem(
                 "monitor.server_config",
-                "Server Config",
-                "Read-only Game.ini and Engine.ini preview",
+                "Server Settings",
+                "Review and safely edit supported Game.ini and Engine.ini values",
             ),
             NavigationItem(
-                "monitor.quick_start",
-                "Quick Start",
-                "Preview first-run server setup values",
-            ),
-            NavigationItem(
-                "monitor.discord",
-                "Discord",
-                "Discord chat and webhook status (placeholder)",
+                "monitor.config",
+                "Advanced Config",
+                "Management paths, features, backups, and monitor settings",
             ),
         ]
-        config_nav_data: list[tuple[str, str, str]] = []
-        self._config_nav_map = {}
-        config_items = [NavigationItem(vid, label, subtitle) for vid, label, subtitle in config_nav_data]
 
         self.nav_panel = NavigationPanel(monitor_items, config_items)
-        # Only expose factories that are safe to duplicate (dashboard shares owner-bound labels)
-        self._view_factories = {
-            "monitor.discord": lambda: build_placeholder_view(
-                "Discord integration UI will live here once the backend is ready."
-            ),
-        }
 
         self.primary_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.primary_splitter.setObjectName("primary_splitter")
@@ -1282,65 +1281,25 @@ class Main(QtWidgets.QMainWindow):
         self.primary_splitter.setStretchFactor(0, 0)
         self.primary_splitter.setStretchFactor(1, 1)
         self.primary_splitter.setCollapsible(0, True)
-        self.main_splitter.addWidget(self.primary_splitter)
+        root.addWidget(self.primary_splitter, 1)
 
-        self.side_tabs = QtWidgets.QTabWidget()
-        self.side_tabs.setDocumentMode(True)
-        self.side_tabs.setMovable(True)
-        self.side_tabs.setTabsClosable(True)
-        self.side_tabs.setAcceptDrops(True)
-        self.side_tabs.tabBar().setAcceptDrops(True)
         log_panel = build_log_panel(self)
-        self.side_tabs.addTab(log_panel, "Logs")
-        self._side_tab_store["Logs"] = log_panel
-
         config_view = build_config_editor(self)
         JsonHL(self.json.document())
-        self.side_tabs.addTab(config_view, "Config")
-        self._side_tab_store["Config"] = config_view
-
-        discord_placeholder = build_placeholder_view(
-            "Discord integration UI will live here once the backend is ready."
-        )
-        self.side_tabs.addTab(discord_placeholder, "Discord")
-        self._side_tab_store["Discord"] = discord_placeholder
-
-        self.main_splitter.addWidget(self.side_tabs)
-        self.main_splitter.setStretchFactor(0, 3)
-        self.main_splitter.setStretchFactor(1, 2)
-        self.main_splitter.setCollapsible(1, True)
-        # recompute defaults using the fixed nav width so the left pane stays tight
         self._default_primary_sizes = [
             max(self.left_panel.width(), 140),
             max(900, self.width() - self.left_panel.width()),
         ]
         self._apply_default_sizes()
         self.primary_splitter.splitterMoved.connect(self._sync_panel_buttons_from_splitters)
-        self.main_splitter.splitterMoved.connect(self._sync_panel_buttons_from_splitters)
-        self.side_tabs.tabCloseRequested.connect(self._close_side_tab)
-        self.side_tabs.installEventFilter(self)
-        self.side_tabs.tabBar().installEventFilter(self)
-        self.content_stack.setAcceptDrops(True)
-        self.content_stack.installEventFilter(self)
         self.logs.populate_log_sources()
-        self.side_tabs.setCurrentIndex(0)
 
         self._view_routes: dict[str, tuple[QtWidgets.QWidget, Optional[Callable[[], None]]]] = {}
         self._cached_admin_ids: set[str] | None = None
         dashboard = build_dashboard(self, _dot)
         self._register_view("monitor.dashboard", dashboard)
-        logs_stub = build_placeholder_view("Logs are available in the side panel tabs.")
-        self._register_view(
-            "monitor.logs",
-            logs_stub,
-            lambda: self._select_side_tab("Logs"),
-        )
-        config_stub = build_placeholder_view("Config editor is available in the side panel tabs.")
-        self._register_view(
-            "monitor.config",
-            config_stub,
-            lambda: self._select_side_tab("Config"),
-        )
+        self._register_view("monitor.logs", log_panel)
+        self._register_view("monitor.config", config_view)
         server_config_view = build_server_config_preview_view(self)
         self._register_view(
             "monitor.server_config",
@@ -1350,36 +1309,12 @@ class Main(QtWidgets.QMainWindow):
         quick_start_view = build_quick_start_view(self)
         self._register_view("monitor.quick_start", quick_start_view)
 
-        diag_placeholder = build_placeholder_view(
-            "Monitor diagnostics view is under construction."
-        )
-        self._register_view("monitor.diagnostics", diag_placeholder)
-
-        discord_nav_placeholder = build_placeholder_view(
-            "Discord integration UI will live here once the backend is ready."
-        )
-        self._register_view("monitor.discord", discord_nav_placeholder)
-
         self.nav_panel.viewSelected.connect(self._on_view_selected)
         self.nav_panel.set_default_selection("monitor.dashboard")
         self._on_view_selected("monitor.dashboard")
-        self.nav_panel.monitor_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.nav_panel.monitor_list.customContextMenuRequested.connect(
-            lambda pos: self._nav_context_menu(self.nav_panel.monitor_list, pos)
-        )
-        if hasattr(self.nav_panel, "config_list"):
-            self.nav_panel.config_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-            self.nav_panel.config_list.customContextMenuRequested.connect(
-                lambda pos: self._nav_context_menu(self.nav_panel.config_list, pos)
-            )
-        self.nav_panel.monitor_list.setDragEnabled(True)
-        if hasattr(self.nav_panel, "config_list"):
-            self.nav_panel.config_list.setDragEnabled(True)
 
         self.btn_toggle_left.toggled.connect(self._set_left_panel_visible)
-        self.btn_toggle_right.toggled.connect(self._set_right_panel_visible)
         self._set_left_panel_visible(True)
-        self._set_right_panel_visible(True, force_defaults=True)
         self._sync_panel_buttons_from_splitters()
 
         bottom = QtWidgets.QWidget()
@@ -1451,59 +1386,15 @@ class Main(QtWidgets.QMainWindow):
         if self._sync_guard:
             return
         left_visible = True
-        right_visible = True
         if hasattr(self, "primary_splitter"):
             sizes = self.primary_splitter.sizes()
             left_visible = bool(sizes and sizes[0] > 4)
-        if hasattr(self, "main_splitter"):
-            sizes = self.main_splitter.sizes()
-            if len(sizes) >= 2:
-                right_visible = sizes[1] > 4
         self._update_toggle_button(
             getattr(self, "btn_toggle_left", None),
             left_visible,
             "Show Navigation",
             "Hide Navigation",
         )
-        self._update_toggle_button(
-            getattr(self, "btn_toggle_right", None),
-            right_visible,
-            "Show Side Panel",
-            "Hide Side Panel",
-        )
-
-    def _select_side_tab(self, label: str):
-        for i in range(self.side_tabs.count()):
-            if self.side_tabs.tabText(i) == label:
-                self.side_tabs.setCurrentIndex(i)
-                self._set_right_panel_visible(True)
-                return
-
-    def _nav_context_menu(self, list_widget: QtWidgets.QListWidget, pos: QtCore.QPoint):
-        return self.nav_ctl.nav_context_menu(list_widget, pos)
-
-    def _pin_view_to_side_tabs(self, view_id: str, label: str):
-        return self.nav_ctl.pin_view_to_side_tabs(view_id, label)
-
-    def _pin_view_to_center(self, view_id: str):
-        return self.nav_ctl.pin_view_to_center(view_id)
-
-    def _ensure_tab_present(self, label: str, factory: Optional[Callable[[], QtWidgets.QWidget]]):
-        return self.nav_ctl.ensure_tab_present(label, factory)
-
-    def _close_side_tab(self, index: int):
-        # keep the base Logs tab persistent
-        widget = self.side_tabs.widget(index)
-        label = self.side_tabs.tabText(index)
-        # For base tabs, keep the widget in the store so it can be re-added
-        if label in ("Logs", "Config", "Discord"):
-            self.side_tabs.removeTab(index)
-            if widget:
-                self._side_tab_store[label] = widget
-            return
-        self.side_tabs.removeTab(index)
-        if widget:
-            widget.deleteLater()
 
     def _build_shortcuts_menu(self):
         bar = self.menuBar()
@@ -1581,72 +1472,9 @@ class Main(QtWidgets.QMainWindow):
         )
         self._sync_guard = False
 
-    def _set_right_panel_visible(self, visible: bool, force_defaults: bool = False):
-        pane = getattr(self, "side_tabs", None)
-        splitter = getattr(self, "main_splitter", None)
-        if not pane or not splitter:
-            return
-        if self._sync_guard:
-            return
-        self._sync_guard = True
-        pane.setVisible(visible)
-        idx = splitter.indexOf(pane)
-        if idx >= 0:
-            sizes = splitter.sizes()
-            if visible:
-                if force_defaults or not sizes or sum(sizes) == 0:
-                    self._apply_default_sizes()
-                else:
-                    last = getattr(self, "_right_last_size", self._default_main_sizes[1])
-                    if idx < len(sizes):
-                        if sizes[idx] > 0 and not force_defaults:
-                            last = sizes[idx]
-                        else:
-                            sizes[idx] = last
-                    else:
-                        sizes.append(last)
-                    if len(sizes) == 2 and sizes[1 - idx] <= 0:
-                        sizes[1 - idx] = max(self._default_main_sizes[0], last * 2)
-                    splitter.setSizes(sizes)
-            else:
-                if idx < len(sizes):
-                    self._right_last_size = max(300, sizes[idx])
-                    sizes[idx] = 0
-                    other = 1 - idx
-                    if other < len(sizes) and sizes[other] <= 0:
-                        sizes[other] = max(700, self.width() - 300)
-                    splitter.setSizes(sizes)
-        self._update_toggle_button(
-            getattr(self, "btn_toggle_right", None),
-            visible,
-            "Show Side Panel",
-            "Hide Side Panel",
-        )
-        self._sync_guard = False
-
     def _apply_default_sizes(self):
         if hasattr(self, "primary_splitter"):
             self.primary_splitter.setSizes(self._default_primary_sizes)
-        if hasattr(self, "main_splitter"):
-            self.main_splitter.setSizes(self._default_main_sizes)
-
-    def eventFilter(self, obj: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        if event.type() in (QtCore.QEvent.DragEnter, QtCore.QEvent.DragMove):
-            md = event.mimeData()
-            if md and md.hasFormat("application/x-vein-view"):
-                event.acceptProposedAction()
-                return True
-        if event.type() == QtCore.QEvent.Drop:
-            md = event.mimeData()
-            if md and md.hasFormat("application/x-vein-view"):
-                view_id = md.data("application/x-vein-view").data().decode("utf-8")
-                if obj is self.side_tabs:
-                    self._pin_view_to_side_tabs(view_id, md.text() or view_id)
-                elif obj is self.content_stack:
-                    self._pin_view_to_center(view_id)
-                event.acceptProposedAction()
-                return True
-        return super().eventFilter(obj, event)
     # ----------------------------- Signals ------------------------------------
     def _signals(self):
         self.b_cfgdir.clicked.connect(self.pick_cfg_dir)
@@ -1704,16 +1532,12 @@ class Main(QtWidgets.QMainWindow):
             self.edQuickServerRoot.editingFinished.connect(self._inspect_quick_start_server_root)
             QtCore.QTimer.singleShot(0, self._initialize_quick_start_mode)
 
-        self.b_start.clicked.connect(self.start_server)
-        self.b_stop.clicked.connect(self.stop_server)
+        self.b_server_action.clicked.connect(self._activate_primary_server_action)
         self.b_restart.clicked.connect(self.restart_server)
-        self.b_lm_on.clicked.connect(self.start_lm)
-        self.b_lm_off.clicked.connect(self.stop_lm)
-        self.b_cm_on.clicked.connect(self.start_cm)
-        self.b_cm_off.clicked.connect(self.stop_cm)
-        self.b_setup_server.clicked.connect(
-            lambda: self._on_view_selected("monitor.quick_start")
-        )
+        self.a_lm_on.triggered.connect(self.start_lm)
+        self.a_lm_off.triggered.connect(self.stop_lm)
+        self.a_cm_on.triggered.connect(self.start_cm)
+        self.a_cm_off.triggered.connect(self.stop_cm)
 
     # -------------------------- Config folder ---------------------------------
     def pick_cfg_dir(self):
@@ -2190,6 +2014,15 @@ class Main(QtWidgets.QMainWindow):
     def start_server(self):
         return self.process_ctl.start_server()
 
+    def _activate_primary_server_action(self):
+        action = self.b_server_action.property("serverAction")
+        if action == "setup":
+            self._on_view_selected("monitor.quick_start")
+        elif action == "start":
+            self.start_server()
+        elif action == "stop":
+            self.stop_server()
+
     def stop_server(self):
         return self.process_ctl.stop_server()
 
@@ -2220,34 +2053,76 @@ class Main(QtWidgets.QMainWindow):
         # Server
         server_on = bool(snap.get("server", False))
         server_available = bool(snap.get("server_available", False))
+        action_state = server_action_state(server_available, server_on)
+        lm_on = bool(snap.get("logmon", False))
+        lm_fresh = bool(snap.get("logmon_fresh", False))
+        cm_on = bool(snap.get("crashmon", False))
         self._server_available = server_available
         self.dot_srv.setStyleSheet(dot(server_on))
-        self.b_start.setEnabled(server_available and not server_on)
-        self.b_stop.setEnabled(server_on)
-        self.b_restart.setEnabled(server_available and server_on)
-        self.b_lm_on.setEnabled(server_available and not bool(snap.get("logmon", False)))
-        self.b_lm_off.setEnabled(bool(snap.get("logmon", False)))
-        self.b_cm_on.setEnabled(server_available and not bool(snap.get("crashmon", False)))
-        self.b_cm_off.setEnabled(bool(snap.get("crashmon", False)))
-        self.b_setup_server.setVisible(not server_available)
-        if not server_available:
+        self.lbl_server_state.setText(action_state["label"])
+        server_action_busy = bool(getattr(self, "_server_action_busy", False))
+        if not server_action_busy:
+            self.b_server_action.setText(action_state["primary_label"])
+            self.b_server_action.setProperty(
+                "serverAction", action_state["primary_action"]
+            )
+            role = action_state["primary_role"]
+            if self.b_server_action.property("buttonRole") != role:
+                set_button_role(self.b_server_action, role)
+            self.b_server_action.setEnabled(True)
+            self.b_restart.setEnabled(action_state["can_restart"])
+        else:
+            self.b_server_action.setText(
+                getattr(self, "_server_action_busy_label", "") or "Working..."
+            )
+            self.b_server_action.setEnabled(False)
+            self.b_restart.setEnabled(False)
+        self.a_lm_on.setEnabled(server_available and not lm_on)
+        self.a_lm_off.setEnabled(lm_on)
+        self.a_cm_on.setEnabled(server_available and not cm_on)
+        self.a_cm_off.setEnabled(cm_on)
+        self.b_monitors.setEnabled(
+            any(
+                action.isEnabled()
+                for action in (
+                    self.a_lm_on,
+                    self.a_lm_off,
+                    self.a_cm_on,
+                    self.a_cm_off,
+                )
+            )
+        )
+        if server_on:
+            self.b_server_action.setToolTip("Safely stop the running Vein server")
+            self.b_restart.setToolTip("Safely stop and restart the Vein server")
+        elif not server_available:
             guidance = "No Vein server is installed or selected. Open Quick Start to install or configure one."
-            for button in (self.b_start, self.b_restart, self.b_lm_on, self.b_cm_on):
-                button.setToolTip(guidance)
+            self.b_server_action.setToolTip(
+                "Open Setup to install or select a Vein server"
+            )
+            self.b_restart.setToolTip(guidance)
+            self.a_lm_on.setToolTip(guidance)
+            self.a_cm_on.setToolTip(guidance)
             self.status_label.setText(f"Status: {guidance}")
+        else:
+            self.b_server_action.setToolTip("Start the configured Vein server")
         # Log monitor: green if alive+fresh; yellow if alive but stale
-        lm_on = snap.get("logmon", False)
-        lm_fresh = snap.get("logmon_fresh", False)
         self.dot_lm.setStyleSheet(
             dot(lm_on and lm_fresh, warn=(lm_on and not lm_fresh))
         )
         # Crash monitor
-        cm_on = snap.get("crashmon", False)
         self.dot_cm.setStyleSheet(dot(cm_on))
+        log_state = (
+            "running" if lm_on and lm_fresh else "stale" if lm_on else "stopped"
+        )
+        crash_state = "running" if cm_on else "stopped"
+        self.lbl_monitor_state.setText(
+            f"Log {log_state} · Crash {crash_state}"
+        )
         cmode = snap.get("crash_mode", "unknown")
         self.lblCrashMode.setText(cmode)
-        self.b_cm_on.setToolTip(f"Crash monitor mode: {cmode}")
-        self.b_cm_off.setToolTip(f"Crash monitor mode: {cmode}")
+        self.a_cm_on.setToolTip(f"Crash monitor mode: {cmode}")
+        self.a_cm_off.setToolTip(f"Crash monitor mode: {cmode}")
 
         # Dashboard detail (read server_state only once here)
         rp = _runtime_paths(self.config_path)
@@ -2276,10 +2151,30 @@ class Main(QtWidgets.QMainWindow):
             self.lblLogLast.setText(f"Last game log activity: {_age_str(last_line)}")
         else:
             self.lblLogLast.setText(f"Last monitor update: {_age_str(last)}")
-        runtime_labels = server_runtime_labels(server_on, st)
+        server_joinable = runtime_server_joinable(st, lms)
+        runtime_state = dict(st or {})
+        runtime_state["server_joinable"] = server_joinable
+        runtime_labels = server_runtime_labels(server_on, runtime_state)
         self.lblLogJoin.setText(runtime_labels["joinable"])
         self.lblLogPlayers.setText(runtime_labels["players"])
         self.lblLogUptime.setText(runtime_labels["uptime"])
+
+        if getattr(self, "_startup_feedback_tracking", False):
+            feedback = startup_runtime_feedback(
+                server_running=server_on,
+                server_joinable=server_joinable,
+                log_monitor_running=lm_on,
+                crash_monitor_running=cm_on,
+            )
+            if feedback:
+                set_startup_feedback(
+                    self,
+                    feedback["text"],
+                    step=feedback["step"],
+                    state=feedback["state"],
+                )
+                if feedback["state"] == "complete":
+                    self._startup_feedback_tracking = False
 
         http_state = lms.get("http_api") if isinstance(lms, dict) else None
 
@@ -2313,6 +2208,32 @@ class Main(QtWidgets.QMainWindow):
         bk_enabled = bool((snap.get("backup") or {}).get("enabled", True))
         bk_counts = (snap.get("backup") or {}).get("counts") or {}
         age = _age_str(bk_last) if bk_last and bk_last != "-" else "-"
+
+        home_health = home_health_state(
+            server_available=server_available,
+            server_running=server_on,
+            log_monitor_running=lm_on,
+            log_monitor_fresh=lm_fresh,
+            crash_monitor_running=cm_on,
+            backups_enabled=bk_enabled,
+        )
+        for badge, key in (
+            (self.badgeHomeServer, "server"),
+            (self.badgeHomeLogMonitor, "log_monitor"),
+            (self.badgeHomeCrashMonitor, "crash_monitor"),
+            (self.badgeHomeBackups, "backups"),
+        ):
+            badge_state = home_health[key]
+            if (
+                badge.property("statusState") != badge_state["state"]
+                or badge.text() != badge_state["text"]
+            ):
+                badge.set_state(badge_state["state"], badge_state["text"])
+        guidance = home_health["guidance"]
+        if self.noticeHomeGuidance.text() != guidance["text"]:
+            self.noticeHomeGuidance.setText(guidance["text"])
+        if self.noticeHomeGuidance.property("noticeKind") != guidance["kind"]:
+            self.noticeHomeGuidance.set_kind(guidance["kind"])
 
         def _fmt_counts(d: dict) -> str:
             if not d:
@@ -2368,13 +2289,14 @@ class Main(QtWidgets.QMainWindow):
             rt = _rt_paths(self.config_path)
             manual_stop = rt["stop_log"].exists() if "stop_log" in rt else False
 
-            if (
-                server_on
-                and logmon_enabled
-                and not lm_on
-                and not manual_stop
-                and (now - self._lm_autostart_last) > 5.0
-            ):
+            if should_autostart_log_monitor(
+                server_running=server_on,
+                monitor_enabled=logmon_enabled,
+                monitor_running=lm_on,
+                manual_stop=manual_stop,
+                lifecycle_busy=bool(getattr(self, "_server_action_busy", False)),
+                shutdown_in_progress=_file_exists(rp["shutdown_flag"]),
+            ) and (now - self._lm_autostart_last) > 5.0:
                 self._lm_autostart_last = now
                 self.start_lm()
         except Exception:

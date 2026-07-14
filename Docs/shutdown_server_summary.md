@@ -57,7 +57,12 @@ Clean shutdown sequence:
    - `begin_intentional_shutdown(window_sec=…)`
    - Clear the running flag (`clear_flag()`).
 2. **Stop monitors first**  
+   - Assert both canonical monitor stop flags until the next startup clears them.
    - Try `stop_log_monitor()` / `stop_crash_monitor()`; on failure, kill by keyword.
+   - After a confirmed stop, persist terminal monitor state and remove its stale
+     PID marker so the GUI cannot display an old `active` or `idle` state.
+   - This prevents GUI recovery polling from relaunching a monitor while the
+     server is still alive during the shutdown warning window.
 3. **Optional warning**  
    - If `pre_shutdown_warning_seconds` > 0 → run `_warn_and_wait()`.
 4. **Stop the server**  

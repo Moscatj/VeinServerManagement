@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
 
+from .design_system import InlineNotice, PAGE_MARGIN, SECTION_SPACING, PageHeader
 from .preflight import load_config_for_preflight
 from Tools.server_config_editor import (
     apply_server_config_edits,
@@ -107,8 +108,22 @@ class ServerConfigEditWorker(QtCore.QRunnable):
 def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     widget = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(widget)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(8)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(SECTION_SPACING)
+    layout.addWidget(
+        PageHeader(
+            "Server Settings",
+            "Review and safely edit supported VEIN Game.ini and Engine.ini settings.",
+        )
+    )
+    layout.addWidget(
+        InlineNotice(
+            "The DiscordChatWebhookURL and DiscordChatAdminWebhookURL settings "
+            "belong to VEIN and control game chat/admin reports. App startup, "
+            "shutdown, crash, backup, and player notifications use the separate "
+            "App notifications webhook on the Setup page."
+        )
+    )
 
     header = QtWidgets.QHBoxLayout()
     owner.lblServerConfigPreviewStatus = QtWidgets.QLabel("Refresh to inspect Game.ini and Engine.ini.")

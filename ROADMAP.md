@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.9.1`:
+Released through `v2.10.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -51,6 +51,12 @@ Released through `v2.9.1`:
 - Subsystem ownership, documentation/version consistency, source hygiene, and
   batch-wrapper references are validated automatically. Obsolete Continue,
   WebAdmin, wrapper, and generated-spec artifacts have been retired.
+- The GUI now uses one task-oriented workspace with a state-aware primary
+  server action, an At a Glance health summary, persistent startup progress,
+  consolidated logs, and clearer monitor status.
+- Quick Start now distinguishes app notifications from VEIN game-chat and
+  admin-report webhooks, while lifecycle state remains accurate through
+  joinable readiness and controlled monitor shutdown.
 
 ## Near-Term Priorities
 
@@ -67,9 +73,9 @@ Released through `v2.9.1`:
   SteamCMD recovery.
 - Add an in-app first-run checklist that connects installer results, Quick
   Start, preflight, firewall/router guidance, and the first successful launch.
-- Continue the phased GUI modernization described in
-  `Docs/gui_modernization.md`, emphasizing navigation, readable responsive
-  layouts, status clarity, and reusable tested controllers.
+- Complete the remaining phased GUI modernization described in
+  `Docs/gui_modernization.md`, especially the Quick Start wizard, curated
+  settings, responsive layouts, and lifecycle integration hardening.
 - Improve server-config editing with field-specific controls, backup restore
   guidance, and clearer validation errors.
 - Add a guided network-readiness workflow for Windows Firewall, router port

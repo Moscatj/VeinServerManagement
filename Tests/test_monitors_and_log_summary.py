@@ -30,13 +30,39 @@ class FakeMonitorProcess:
 
 
 class MonitorStopTests(unittest.TestCase):
+    def test_request_monitor_stop_flags_asserts_both_until_next_start(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            paths = monitors.request_monitor_stop_flags(Path(tmp))
+
+            self.assertEqual(len(paths), 2)
+            self.assertTrue(all(path.is_file() for path in paths))
+            self.assertIn("intentional shutdown", paths[0].read_text(encoding="utf-8"))
+
+    def test_mark_monitor_stopped_clears_stale_state_and_pid(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            runtime = Path(tmp)
+            (runtime / "crash_monitor.state.json").write_text(
+                '{"active": true, "mode": "idle", "watching_server": true}',
+                encoding="utf-8",
+            )
+            (runtime / "crash_monitor.pid").write_text("123", encoding="utf-8")
+
+            state_path = monitors.mark_monitor_stopped(runtime, "crash")
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+            self.assertFalse(payload["active"])
+            self.assertFalse(payload["watching_server"])
+            self.assertEqual(payload["mode"], "stopped")
+            self.assertFalse((runtime / "crash_monitor.pid").exists())
+
     def test_stop_processes_terminates_matching_cmdline_processes(self) -> None:
         match = FakeMonitorProcess(["python", "Controller/monitor_log.py"])
         miss = FakeMonitorProcess(["python", "Controller/crash_monitor.py"])
 
         with mock.patch.object(monitors.psutil, "process_iter", return_value=[match, miss]):
-            monitors.stop_log_monitor()
+            stopped = monitors.stop_log_monitor()
 
+        self.assertTrue(stopped)
         self.assertTrue(match.terminated)
         self.assertEqual(match.wait_timeout, 5)
         self.assertFalse(miss.terminated)
@@ -49,14 +75,15 @@ class MonitorStopTests(unittest.TestCase):
         denied.terminate.side_effect = monitors.psutil.AccessDenied(pid=123)
 
         with mock.patch.object(monitors.psutil, "process_iter", return_value=[match, denied]):
-            monitors.stop_log_monitor()
+            stopped = monitors.stop_log_monitor()
 
+        self.assertFalse(stopped)
         self.assertTrue(match.terminated)
         denied.terminate.assert_called_once()
 
     def test_stop_processes_tolerates_outer_process_iter_failure(self) -> None:
         with mock.patch.object(monitors.psutil, "process_iter", side_effect=RuntimeError("psutil failed")):
-            monitors.stop_crash_monitor()
+            self.assertFalse(monitors.stop_crash_monitor())
 
     def test_stop_processes_matches_packaged_monitor_subcommand(self) -> None:
         packaged = FakeMonitorProcess(

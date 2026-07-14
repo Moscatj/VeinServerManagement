@@ -38,6 +38,10 @@ class ConfigLoadingTests(unittest.TestCase):
                 "crash_monitor": {"enabled": False, "heartbeat_seconds": "10"},
                 "backups": {"enabled": True, "root": "Backups"},
                 "steam": {"app_id": "123", "steamcmd_path": "SteamCMD/steamcmd.exe"},
+                "discord": {
+                    "enabled": True,
+                    "webhooks": {"default": "ENV:TEST_DISCORD_WEBHOOK"},
+                },
             }
 
             migrated = config_module._migrate_v2_layout(cfg, mgmt_root)
@@ -57,6 +61,19 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertFalse(migrated["features"]["enable_crash_monitor"])
         self.assertTrue(migrated["features"]["enable_backups"])
         self.assertEqual(migrated["app_id"], "123")
+        self.assertEqual(migrated["discord_webhook"], "ENV:TEST_DISCORD_WEBHOOK")
+        self.assertTrue(migrated["features"]["enable_discord"])
+
+    def test_legacy_discord_webhook_takes_precedence_over_structured_default(self) -> None:
+        migrated = config_module._migrate_v2_layout(
+            {
+                "discord_webhook": "ENV:LEGACY_WEBHOOK",
+                "discord": {"webhooks": {"default": "ENV:STRUCTURED_WEBHOOK"}},
+            },
+            ROOT,
+        )
+
+        self.assertEqual(migrated["discord_webhook"], "ENV:LEGACY_WEBHOOK")
 
     def test_normalize_paths_makes_known_relative_paths_absolute(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

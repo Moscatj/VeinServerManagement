@@ -38,11 +38,18 @@ The GUI should help an operator answer three questions quickly:
 
 ## Phases
 
-Status at v2.9.1: Phase 1 is implemented. Parts of Phases 2, 3, 4, 6, and 7
-have landed through reusable GUI modules, the Home dashboard, scroll-safe Quick
-Start, status-aware process buttons, and consolidated log views. The remaining
-items below describe the target experience, not a claim that each phase is
-complete.
+Status during the v2.10.0 GUI work: Phase 1 is implemented. The shell now uses
+one authoritative page stack, omits unfinished destinations from normal
+navigation, gives Logs and Advanced Config full pages, and presents one
+state-aware Set Up, Start, or Stop Server action beside explicit server state.
+Monitor commands live in a compact menu with readable status. Parts of Phases
+3, 4, 6, and 7 have also landed through reusable GUI modules, the Home
+dashboard, scroll-safe Quick Start, status-aware process buttons, and
+consolidated log views. Home now opens with an At a Glance health summary,
+runtime-aware guidance, and direct Setup and Logs links. Server startup now has
+a persistent progress strip that follows observable runtime milestones through
+joinable readiness. The remaining items below describe the target experience,
+not a claim that each phase is complete.
 
 ### Phase 1 - UX Foundation
 
@@ -55,11 +62,11 @@ complete.
 
 ### Phase 2 - Navigation And Application Shell
 
-- Replace duplicate main-stack/side-tab navigation with one authoritative stack.
-- Remove placeholder destinations from normal navigation.
+- [x] Replace duplicate main-stack/side-tab navigation with one authoritative stack.
+- [x] Remove placeholder destinations from normal navigation.
 - Add persistent page title/context and responsive navigation behavior.
-- Replace the crowded process ribbon with a state-aware primary server action
-  and compact secondary/overflow actions.
+- [x] Replace the crowded process ribbon with a state-aware primary server
+  action and compact secondary/overflow actions.
 
 ### Phase 3 - Guided Quick Start
 
@@ -77,10 +84,13 @@ complete.
 
 ### Phase 4 - Everyday Operation
 
-- Build a concise Home dashboard around server health and the next action.
+- [x] Build a concise Home dashboard around server health and the next action.
 - Disable incompatible actions during state transitions.
-- Surface actionable warnings with links to the relevant repair workflow.
-- Present monitor health as part of server health rather than equal top-level
+  Startup and controlled shutdown now keep the primary action visibly busy
+  while their helpers are active; remaining lifecycle transitions should adopt
+  the same model.
+- [x] Surface actionable warnings with links to the relevant repair workflow.
+- [x] Present monitor health as part of server health rather than equal top-level
   process controls.
 
 ### Phase 5 - Settings And Configuration
@@ -108,6 +118,11 @@ complete.
 
 - Add focused helper/controller tests for every workflow.
 - Add a small stable set of Qt interaction tests.
+- Add an isolated lifecycle integration harness with fake long-running server,
+  log-monitor, and crash-monitor processes. Exercise start through joinable
+  readiness, controlled shutdown, stop-flag timing, process exit, terminal
+  runtime state, and protection against monitor relaunch during shutdown. The
+  harness must use temporary directories and never target a real VEIN install.
 - Test keyboard access, high DPI, light/dark palettes, minimum window size,
   long paths, missing files, slow work, and failure recovery.
 - Perform fresh packaged-install usability tests and update screenshots.

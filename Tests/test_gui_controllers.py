@@ -30,27 +30,40 @@ class GuiControllerTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._app = app()
 
-    def test_navigation_controller_registers_selects_and_pins_views(self) -> None:
+    def test_navigation_controller_registers_and_selects_authoritative_views(self) -> None:
         owner = mock.Mock()
         owner.content_stack = QtWidgets.QStackedWidget()
-        owner.side_tabs = QtWidgets.QTabWidget()
         owner._view_routes = {}
-        owner._view_factories = {}
-        owner._side_tab_store = {}
-        owner._set_right_panel_visible = mock.Mock()
         controller = NavigationController(owner)
-        widget = QtWidgets.QLabel("Main")
+        home = QtWidgets.QLabel("Home")
+        logs = QtWidgets.QLabel("Logs")
         callback = mock.Mock()
 
-        controller.register_view("main", widget, callback)
-        controller.on_view_selected("main")
-        controller.ensure_tab_present("Tools", lambda: QtWidgets.QLabel("Tools"))
-        controller.ensure_tab_present("Tools", None)
+        controller.register_view("home", home, callback)
+        controller.register_view("logs", logs)
+        controller.on_view_selected("home")
 
-        self.assertEqual(owner.content_stack.currentWidget(), widget)
+        self.assertEqual(owner.content_stack.count(), 2)
+        self.assertEqual(owner.content_stack.currentWidget(), home)
         callback.assert_called_once()
-        self.assertEqual(owner.side_tabs.count(), 1)
-        owner._set_right_panel_visible.assert_called_once_with(True)
+
+        controller.on_view_selected("logs")
+
+        self.assertEqual(owner.content_stack.currentWidget(), logs)
+
+    def test_server_action_busy_label_covers_start_and_stop_transitions(self) -> None:
+        controller = object.__new__(ProcessController)
+        controller.owner = mock.Mock()
+        button = QtWidgets.QPushButton("Stop Server")
+
+        controller._set_server_action_busy(button, True, label="Stopping...")
+        self.assertFalse(button.isEnabled())
+        self.assertEqual(button.text(), "Stopping...")
+        self.assertTrue(controller.owner._server_action_busy)
+
+        controller._set_server_action_busy(button, False)
+        self.assertTrue(button.isEnabled())
+        self.assertEqual(button.text(), "Start Server")
 
     def test_config_controller_selects_config_and_delegates_filter(self) -> None:
         owner = mock.Mock()
@@ -215,7 +228,7 @@ class GuiControllerTests(unittest.TestCase):
             owner._status = mock.Mock()
             owner._notify_action_error = mock.Mock()
             owner._write_action_log = mock.Mock()
-            owner.b_start = QtWidgets.QPushButton("Start Server")
+            owner.b_server_action = QtWidgets.QPushButton("Start Server")
             run_once = mock.Mock(return_value=(1, "", "No server executable found"))
             controller = ProcessController(
                 owner,
@@ -248,7 +261,8 @@ class GuiControllerTests(unittest.TestCase):
             owner._notify_action_error.assert_called_once()
             self.assertIn("exit code 1", owner._notify_action_error.call_args.args[1])
             self.assertIn("No server executable found", log_path.read_text(encoding="utf-8"))
-            self.assertTrue(owner.b_start.isEnabled())
+            self.assertTrue(owner.b_server_action.isEnabled())
+            self.assertEqual(owner.b_server_action.text(), "Start Server")
 
     def test_packaged_start_reports_missing_vein_tools(self) -> None:
         owner = mock.Mock()

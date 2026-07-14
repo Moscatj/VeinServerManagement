@@ -15,6 +15,7 @@ from typing import Callable, Dict, Optional
 from PySide6 import QtCore
 
 from Tools import mgmt_logs
+from .panels import set_startup_feedback
 
 
 class RunOnceWorker(QtCore.QRunnable):
@@ -163,10 +164,17 @@ class ProcessController:
         except Exception:
             pass
 
-    @staticmethod
-    def _set_busy(button, busy: bool) -> None:
+    def _set_server_action_busy(
+        self, button, busy: bool, *, label: str = ""
+    ) -> None:
+        self.owner._server_action_busy = busy
+        self.owner._server_action_busy_label = label if busy else ""
         if button is not None:
             button.setEnabled(not busy)
+            if busy:
+                button.setText(label or "Working...")
+            elif button.text() in {"Starting...", "Stopping...", "Working..."}:
+                button.setText("Start Server")
 
     def start_server(self) -> None:
         if getattr(self.owner, "_server_available", True) is False:
@@ -201,13 +209,23 @@ class ProcessController:
             timeout=600,
         )
         self._workers.append(worker)
-        start_button = getattr(self.owner, "b_start", None)
-        self._set_busy(start_button, True)
+        start_button = getattr(
+            self.owner,
+            "b_server_action",
+            getattr(self.owner, "b_start", None),
+        )
+        self._set_server_action_busy(start_button, True, label="Starting...")
+        self.owner._startup_feedback_tracking = True
+        set_startup_feedback(
+            self.owner,
+            "Preparing startup: validating configuration and checking the Steam version.",
+            step=1,
+        )
 
         def finished(code: int, out: str, err: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
-            self._set_busy(start_button, False)
+            self._set_server_action_busy(start_button, False)
             self._write_launch_log(srv_stdout, command, out, err)
             if out:
                 self.owner._write_action_log("start_server", "stdout", out)
@@ -216,8 +234,20 @@ class ProcessController:
             if code == 0:
                 if "already running" in out.lower():
                     self.owner._status("Server is already running; no second process was started.")
+                    set_startup_feedback(
+                        self.owner,
+                        "Server was already running.",
+                        step=5,
+                        state="complete",
+                    )
+                    self.owner._startup_feedback_tracking = False
                 else:
                     self.owner._status("Server process launched; waiting for running status.")
+                    set_startup_feedback(
+                        self.owner,
+                        "Server process launched; waiting for runtime confirmation.",
+                        step=4,
+                    )
                 return
             detail = (err or out or "The startup helper returned no diagnostic output.").strip()
             if len(detail) > 2000:
@@ -227,17 +257,31 @@ class ProcessController:
                 f"Startup returned exit code {code}. {detail}",
                 srv_stdout,
             )
+            set_startup_feedback(
+                self.owner,
+                "Startup failed. Open Logs for the startup helper output.",
+                step=1,
+                state="error",
+            )
+            self.owner._startup_feedback_tracking = False
 
         def failed(message: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
-            self._set_busy(start_button, False)
+            self._set_server_action_busy(start_button, False)
             self._write_launch_log(srv_stdout, command, err=message)
             self._report_error(
                 "Server Start Failed",
                 f"Could not run the startup helper: {message}",
                 srv_stdout,
             )
+            set_startup_feedback(
+                self.owner,
+                "Startup failed before the helper could complete. Open Logs for details.",
+                step=1,
+                state="error",
+            )
+            self.owner._startup_feedback_tracking = False
 
         worker.signals.finished.connect(finished)
         worker.signals.failed.connect(failed)
@@ -245,6 +289,10 @@ class ProcessController:
         self._pool.start(worker)
 
     def stop_server(self, *, after_success: Optional[Callable[[], None]] = None) -> None:
+        self.owner._startup_feedback_tracking = False
+        startup_panel = getattr(self.owner, "startup_feedback_panel", None)
+        if hasattr(startup_panel, "setVisible"):
+            startup_panel.setVisible(False)
         paths = self._resolved_paths()
         py = paths["shutdown_server"]
         if not self._packaged and not py.exists():
@@ -270,10 +318,17 @@ class ProcessController:
             timeout=180,
         )
         self._workers.append(worker)
+        action_button = getattr(
+            self.owner,
+            "b_server_action",
+            getattr(self.owner, "b_stop", None),
+        )
+        self._set_server_action_busy(action_button, True, label="Stopping...")
 
         def finished(code: int, out: str, err: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
+            self._set_server_action_busy(action_button, False)
             if out:
                 self.owner._write_action_log("stop_server", "stdout", out)
             if err:
@@ -294,6 +349,7 @@ class ProcessController:
         def failed(message: str) -> None:
             if worker in self._workers:
                 self._workers.remove(worker)
+            self._set_server_action_busy(action_button, False)
             self._write_launch_log(stop_log, command, err=message)
             self._report_error(
                 "Server Stop Failed",

@@ -252,9 +252,19 @@ See [management_logs.md](management_logs.md) for the full layout, archive behavi
 
 ## Discord
 
-- discord_webhook  
-  • Webhook string or ENV indirection. If value begins with `ENV:NAME`, the actual URL is taken from that env var.  
-  • Current: ENV:DISCORD_WEBHOOK_URL
+- discord.webhooks.default
+  • Management-suite App Notifications webhook for startup, shutdown, crash,
+    backup, player, and monitor messages.
+  • Accepts a literal Discord webhook URL or `ENV:NAME` indirection.
+  • Quick Start can update this value without exposing the stored secret.
+  • Legacy `discord_webhook` remains compatible and takes precedence when both
+    forms are present.
+
+- `Game.ini` `DiscordChatWebhookURL`
+  • VEIN in-game chat integration; requires a literal Discord webhook URL.
+
+- `Game.ini` `DiscordChatAdminWebhookURL`
+  • VEIN admin report integration; requires a literal Discord webhook URL.
 
 - features.enable_discord (bool)  
   • Global gate for any Discord sending.  

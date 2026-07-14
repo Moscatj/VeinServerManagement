@@ -9,7 +9,15 @@ from typing import TYPE_CHECKING
 from PySide6 import QtCore, QtWidgets
 
 from .player_details import handle_player_tree_double_click
-from .design_system import PAGE_MARGIN, SECTION_SPACING, PageHeader
+from .design_system import (
+    BUTTON_SECONDARY,
+    PAGE_MARGIN,
+    SECTION_SPACING,
+    InlineNotice,
+    PageHeader,
+    StatusBadge,
+    set_button_role,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from Controller.vein_manager import Main
@@ -36,7 +44,51 @@ def build_dashboard(owner: "Main", dot_style) -> QtWidgets.QWidget:
         )
     )
 
-    logCard = QtWidgets.QGroupBox("Log Monitor")
+    overview_card = QtWidgets.QGroupBox("At a Glance")
+    overview_layout = QtWidgets.QGridLayout(overview_card)
+    overview_layout.setHorizontalSpacing(16)
+    overview_layout.setVerticalSpacing(8)
+    badge_specs = (
+        ("Server", "badgeHomeServer", "Checking"),
+        ("Log Monitor", "badgeHomeLogMonitor", "Checking"),
+        ("Crash Monitor", "badgeHomeCrashMonitor", "Checking"),
+        ("Backups", "badgeHomeBackups", "Checking"),
+    )
+    for column, (label, attribute, initial) in enumerate(badge_specs):
+        overview_layout.addWidget(QtWidgets.QLabel(label), 0, column)
+        badge = StatusBadge(initial)
+        badge.setMinimumWidth(92)
+        setattr(owner, attribute, badge)
+        overview_layout.addWidget(badge, 1, column)
+
+    owner.noticeHomeGuidance = InlineNotice(
+        "Checking server health and safeguards."
+    )
+    overview_layout.addWidget(owner.noticeHomeGuidance, 2, 0, 1, 4)
+
+    def navigate(view_id: str) -> None:
+        navigation = getattr(owner, "nav_panel", None)
+        if navigation is not None:
+            navigation.set_default_selection(view_id)
+        else:
+            callback = getattr(owner, "_on_view_selected", None)
+            if callback is not None:
+                callback(view_id)
+
+    owner.btnHomeSetup = QtWidgets.QPushButton("Open Setup")
+    owner.btnHomeLogs = QtWidgets.QPushButton("View Logs")
+    set_button_role(owner.btnHomeSetup, BUTTON_SECONDARY)
+    set_button_role(owner.btnHomeLogs, BUTTON_SECONDARY)
+    owner.btnHomeSetup.clicked.connect(lambda: navigate("monitor.quick_start"))
+    owner.btnHomeLogs.clicked.connect(lambda: navigate("monitor.logs"))
+    action_row = QtWidgets.QHBoxLayout()
+    action_row.addWidget(owner.btnHomeSetup)
+    action_row.addWidget(owner.btnHomeLogs)
+    action_row.addStretch(1)
+    overview_layout.addLayout(action_row, 3, 0, 1, 4)
+    layout.addWidget(overview_card)
+
+    logCard = QtWidgets.QGroupBox("Server Activity")
     logLay = QtWidgets.QGridLayout(logCard)
     owner.lblLogDot = QtWidgets.QLabel()
     owner.lblLogDot.setFixedSize(14, 14)
@@ -153,15 +205,6 @@ def build_dashboard(owner: "Main", dot_style) -> QtWidgets.QWidget:
     row.addStretch(1)
     bkLay.addLayout(row, 5, 0, 1, 2)
     layout.addWidget(bkCard)
-
-    discordCard = QtWidgets.QGroupBox("Discord Integration")
-    discordLay = QtWidgets.QVBoxLayout(discordCard)
-    placeholder = QtWidgets.QLabel(
-        "Reserved space for upcoming Discord send/receive controls."
-    )
-    placeholder.setWordWrap(True)
-    discordLay.addWidget(placeholder)
-    layout.addWidget(discordCard)
 
     owner.dashboardScroll.setWidget(content)
     outer.addWidget(owner.dashboardScroll)

@@ -19,6 +19,7 @@ from Tools.server_quickstart import (
     apply_quick_start_plan,
     build_quick_start_plan,
     load_existing_server_settings,
+    management_webhook_summary,
 )
 from .design_system import (
     BUTTON_PRIMARY,
@@ -177,22 +178,58 @@ def _webhook_status_text(label: str, replacement: str, configured: bool | None, 
 
 def update_quick_start_webhook_statuses(owner) -> None:
     mode = owner.cmbQuickSetupMode.currentData()
+    management_replacement = owner.edQuickManagementWebhook.text().strip()
+    management_is_env_reference = management_replacement.upper().startswith("ENV:")
+
+    def reuse_status(label: str) -> str:
+        if not management_replacement:
+            return f"{label}: enter a literal app webhook above before reusing it."
+        if management_is_env_reference:
+            return (
+                f"{label}: an ENV reference cannot be reused; VEIN Game.ini requires "
+                "a literal Discord webhook URL."
+            )
+        return f"{label}: will reuse the app webhook entered above."
+
+    owner.lblQuickManagementWebhookStatus.setText(
+        "App notifications: replacement entered; stored value remains masked in previews."
+        if management_replacement
+        else getattr(
+            owner,
+            "_quick_start_management_webhook_summary",
+            "App notifications: leave blank to preserve the current management setting.",
+        )
+    )
     owner.lblQuickDiscordChatWebhookStatus.setText(
-        _webhook_status_text(
-            "Chat webhook",
+        reuse_status("VEIN game chat")
+        if owner.chkQuickUseManagementForChat.isChecked()
+        else _webhook_status_text(
+            "VEIN game chat",
             owner.edQuickDiscordChatWebhook.text(),
             getattr(owner, "_quick_start_existing_chat_webhook_configured", None),
             mode,
         )
     )
     owner.lblQuickDiscordAdminWebhookStatus.setText(
-        _webhook_status_text(
-            "Admin webhook",
+        reuse_status("VEIN admin reports")
+        if owner.chkQuickUseManagementForAdmin.isChecked()
+        else _webhook_status_text(
+            "VEIN admin reports",
             owner.edQuickDiscordAdminWebhook.text(),
             getattr(owner, "_quick_start_existing_admin_webhook_configured", None),
             mode,
         )
     )
+
+
+def sync_quick_start_webhook_reuse(owner) -> None:
+    owner.edQuickDiscordChatWebhook.setEnabled(
+        not owner.chkQuickUseManagementForChat.isChecked()
+    )
+    owner.edQuickDiscordAdminWebhook.setEnabled(
+        not owner.chkQuickUseManagementForAdmin.isChecked()
+    )
+    update_quick_start_webhook_statuses(owner)
 
 
 def _lines(text: str) -> list[str]:
@@ -232,9 +269,36 @@ def collect_quick_start_values(owner) -> dict[str, Any]:
         "admin_steam_ids": _lines(owner.txtQuickAdmins.toPlainText()),
         "super_admin_steam_ids": _lines(owner.txtQuickSuperAdmins.toPlainText()),
         "whitelisted_players": _lines(owner.txtQuickWhitelist.toPlainText()),
-        "discord_chat_webhook_url": owner.edQuickDiscordChatWebhook.text(),
-        "discord_chat_admin_webhook_url": owner.edQuickDiscordAdminWebhook.text(),
+        "management_discord_webhook": owner.edQuickManagementWebhook.text(),
+        "discord_chat_webhook_url": (
+            owner.edQuickManagementWebhook.text()
+            if owner.chkQuickUseManagementForChat.isChecked()
+            else owner.edQuickDiscordChatWebhook.text()
+        ),
+        "discord_chat_admin_webhook_url": (
+            owner.edQuickManagementWebhook.text()
+            if owner.chkQuickUseManagementForAdmin.isChecked()
+            else owner.edQuickDiscordAdminWebhook.text()
+        ),
     }
+
+
+def _masked_management_updates(
+    value: Any, key: str = "", secret_context: bool = False
+) -> Any:
+    secret_context = secret_context or "webhook" in key.lower()
+    if isinstance(value, dict):
+        return {
+            item_key: _masked_management_updates(
+                item,
+                item_key,
+                secret_context,
+            )
+            for item_key, item in value.items()
+        }
+    if secret_context and isinstance(value, str) and value:
+        return value if value.upper().startswith("ENV:") else "<configured, masked>"
+    return value
 
 
 def format_quick_start_plan(plan: QuickStartPlan) -> str:
@@ -251,7 +315,13 @@ def format_quick_start_plan(plan: QuickStartPlan) -> str:
         lines.append("- none")
     lines.append("")
     lines.append("Management config updates:")
-    lines.append(json.dumps(plan.config_updates, indent=2, sort_keys=True))
+    lines.append(
+        json.dumps(
+            _masked_management_updates(plan.config_updates),
+            indent=2,
+            sort_keys=True,
+        )
+    )
     lines.append("")
     lines.append("Game config edits:")
     if not plan.server_config_edits:
@@ -400,19 +470,40 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner.txtQuickAdmins = _plain_text("One SteamID64 per line.")
     owner.txtQuickSuperAdmins = _plain_text("One SteamID64 per line.")
     owner.txtQuickWhitelist = _plain_text("Optional. One SteamID64 per line.")
+    owner.edQuickManagementWebhook = _line_edit()
     owner.edQuickDiscordChatWebhook = _line_edit()
     owner.edQuickDiscordAdminWebhook = _line_edit()
-    for field in (owner.edQuickDiscordChatWebhook, owner.edQuickDiscordAdminWebhook):
+    for field in (
+        owner.edQuickManagementWebhook,
+        owner.edQuickDiscordChatWebhook,
+        owner.edQuickDiscordAdminWebhook,
+    ):
         field.setEchoMode(QtWidgets.QLineEdit.Password)
         field.setPlaceholderText("Leave blank to preserve an existing webhook")
+    owner.edQuickManagementWebhook.setPlaceholderText(
+        "ENV:DISCORD_WEBHOOK_URL or a Discord webhook URL"
+    )
+    owner.btnQuickManagementWebhookVisibility = QtWidgets.QPushButton("Show")
+    owner.btnQuickManagementWebhookVisibility.setCheckable(True)
     owner.btnQuickDiscordChatWebhookVisibility = QtWidgets.QPushButton("Show")
     owner.btnQuickDiscordChatWebhookVisibility.setCheckable(True)
     owner.btnQuickDiscordAdminWebhookVisibility = QtWidgets.QPushButton("Show")
     owner.btnQuickDiscordAdminWebhookVisibility.setCheckable(True)
+    owner.lblQuickManagementWebhookStatus = QtWidgets.QLabel()
     owner.lblQuickDiscordChatWebhookStatus = QtWidgets.QLabel()
     owner.lblQuickDiscordAdminWebhookStatus = QtWidgets.QLabel()
+    owner.lblQuickManagementWebhookStatus.setWordWrap(True)
     owner.lblQuickDiscordChatWebhookStatus.setWordWrap(True)
     owner.lblQuickDiscordAdminWebhookStatus.setWordWrap(True)
+    owner.chkQuickUseManagementForChat = QtWidgets.QCheckBox(
+        "Use the app notifications webhook for VEIN game chat"
+    )
+    owner.chkQuickUseManagementForAdmin = QtWidgets.QCheckBox(
+        "Use the app notifications webhook for VEIN admin reports"
+    )
+    owner._quick_start_management_webhook_summary = management_webhook_summary(
+        getattr(owner, "config_path", None)
+    )
 
     row = 0
     _add_row(grid, row, "Setup mode", owner.cmbQuickSetupMode)
@@ -473,25 +564,44 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     ]:
         _add_row(grid, row, label, field)
         row += 1
+    discord_group = QtWidgets.QGroupBox("Discord Webhooks")
+    discord_grid = QtWidgets.QGridLayout(discord_group)
+    discord_grid.setVerticalSpacing(6)
+    discord_grid.setColumnStretch(1, 1)
+    discord_help = QtWidgets.QLabel(
+        "App notifications are sent by Vein Server Manager from config.yaml. "
+        "VEIN game chat and admin reports are sent by the game from Game.ini. "
+        "They may use different Discord channels or the same literal webhook."
+    )
+    discord_help.setWordWrap(True)
+    discord_grid.addWidget(discord_help, 0, 0, 1, 2)
     _add_path_row(
-        grid,
-        row,
-        "Discord chat webhook",
+        discord_grid,
+        1,
+        "App notifications (config.yaml)",
+        owner.edQuickManagementWebhook,
+        owner.btnQuickManagementWebhookVisibility,
+    )
+    discord_grid.addWidget(owner.lblQuickManagementWebhookStatus, 2, 1)
+    _add_path_row(
+        discord_grid,
+        3,
+        "VEIN game chat (Game.ini)",
         owner.edQuickDiscordChatWebhook,
         owner.btnQuickDiscordChatWebhookVisibility,
     )
-    row += 1
-    grid.addWidget(owner.lblQuickDiscordChatWebhookStatus, row, 1)
-    row += 1
+    discord_grid.addWidget(owner.chkQuickUseManagementForChat, 4, 1)
+    discord_grid.addWidget(owner.lblQuickDiscordChatWebhookStatus, 5, 1)
     _add_path_row(
-        grid,
-        row,
-        "Discord admin webhook",
+        discord_grid,
+        6,
+        "VEIN admin reports (Game.ini)",
         owner.edQuickDiscordAdminWebhook,
         owner.btnQuickDiscordAdminWebhookVisibility,
     )
-    row += 1
-    grid.addWidget(owner.lblQuickDiscordAdminWebhookStatus, row, 1)
+    discord_grid.addWidget(owner.chkQuickUseManagementForAdmin, 7, 1)
+    discord_grid.addWidget(owner.lblQuickDiscordAdminWebhookStatus, 8, 1)
+    grid.addWidget(discord_group, row, 0, 1, 2)
     row += 1
 
     layout.addWidget(form)
@@ -534,6 +644,7 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
         "admin_steam_ids": owner.txtQuickAdmins,
         "super_admin_steam_ids": owner.txtQuickSuperAdmins,
         "whitelisted_players": owner.txtQuickWhitelist,
+        "management_discord_webhook": owner.edQuickManagementWebhook,
         "discord_chat_webhook_url": owner.edQuickDiscordChatWebhook,
         "discord_chat_admin_webhook_url": owner.edQuickDiscordAdminWebhook,
         "game_log_override": owner.edQuickGameLogOverride,
@@ -565,6 +676,9 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner.edQuickDiscordChatWebhook.textChanged.connect(
         lambda: update_quick_start_webhook_statuses(owner)
     )
+    owner.edQuickManagementWebhook.textChanged.connect(
+        lambda: sync_quick_start_webhook_reuse(owner)
+    )
     owner.edQuickDiscordAdminWebhook.textChanged.connect(
         lambda: update_quick_start_webhook_statuses(owner)
     )
@@ -575,6 +689,13 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
             checked,
         )
     )
+    owner.btnQuickManagementWebhookVisibility.toggled.connect(
+        lambda checked: set_quick_start_webhook_visibility(
+            owner.edQuickManagementWebhook,
+            owner.btnQuickManagementWebhookVisibility,
+            checked,
+        )
+    )
     owner.btnQuickDiscordAdminWebhookVisibility.toggled.connect(
         lambda checked: set_quick_start_webhook_visibility(
             owner.edQuickDiscordAdminWebhook,
@@ -582,8 +703,21 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
             checked,
         )
     )
+    owner.chkQuickUseManagementForChat.toggled.connect(
+        lambda: (
+            mark_quick_start_field_changed(owner, "discord_chat_webhook_url"),
+            sync_quick_start_webhook_reuse(owner),
+        )
+    )
+    owner.chkQuickUseManagementForAdmin.toggled.connect(
+        lambda: (
+            mark_quick_start_field_changed(owner, "discord_chat_admin_webhook_url"),
+            sync_quick_start_webhook_reuse(owner),
+        )
+    )
     update_quick_start_password_status(owner)
     update_quick_start_webhook_statuses(owner)
+    sync_quick_start_webhook_reuse(owner)
     update_quick_start_save_games_path(owner)
     update_quick_start_game_log_path(owner)
 

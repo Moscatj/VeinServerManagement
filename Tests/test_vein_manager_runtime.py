@@ -25,6 +25,62 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
     def tearDown(self) -> None:
         vein_manager._RUNTIME_CFG_CACHE.clear()
 
+    def test_primary_server_action_routes_setup_start_and_stop(self) -> None:
+        owner = mock.Mock()
+
+        for action in ("setup", "start", "stop"):
+            owner.reset_mock()
+            owner.b_server_action.property.return_value = action
+            vein_manager.Main._activate_primary_server_action(owner)
+
+            if action == "setup":
+                owner._on_view_selected.assert_called_once_with("monitor.quick_start")
+            elif action == "start":
+                owner.start_server.assert_called_once_with()
+            else:
+                owner.stop_server.assert_called_once_with()
+
+    def test_source_python_uses_console_sibling_of_pythonw(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            runtime = Path(tmp)
+            pythonw = runtime / "pythonw.exe"
+            python = runtime / "python.exe"
+            pythonw.write_text("fixture", encoding="utf-8")
+            python.write_text("fixture", encoding="utf-8")
+
+            selected = vein_manager._source_python_executable(
+                pythonw,
+                windows=True,
+            )
+
+        self.assertEqual(selected, python)
+
+    def test_source_python_keeps_pythonw_when_console_sibling_is_missing(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            pythonw = Path(tmp) / "pythonw.exe"
+            pythonw.write_text("fixture", encoding="utf-8")
+
+            selected = vein_manager._source_python_executable(
+                pythonw,
+                windows=True,
+            )
+
+        self.assertEqual(selected, pythonw)
+
+    def test_pyexe_prefers_override_then_current_runtime(self) -> None:
+        current = ROOT / "Python Runtime" / "python.exe"
+        with mock.patch.object(vein_manager, "PYEXE_ENV", "py -3.12"):
+            self.assertEqual(vein_manager._pyexe(), "py -3.12")
+
+        with mock.patch.object(vein_manager, "PYEXE_ENV", ""), mock.patch.object(
+            vein_manager.sys,
+            "executable",
+            str(current),
+        ):
+            selected = vein_manager._pyexe()
+
+        self.assertEqual(selected, f'"{current}"')
+
     def test_runtime_loader_does_not_use_comment_preserving_yaml_loader(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             cfg_path = Path(tmp) / "config.yaml"

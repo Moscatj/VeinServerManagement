@@ -11,11 +11,19 @@ from .navigation import NavigationItem, NavigationPanel
 from .config_editor import build_config_editor
 from .config_renderer import ConfigRenderer
 from .dashboard import build_dashboard
-from .dashboard_state import normalize_player_snapshot, server_runtime_labels
+from .dashboard_state import (
+    home_health_state,
+    normalize_player_snapshot,
+    server_action_state,
+    runtime_server_joinable,
+    server_runtime_labels,
+    should_autostart_log_monitor,
+    startup_runtime_feedback,
+)
 from .panels import (
     build_command_bar,
     build_left_panel,
-    build_placeholder_view,
+    set_startup_feedback,
 )
 from .logs import (
     LogPanelController,
@@ -69,12 +77,17 @@ __all__ = [
     "build_config_editor",
     "ConfigRenderer",
     "build_dashboard",
+    "home_health_state",
     "normalize_player_snapshot",
+    "server_action_state",
+    "runtime_server_joinable",
     "server_runtime_labels",
+    "should_autostart_log_monitor",
+    "startup_runtime_feedback",
     "build_command_bar",
     "build_left_panel",
+    "set_startup_feedback",
     "build_log_panel",
-    "build_placeholder_view",
     "ProcessController",
     "StatusRenderer",
     "NavigationController",

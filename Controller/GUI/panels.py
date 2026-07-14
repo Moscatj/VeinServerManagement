@@ -1,6 +1,4 @@
-"""
-Panel builders for Vein Manager (command bar, left column, log tail, placeholders).
-"""
+"""Panel builders for Vein Manager's command bar and primary pages."""
 
 from __future__ import annotations
 
@@ -10,10 +8,11 @@ from PySide6 import QtCore, QtWidgets
 
 from .widgets import CollapsibleBox
 from .design_system import (
-    BUTTON_DANGER,
     BUTTON_PRIMARY,
-    BUTTON_QUIET,
     BUTTON_SECONDARY,
+    PAGE_MARGIN,
+    SECTION_SPACING,
+    PageHeader,
     set_button_role,
 )
 
@@ -25,9 +24,11 @@ def build_command_bar(
     owner: "Main", dot_style: Callable[[bool, bool], str]
 ) -> QtWidgets.QWidget:
     bar = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(bar)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(8)
+    outer = QtWidgets.QVBoxLayout(bar)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(4)
+    controls = QtWidgets.QHBoxLayout()
+    controls.setSpacing(8)
 
     def build_dot() -> QtWidgets.QLabel:
         dot = QtWidgets.QLabel()
@@ -38,58 +39,112 @@ def build_command_bar(
     owner.dot_srv = build_dot()
     owner.dot_lm = build_dot()
     owner.dot_cm = build_dot()
+    owner.lbl_server_state = QtWidgets.QLabel("Checking…")
+    owner.lbl_server_state.setProperty("serverState", True)
+    owner.lbl_server_state.setMinimumWidth(92)
 
-    owner.b_start = QtWidgets.QPushButton("Start Server")
-    owner.b_stop = QtWidgets.QPushButton("Stop Server")
+    owner.b_server_action = QtWidgets.QPushButton("Checking…")
+    owner.b_server_action.setProperty("serverAction", "checking")
     owner.b_restart = QtWidgets.QPushButton("Restart")
-    owner.b_lm_on = QtWidgets.QPushButton("Start Log Monitor")
-    owner.b_lm_off = QtWidgets.QPushButton("Stop Log Monitor")
-    owner.b_cm_on = QtWidgets.QPushButton("Start Crash Monitor")
-    owner.b_cm_off = QtWidgets.QPushButton("Stop Crash Monitor")
-    owner.b_setup_server = QtWidgets.QPushButton("Set Up Serverâ€¦")
-    owner.b_setup_server.setToolTip("Open Quick Start to install or select a Vein server")
-    owner.b_setup_server.setVisible(False)
-    for button in (
-        owner.b_start,
-        owner.b_stop,
-        owner.b_restart,
-        owner.b_lm_on,
-        owner.b_lm_off,
-        owner.b_cm_on,
-        owner.b_cm_off,
-    ):
+    for button in (owner.b_server_action, owner.b_restart):
         button.setEnabled(False)
 
-    set_button_role(owner.b_start, BUTTON_PRIMARY)
-    set_button_role(owner.b_stop, BUTTON_DANGER)
+    set_button_role(owner.b_server_action, BUTTON_PRIMARY)
     set_button_role(owner.b_restart, BUTTON_SECONDARY)
-    for button in (owner.b_lm_on, owner.b_lm_off, owner.b_cm_on, owner.b_cm_off):
-        set_button_role(button, BUTTON_QUIET)
 
-    def build_cluster(label: str, dot: QtWidgets.QLabel, buttons: list[QtWidgets.QWidget]):
-        layout.addWidget(QtWidgets.QLabel(label))
-        layout.addWidget(dot)
-        for btn in buttons:
-            layout.addWidget(btn)
-        layout.addSpacing(10)
+    owner.b_monitors = QtWidgets.QToolButton()
+    owner.b_monitors.setText("Monitors…")
+    owner.b_monitors.setToolTip("Start or stop log and crash monitoring")
+    owner.b_monitors.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+    owner.monitor_menu = QtWidgets.QMenu(owner.b_monitors)
+    owner.a_lm_on = owner.monitor_menu.addAction("Start Log Monitor")
+    owner.a_lm_off = owner.monitor_menu.addAction("Stop Log Monitor")
+    owner.monitor_menu.addSeparator()
+    owner.a_cm_on = owner.monitor_menu.addAction("Start Crash Monitor")
+    owner.a_cm_off = owner.monitor_menu.addAction("Stop Crash Monitor")
+    owner.b_monitors.setMenu(owner.monitor_menu)
+    for action in (owner.a_lm_on, owner.a_lm_off, owner.a_cm_on, owner.a_cm_off):
+        action.setEnabled(False)
 
-    build_cluster("Server", owner.dot_srv, [owner.b_start, owner.b_stop, owner.b_restart])
-    build_cluster("LogMon", owner.dot_lm, [owner.b_lm_on, owner.b_lm_off])
-    build_cluster("CrashMon", owner.dot_cm, [owner.b_cm_on, owner.b_cm_off])
-    layout.addWidget(owner.b_setup_server)
+    owner.lbl_monitor_state = QtWidgets.QLabel("Checking monitors…")
+    owner.lbl_monitor_state.setMinimumWidth(160)
 
-    layout.addStretch(1)
+    controls.addWidget(QtWidgets.QLabel("Server"))
+    controls.addWidget(owner.dot_srv)
+    controls.addWidget(owner.lbl_server_state)
+    controls.addWidget(owner.b_server_action)
+    controls.addWidget(owner.b_restart)
+    controls.addSpacing(12)
+    controls.addWidget(owner.dot_lm)
+    controls.addWidget(owner.dot_cm)
+    controls.addWidget(owner.lbl_monitor_state)
+    controls.addWidget(owner.b_monitors)
+    controls.addStretch(1)
+    outer.addLayout(controls)
+
+    owner.startup_feedback_panel = QtWidgets.QFrame()
+    owner.startup_feedback_panel.setProperty("startupState", "active")
+    startup_layout = QtWidgets.QHBoxLayout(owner.startup_feedback_panel)
+    startup_layout.setContentsMargins(8, 5, 8, 5)
+    startup_layout.setSpacing(8)
+    owner.startup_progress = QtWidgets.QProgressBar()
+    owner.startup_progress.setRange(0, 5)
+    owner.startup_progress.setValue(0)
+    owner.startup_progress.setTextVisible(False)
+    owner.startup_progress.setFixedWidth(150)
+    owner.lbl_startup_stage = QtWidgets.QLabel("Preparing server startup.")
+    owner.lbl_startup_stage.setWordWrap(True)
+    owner.lbl_startup_stage.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+    owner.btn_startup_logs = QtWidgets.QPushButton("View Logs")
+    set_button_role(owner.btn_startup_logs, BUTTON_SECONDARY)
+    owner.btn_startup_logs.clicked.connect(
+        lambda: getattr(owner, "nav_panel", None).set_default_selection("monitor.logs")
+        if getattr(owner, "nav_panel", None) is not None
+        else None
+    )
+    startup_layout.addWidget(owner.startup_progress)
+    startup_layout.addWidget(owner.lbl_startup_stage, 1)
+    startup_layout.addWidget(owner.btn_startup_logs)
+    owner.startup_feedback_panel.setVisible(False)
+    outer.addWidget(owner.startup_feedback_panel)
+
     owner.status_label = QtWidgets.QLabel("Status: Idle")
     owner.status_label.setWordWrap(True)
     owner.status_label.setMinimumWidth(260)
-    owner.status_label.setMaximumWidth(420)
-    owner.status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+    owner.status_label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
     owner.status_label.setTextInteractionFlags(
         QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard
     )
-    layout.addWidget(owner.status_label)
+    outer.addWidget(owner.status_label)
     owner.status = owner.status_label  # legacy attribute
     return bar
+
+
+def set_startup_feedback(
+    owner,
+    text: str,
+    *,
+    step: int,
+    state: str = "active",
+) -> None:
+    """Show a persistent, accessible startup milestone in the command bar."""
+    panel = getattr(owner, "startup_feedback_panel", None)
+    progress = getattr(owner, "startup_progress", None)
+    label = getattr(owner, "lbl_startup_stage", None)
+    if not isinstance(panel, QtWidgets.QFrame):
+        return
+    if not isinstance(progress, QtWidgets.QProgressBar):
+        return
+    if not isinstance(label, QtWidgets.QLabel):
+        return
+    panel.setVisible(True)
+    label.setText(text)
+    progress.setValue(max(0, min(progress.maximum(), int(step))))
+    if panel.property("startupState") != state:
+        panel.setProperty("startupState", state)
+        panel.style().unpolish(panel)
+        panel.style().polish(panel)
+        panel.update()
 
 
 def build_left_panel(owner: "Main", nav_panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
@@ -110,8 +165,14 @@ def build_left_panel(owner: "Main", nav_panel: QtWidgets.QWidget) -> QtWidgets.Q
 def build_log_panel(owner: "Main") -> QtWidgets.QWidget:
     panel = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(panel)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.setSpacing(6)
+    layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    layout.setSpacing(SECTION_SPACING)
+    layout.addWidget(
+        PageHeader(
+            "Logs",
+            "Follow the Vein server, inspect management activity, and find actionable errors.",
+        )
+    )
 
     controls = QtWidgets.QHBoxLayout()
     owner.chk_live = QtWidgets.QCheckBox("Live (follow)")
@@ -279,15 +340,3 @@ def build_log_panel(owner: "Main") -> QtWidgets.QWidget:
     owner.logTabs.addTab(owner.log_errors_tab, "Errors")
     layout.addWidget(owner.logTabs, 1)
     return panel
-
-
-def build_placeholder_view(message: str) -> QtWidgets.QWidget:
-    widget = QtWidgets.QWidget()
-    layout = QtWidgets.QVBoxLayout(widget)
-    layout.addStretch(1)
-    label = QtWidgets.QLabel(message)
-    label.setWordWrap(True)
-    label.setAlignment(QtCore.Qt.AlignCenter)
-    layout.addWidget(label)
-    layout.addStretch(1)
-    return widget
