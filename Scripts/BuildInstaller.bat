@@ -28,7 +28,7 @@ if not "%errorlevel%"=="0" (
 )
 for /f "delims=" %%V in ('%PYTHON_BIN% --version 2^>^&1') do set "PYTHON_VERSION=%%V"
 echo [INFO] %PYTHON_VERSION%
-echo %PYTHON_VERSION% | findstr /r "Python 3\.13" >nul
+echo %PYTHON_VERSION% | findstr /c:"Python 3.13" >nul
 if not errorlevel 1 (
   echo [WARN] PyInstaller may be unreliable with Python 3.13 for this project.
   echo [WARN] Recommended packaging runtime: Python 3.11 or 3.12.

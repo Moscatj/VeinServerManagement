@@ -227,10 +227,11 @@ Code changes should include or update unit tests when practical. At minimum, run
 Scripts\ValidateChange.bat
 ```
 
-GitHub Actions runs documentation/version consistency checks, tests,
-diagnostics, coverage, and a lightweight secret/local-marker scan on every push
-and pull request. Tagged installer builds additionally require the tag to match
-the newest dated changelog release and all current-version declarations.
+GitHub Actions runs unit tests on Python 3.11 and 3.12, performs the full
+validation/coverage gate on Python 3.12, and builds a temporary installer
+artifact when packaged-bundle inputs change. Tagged installer builds
+additionally require the tag to match the newest dated changelog release and
+all current-version declarations.
 
 Coverage is a guide, not a hard 100% target. The priority is meaningful coverage around config loading, process control, runtime state, backups, log parsing, API helpers, and other behavior that can regress. See [Docs/coverage_strategy.md](Docs/coverage_strategy.md) for the testing philosophy and current coverage baseline.
 

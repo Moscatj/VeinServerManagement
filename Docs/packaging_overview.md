@@ -112,6 +112,20 @@ GitHub release workflow:
 - Manual `workflow_dispatch` runs build a temporary Actions artifact without
   publishing a release asset.
 
+Pull-request and push installer check:
+
+- `.github/workflows/ci.yml` runs unit compatibility on Python 3.11 and 3.12
+  and keeps full validation/coverage on the supported Python 3.12 packaging
+  runtime.
+- When a change touches staged bundle inputs (`Controller`, `Config`, `Docs`,
+  `Scripts`, root package guidance), installer sources, dependencies, or build
+  workflows, CI builds the complete Inno Setup installer.
+- Successful smoke builds are retained as temporary seven-day Actions
+  artifacts. They are test products only and are never attached to a GitHub
+  Release.
+- The installer result feeds the aggregate required CI check, so an applicable
+  packaging failure blocks contributor merges and fails owner publishing.
+
 Installer responsibilities:
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`

@@ -41,6 +41,9 @@ Coverage is a guide, not a hard 100% target. Prefer meaningful tests around risk
 
 GitHub Actions runs on every push and pull request:
 
+- Runs the unit suite on supported Python 3.11 and 3.12 runtimes
+- Runs the complete repository validation and coverage gate on Python 3.12,
+  matching the packaging runtime
 - Checks changelog ordering, current-version declarations, release notes, and
   generic version examples with `Controller\Tools\documentation_check.py`
 - Installs `requirements-dev.txt`
@@ -50,6 +53,12 @@ GitHub Actions runs on every push and pull request:
 - Runs `Scripts\TestSuite.bat __RUN__`
 - Runs `Scripts\RunCoverage.bat`
 - Scans tracked files for high-confidence secrets and local markers
+- Builds and uploads a seven-day temporary installer artifact when staged
+  bundle, installer, packaging, dependency, or workflow inputs change
+
+The required `Unit Tests And Safety Checks` result aggregates compatibility,
+full validation, and the applicable installer build. A failure in any of those
+jobs fails the required check rather than leaving a misleading partial success.
 
 The tagged installer workflow reruns the documentation check with `--tag` and
 will not package or publish a release whose tag conflicts with the changelog or

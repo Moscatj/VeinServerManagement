@@ -23,7 +23,8 @@ The helper:
 3. refuses unstaged or untracked files so publish scope is explicit;
 4. runs `Scripts\ValidateChange.bat`;
 5. commits and pushes only after local validation passes;
-6. discovers and watches the GitHub CI run for that exact commit; and
+6. discovers and watches the complete GitHub CI workflow for that exact commit,
+   including Python compatibility and any applicable installer build; and
 7. exits unsuccessfully if CI fails or cannot be confirmed.
 
 The helper never stages files, chooses a commit message, creates a tag, or

@@ -6,6 +6,14 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added Python 3.11/3.12 unit-test compatibility jobs, retained the full
+  validation and coverage gate on packaging-standard Python 3.12, and made the
+  existing required check aggregate every applicable CI job.
+- Added path-aware Windows installer compilation for pushes and pull requests,
+  including temporary seven-day installer artifacts without publishing a
+  release.
+- Fixed the packaging runtime check so Python 3.12 no longer emits the Python
+  3.13 compatibility warning.
 - Added a shared local/CI validation command and an owner publishing helper that
   refuses ambiguous worktrees, validates before commit, pushes only on request,
   and waits for GitHub CI on the exact commit. Contributors remain PR-only.

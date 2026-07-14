@@ -29,6 +29,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         text = BUILD_INSTALLER.read_text(encoding="utf-8")
 
         self.assertIn('if /i not "%CI%"=="true" pause', text)
+        self.assertIn('findstr /c:"Python 3.13"', text)
 
     def test_release_installer_workflow_uses_setup_python_path(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")

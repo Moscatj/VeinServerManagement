@@ -52,8 +52,9 @@ Released through `v2.9.0`:
   landing page difficult to scan.
 - Keep GitHub Release pages populated with meaningful release notes and
   versioned installer artifacts.
-- Require the established CI checks on `main` without blocking the tag-driven
-  release workflow.
+- Maintain the aggregate required CI gate on `main`, including Python 3.11/3.12
+  compatibility and path-aware installer compilation, without blocking the
+  separate tag-driven release workflow.
 - Continue focused unit coverage for non-GUI controller and Tools modules.
 - Review legacy modules and document what is retained for reference versus
   still supported.
