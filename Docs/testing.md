@@ -15,8 +15,9 @@ unit, health, diagnostic, coverage, documentation/link, source-hygiene,
 architecture/subsystem-registry, and whitespace checks.
 
 The architecture check validates registry paths in both directions. It rejects
-missing routed paths and new production `Controller/**/*.py` or
-`Tests/test_*.py` files that are not owned by a subsystem. Only narrow patterns
+missing routed paths and unowned production `Controller/**/*.py`,
+`Tests/test_*.py`, installer definitions, scripts, public config templates, or
+workflow files selected by `coverage.tracked_groups`. Only narrow patterns
 listed under `coverage.exclude` in `Docs/subsystems.yaml` are skipped.
 
 `Scripts\TestSuite.bat` now exits non-zero when unit tests fail, so it is safe for automation.

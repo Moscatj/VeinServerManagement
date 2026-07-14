@@ -89,8 +89,10 @@ content, or arbitrary Steam/game files.
 - Keep `Docs/subsystems.yaml` accurate when ownership, tests, or routing change.
   `Controller/Tools/architecture_check.py` enforces the registry and selected
   high-value boundaries. Every new production Python module under `Controller/`
-  and every new `Tests/test_*.py` file must be owned by a subsystem or covered
-  by a narrow, documented registry exclusion.
+  and every new `Tests/test_*.py` file must be owned by a subsystem. Behavioral
+  installer, script, config-template, and workflow files selected by
+  `coverage.tracked_groups` require the same ownership. Use only narrow,
+  documented registry exclusions.
 
 ## 5. Lifecycle, Backup, And Monitor Invariants
 

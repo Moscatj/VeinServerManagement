@@ -7,6 +7,21 @@ coverage:
     - Controller
   test_roots:
     - Tests
+  tracked_groups:
+    - root: Installer
+      patterns:
+        - "*.iss"
+    - root: Scripts
+      patterns:
+        - "*.bat"
+        - "*.ps1"
+    - root: Config
+      patterns:
+        - "*.example.yaml"
+    - root: .github/workflows
+      patterns:
+        - "*.yml"
+        - "*.yaml"
   exclude:
     # Legacy code is reference-only unless a task explicitly reactivates it.
     - Controller/Legacy
@@ -21,6 +36,7 @@ subsystems:
       - Controller/vein_manager.py
       - Controller/GUI
       - Controller/Tools/app_info.py
+      - Scripts/Start_VeinManager.bat
     tests:
       - Tests/test_dashboard_state.py
       - Tests/test_app_info.py
@@ -48,6 +64,11 @@ subsystems:
       - Controller/Tools/runtime.py
       - Controller/Tools/monitors.py
       - Controller/Tools/uninstall_cleanup.py
+      - Scripts/RestartServer.bat
+      - Scripts/ServerControlMenu.bat
+      - Scripts/StartServer.bat
+      - Scripts/StartServerWithMonitors.bat
+      - Scripts/StopServer.bat
     tests:
       - Tests/test_launch_manager.py
       - Tests/test_process_helpers.py
@@ -72,6 +93,14 @@ subsystems:
       - Controller/Tools/state_io.py
       - Controller/Tools/vein_http_api.py
       - Controller/Tools/discord.py
+      - Scripts/StartAllMonitors.bat
+      - Scripts/StartAllMonitors_tabs.bat
+      - Scripts/StartCrashMonitor.bat
+      - Scripts/StartLogMonitor.bat
+      - Scripts/StopAllMonitors.bat
+      - Scripts/StopCrashMonitor.bat
+      - Scripts/StopLogMonitor.bat
+      - Scripts/StopMonitors.bat
     tests:
       - Tests/test_log_events.py
       - Tests/test_discord.py
@@ -116,6 +145,7 @@ subsystems:
       - Controller/Tools/health_check.py
       - Controller/Tools/paths.py
       - Config/config.example.yaml
+      - Scripts/HealthCheck.bat
     tests:
       - Tests/test_config_helper.py
       - Tests/test_config_io.py
@@ -161,6 +191,9 @@ subsystems:
       - Controller/Tools/packing
       - Installer
       - Scripts/BuildInstaller.bat
+      - Scripts/env_setup.bat
+      - Scripts/SteamVersion.bat
+      - Scripts/UpdateSteam.bat
       - .github/workflows/release-installer.yml
     tests:
       - Tests/test_packaging_build.py
@@ -185,6 +218,7 @@ subsystems:
       - Controller/log_summary.py
       - Controller/migrate_mgmt_logs.py
       - Controller/vein_tools.py
+      - Scripts/StartWebAdmin.bat
     tests:
       - Tests/test_cli_wrappers.py
       - Tests/test_log_search.py
@@ -208,6 +242,10 @@ subsystems:
       - Scripts/ValidateChange.ps1
       - Scripts/PublishValidated.bat
       - Scripts/PublishValidated.ps1
+      - Scripts/InstallGitHooks.bat
+      - Scripts/RunCoverage.bat
+      - Scripts/TestSuite.bat
+      - Scripts/UninstallGitHooks.bat
     tests:
       - Tests/test_ci_workflow.py
       - Tests/test_architecture_check.py

@@ -12,7 +12,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Added automated architecture checks for registry validity, the removed
   `utils.py` boundary, production drive-path literals, GUI process termination,
   guarded server-config writer ownership, and reverse coverage that rejects
-  unowned production modules or tests before the subsystem map can go stale.
+  unowned production modules, tests, installer definitions, scripts, public
+  config templates, or workflows before the subsystem map can go stale.
 - Added concise decision records for the packaging runtime, derived server-data
   paths, GUI process delegation, app-managed SteamCMD, and Windows-first/Linux-
   ready direction.

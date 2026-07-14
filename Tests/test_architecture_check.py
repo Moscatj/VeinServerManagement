@@ -20,20 +20,31 @@ class ArchitectureCheckTests(unittest.TestCase):
         (root / "Controller" / "GUI").mkdir(parents=True)
         (root / "Tests").mkdir()
         (root / "Docs").mkdir()
+        (root / "Scripts").mkdir()
         (root / "Controller" / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
         (root / "Tests" / "test_feature.py").write_text("# test fixture\n", encoding="utf-8")
         (root / "Docs" / "feature.md").write_text("# Feature\n", encoding="utf-8")
+        (root / "Scripts" / "feature.ps1").write_text(
+            "Write-Output 'feature'\n", encoding="utf-8"
+        )
         registry = {
             "version": 1,
             "coverage": {
                 "source_roots": ["Controller"],
                 "test_roots": ["Tests"],
+                "tracked_groups": [
+                    {"root": "Scripts", "patterns": ["*.bat", "*.ps1"]}
+                ],
                 "exclude": ["Controller/Legacy", "Controller/**/__init__.py"],
             },
             "subsystems": {
                 "feature": {
                     "risk": "medium",
-                    "source": ["Controller/feature.py", "Controller/GUI"],
+                    "source": [
+                        "Controller/feature.py",
+                        "Controller/GUI",
+                        "Scripts/feature.ps1",
+                    ],
                     "tests": ["Tests/test_feature.py"],
                     "docs": ["Docs/feature.md"],
                     "invariants": ["Keep the fixture safe."],
@@ -146,7 +157,10 @@ class ArchitectureCheckTests(unittest.TestCase):
             self._repo(root)
             registry_path = root / "Docs" / "subsystems.yaml"
             payload = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
-            payload["subsystems"]["feature"]["source"] = ["Controller"]
+            payload["subsystems"]["feature"]["source"] = [
+                "Controller",
+                "Scripts/feature.ps1",
+            ]
             payload["subsystems"]["feature"]["tests"] = ["Tests"]
             registry_path.write_text(
                 yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
@@ -167,6 +181,26 @@ class ArchitectureCheckTests(unittest.TestCase):
             legacy = root / "Controller" / "Legacy"
             legacy.mkdir()
             (legacy / "old.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+            self.assertEqual(architecture_check.check_architecture(root), [])
+
+    def test_new_tracked_infrastructure_file_requires_ownership(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            (root / "Scripts" / "new_task.ps1").write_text(
+                "Write-Output 'new'\n", encoding="utf-8"
+            )
+
+            errors = architecture_check.check_architecture(root)
+
+            self.assertTrue(any("unowned tracked file" in error for error in errors))
+
+    def test_unmatched_infrastructure_file_does_not_require_ownership(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            (root / "Scripts" / "notes.txt").write_text("notes\n", encoding="utf-8")
 
             self.assertEqual(architecture_check.check_architecture(root), [])
 

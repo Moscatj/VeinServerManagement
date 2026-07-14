@@ -77,7 +77,9 @@ Use [Docs/subsystems.yaml](Docs/subsystems.yaml) to locate the affected source,
 focused tests, documentation, risk, and invariants. Review
 [Docs/decisions/](Docs/decisions/) before changing a settled cross-cutting
 architecture choice. New Python modules under `Controller/` and new
-`Tests/test_*.py` files must be assigned to a subsystem; validation rejects
+`Tests/test_*.py` files must be assigned to a subsystem. The same applies to
+installer definitions, batch/PowerShell scripts, public config templates, and
+GitHub workflows selected in `coverage.tracked_groups`; validation rejects
 unowned files so the routing map cannot silently fall behind the codebase.
 
 If you touch shutdown, crash detection, backups, or process control, read the related docs first and keep changes small and reviewable.

@@ -125,6 +125,7 @@ def _check_reverse_coverage(
         return
     source_roots = coverage.get("source_roots")
     test_roots = coverage.get("test_roots")
+    tracked_groups = coverage.get("tracked_groups")
     exclusions = coverage.get("exclude")
     for field, values in (
         ("source_roots", source_roots),
@@ -138,6 +139,11 @@ def _check_reverse_coverage(
                 f"Docs/subsystems.yaml: coverage.{field} must be a string list"
             )
             return
+    if not isinstance(tracked_groups, list):
+        errors.append(
+            "Docs/subsystems.yaml: coverage.tracked_groups must be a list"
+        )
+        return
 
     subsystems = registry["subsystems"]
     owned_sources = {
@@ -182,6 +188,55 @@ def _check_reverse_coverage(
                 continue
             if not _owned_by_registry(root, relative, owned_tests):
                 errors.append(f"Docs/subsystems.yaml: unowned test module: {relative}")
+
+    seen: set[str] = set()
+    for index, group in enumerate(tracked_groups):
+        label = f"coverage.tracked_groups[{index}]"
+        if not isinstance(group, dict):
+            errors.append(f"Docs/subsystems.yaml: {label} must be a mapping")
+            continue
+        root_value = group.get("root")
+        patterns = group.get("patterns")
+        if not isinstance(root_value, str) or not root_value.strip():
+            errors.append(f"Docs/subsystems.yaml: {label}.root must be a string")
+            continue
+        if not isinstance(patterns, list) or not patterns or not all(
+            isinstance(pattern, str) and pattern.strip() for pattern in patterns
+        ):
+            errors.append(
+                f"Docs/subsystems.yaml: {label}.patterns must be a non-empty string list"
+            )
+            continue
+        scan_root = (root / root_value).resolve()
+        try:
+            scan_root.relative_to(root)
+        except ValueError:
+            errors.append(
+                f"Docs/subsystems.yaml: {label}.root escapes repository: {root_value}"
+            )
+            continue
+        if not scan_root.is_dir():
+            errors.append(
+                f"Docs/subsystems.yaml: tracked root does not exist: {root_value}"
+            )
+            continue
+        for pattern in patterns:
+            if Path(pattern).is_absolute() or ".." in PurePosixPath(pattern).parts:
+                errors.append(
+                    f"Docs/subsystems.yaml: {label} has unsafe pattern: {pattern}"
+                )
+                continue
+            for path in scan_root.rglob(pattern):
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(root).as_posix()
+                if relative in seen or _excluded(relative, exclusions):
+                    continue
+                seen.add(relative)
+                if not _owned_by_registry(root, relative, owned_sources):
+                    errors.append(
+                        f"Docs/subsystems.yaml: unowned tracked file: {relative}"
+                    )
 
 
 def _check_legacy_utils(root: Path, errors: list[str]) -> None:

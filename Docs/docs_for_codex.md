@@ -79,11 +79,12 @@ and invariants. For a cross-cutting change, use every affected registry entry.
 Read the relevant record under `Docs/decisions/` before reopening a settled
 architecture choice.
 
-The architecture gate reverse-checks the map: every production Python module
-under `Controller/` and every `Tests/test_*.py` file must be owned by a registry
-entry unless it matches a narrow exclusion declared in the registry. Assign
-new files as part of the same change rather than leaving routing cleanup for a
-later documentation pass.
+The architecture gate reverse-checks the map. It requires ownership for every
+production Python module under `Controller/`, every `Tests/test_*.py` file, and
+the installer, script, public-config, and workflow patterns declared under
+`coverage.tracked_groups`. Narrow exclusions are declared in the registry.
+Assign new files as part of the same change rather than leaving routing cleanup
+for a later documentation pass.
 
 Legacy modules under `Controller/Legacy/` are reference-only unless the user
 explicitly requests work there.

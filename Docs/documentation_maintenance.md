@@ -29,7 +29,7 @@ authority for AI behavior and permissions.
 | Test/coverage policy or measured baseline | `Docs/testing.md`, `Docs/coverage_strategy.md`, `AGENTS.md` when the gate changes |
 | AI/contributor workflow | propose first; after approval update `AGENTS.md`, this guide, `CONTRIBUTING.md`, and affected GitHub templates |
 | Commit/push/CI workflow | `Docs/publishing_workflow.md`, `AGENTS.md`, `CONTRIBUTING.md`, CI workflow |
-| Subsystem ownership/routing or new Python module/test | `Docs/subsystems.yaml`, affected summary/reference pages |
+| Subsystem ownership/routing or new covered source/test/infrastructure file | `Docs/subsystems.yaml`, affected summary/reference pages |
 | Cross-cutting architecture decision | add or supersede a record under `Docs/decisions/`; link current guidance |
 | Release/version | current-version sweep below, `CHANGELOG.md`, `RELEASING.md` |
 

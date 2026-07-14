@@ -32,8 +32,9 @@ must live in the appropriate Tools module.
   the Windows uninstaller.
 - **app_info.py** - Installed/source version and runtime details for About.
 - **architecture_check.py** - Subsystem-registry validation plus guardrails for
-  removed modules, production absolute paths, GUI process termination, and
-  guarded server-config writer ownership.
+  reverse source/test/infrastructure ownership, removed modules, production
+  absolute paths, GUI process termination, and guarded server-config writer
+  ownership.
 - **documentation_check.py** - CI and pre-release validation for changelog,
   release-tag, current-version declaration, generic version-example, and
   relative Markdown-link consistency.
