@@ -67,9 +67,9 @@ try {
         $json = & gh run list --commit $commit --workflow ci.yml --limit 1 `
             --json databaseId,status,conclusion,url
         Assert-LastExitCode "Could not query GitHub Actions"
-        $runs = @($json | ConvertFrom-Json)
-        if ($runs.Count -gt 0) {
-            $run = $runs[0]
+        $parsedRuns = $json | ConvertFrom-Json
+        if ($null -ne $parsedRuns -and $parsedRuns.Count -gt 0) {
+            $run = $parsedRuns[0]
             break
         }
         Start-Sleep -Seconds 3

@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dev dependencies
-        run: py -3 -m pip install -r requirements-dev.txt
+        run: python -m pip install -r requirements-dev.txt
 
       - name: Run repository validation
         shell: cmd

@@ -77,6 +77,8 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
         self.assertIn("Run repository validation", workflow)
         self.assertIn("Scripts\\ValidateChange.bat -PythonExe python", workflow)
+        self.assertIn("python -m pip install -r requirements-dev.txt", workflow)
+        self.assertNotIn("py -3 -m pip install -r requirements-dev.txt", workflow)
 
         validation = (ROOT / "Scripts" / "ValidateChange.ps1").read_text(
             encoding="utf-8"

@@ -44,6 +44,7 @@ class ValidationWorkflowTests(unittest.TestCase):
         self.assertLess(commit, push)
         self.assertLess(push, watch)
         self.assertIn("--commit $commit --workflow ci.yml", text)
+        self.assertIn("$parsedRuns.Count -gt 0", text)
         self.assertNotIn("git add", text)
 
     def test_publish_wrapper_uses_process_scoped_policy_bypass(self) -> None:
