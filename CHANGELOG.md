@@ -6,6 +6,16 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added an authoritative subsystem registry that maps change areas to source,
+  focused tests, documentation, risk, and invariants for fast human and AI task
+  routing.
+- Added automated architecture checks for registry validity, the removed
+  `utils.py` boundary, production drive-path literals, GUI process termination,
+  guarded server-config writer ownership, and reverse coverage that rejects
+  unowned production modules or tests before the subsystem map can go stale.
+- Added concise decision records for the packaging runtime, derived server-data
+  paths, GUI process delegation, app-managed SteamCMD, and Windows-first/Linux-
+  ready direction.
 - Added Python 3.11/3.12 unit-test compatibility jobs, retained the full
   validation and coverage gate on packaging-standard Python 3.12, and made the
   existing required check aggregate every applicable CI job.

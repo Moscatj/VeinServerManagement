@@ -27,6 +27,8 @@ part of this repository.
 | Release procedure | `RELEASING.md` |
 | Configuration schema | `Config/config.example.yaml`, `Docs/config_reference.md` |
 | Architecture | `Docs/control_layer_overview.md`, `Docs/Developer_Guide.md` |
+| Subsystem routing | `Docs/subsystems.yaml` |
+| Settled architecture choices | `Docs/decisions/` |
 | Tests and coverage | `Docs/testing.md`, `Docs/coverage_strategy.md` |
 | Documentation upkeep | `Docs/documentation_maintenance.md` |
 | Validated publishing | `Docs/publishing_workflow.md`, `Scripts/ValidateChange.bat`, `Scripts/PublishValidated.bat` |
@@ -71,17 +73,17 @@ paths in tracked examples or tests.
 
 ## Task Routing
 
-Before changing a subsystem, read its implementation, focused tests, and the
-matching summary/reference page:
+Use `Docs/subsystems.yaml` as the authoritative routing map. Select the closest
+subsystem, then inspect its listed source, focused tests, documentation, risk,
+and invariants. For a cross-cutting change, use every affected registry entry.
+Read the relevant record under `Docs/decisions/` before reopening a settled
+architecture choice.
 
-- GUI: `Docs/vein_manager_summary.md`, `Docs/gui_modernization.md`
-- lifecycle: `Docs/start_server_summary.md`, `Docs/shutdown_server_summary.md`
-- monitors: `Docs/monitor_log_summary.md`, `Docs/crash_monitor_summary.md`
-- backups: `Docs/nightly_backup_summary.md`, `Docs/tools_summary.md`
-- config: `Docs/config_reference.md`, `Docs/config_summary.md`,
-  `Docs/config_helper_summary.md`
-- setup/installer: `Docs/quick_start.md`, `Docs/packaging_overview.md`
-- Linux/WSL planning: `Docs/linux_wsl_support.md`
+The architecture gate reverse-checks the map: every production Python module
+under `Controller/` and every `Tests/test_*.py` file must be owned by a registry
+entry unless it matches a narrow exclusion declared in the registry. Assign
+new files as part of the same change rather than leaving routing cleanup for a
+later documentation pass.
 
 Legacy modules under `Controller/Legacy/` are reference-only unless the user
 explicitly requests work there.

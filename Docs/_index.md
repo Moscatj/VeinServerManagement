@@ -25,6 +25,8 @@ This folder contains all **developer** and **system-level** documentation.
 - [control_layer_overview.md](control_layer_overview.md) — High-level architecture and cross-module flow
 - [Developer_Guide.md](Developer_Guide.md) — Full developer manual (detailed system design)
 - [docs_for_codex.md](docs_for_codex.md) — Compact AI/contributor project map; rules remain in [AGENTS.md](../AGENTS.md)
+- [subsystems.yaml](subsystems.yaml) — Authoritative source, test, documentation, risk, and invariant routing map
+- [decisions/](decisions/) — Durable architecture decision records
 - [env_setup_summary.md](env_setup_summary.md) — Environment initialization (batch setup)
 - [config_reference.md](config_reference.md) — Complete `config.yaml` key reference
 - [config_summary.md](config_summary.md) — Configuration loader (`config.py`)
@@ -68,6 +70,8 @@ This folder contains all **developer** and **system-level** documentation.
 | Config Structure | [config_reference.md](config_reference.md) |
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
 | Testing and CI | [testing.md](testing.md) |
+| Subsystem routing | [subsystems.yaml](subsystems.yaml) |
+| Architecture decisions | [decisions/](decisions/) |
 | Validated publishing | [publishing_workflow.md](publishing_workflow.md) |
 | Coverage Strategy | [coverage_strategy.md](coverage_strategy.md) |
 | Health Check | [health_check.md](health_check.md) |

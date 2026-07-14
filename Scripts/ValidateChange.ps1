@@ -40,6 +40,9 @@ try {
     Invoke-ValidationStep "Source hygiene" {
         & $PythonExe "Controller\Tools\source_hygiene_check.py"
     }
+    Invoke-ValidationStep "Architecture and subsystem registry" {
+        & $PythonExe "Controller\Tools\architecture_check.py"
+    }
     Invoke-ValidationStep "Unit tests" {
         & $PythonExe -m unittest discover -s Tests
     }

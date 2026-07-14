@@ -11,8 +11,13 @@ Scripts\ValidateChange.bat
 ```
 
 This shared command is also called by GitHub CI and includes the individual
-unit, health, diagnostic, coverage, documentation/link, source-hygiene, and
-whitespace checks.
+unit, health, diagnostic, coverage, documentation/link, source-hygiene,
+architecture/subsystem-registry, and whitespace checks.
+
+The architecture check validates registry paths in both directions. It rejects
+missing routed paths and new production `Controller/**/*.py` or
+`Tests/test_*.py` files that are not owned by a subsystem. Only narrow patterns
+listed under `coverage.exclude` in `Docs/subsystems.yaml` are skipped.
 
 `Scripts\TestSuite.bat` now exits non-zero when unit tests fail, so it is safe for automation.
 `Controller\health_check.py` exits non-zero on failed diagnostics and allows warnings for optional local dependencies or environment-specific paths.

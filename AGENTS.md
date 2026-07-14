@@ -86,6 +86,11 @@ content, or arbitrary Steam/game files.
   `Config/config.yaml` is ignored local state and must not be committed.
 - Use `pathlib`, type hints where practical, small modules, and dependency
   directions that avoid circular imports.
+- Keep `Docs/subsystems.yaml` accurate when ownership, tests, or routing change.
+  `Controller/Tools/architecture_check.py` enforces the registry and selected
+  high-value boundaries. Every new production Python module under `Controller/`
+  and every new `Tests/test_*.py` file must be owned by a subsystem or covered
+  by a narrow, documented registry exclusion.
 
 ## 5. Lifecycle, Backup, And Monitor Invariants
 
@@ -113,8 +118,9 @@ invariants, and test the behavior; do not pause for a redundant confirmation.
 At the start of a new session:
 
 1. Read `AGENTS.md` and `README.md`.
-2. Read `Docs/docs_for_codex.md` and only the subsystem references relevant to
-   the task.
+2. Read `Docs/docs_for_codex.md`, select the subsystem in
+   `Docs/subsystems.yaml`, and load only its relevant source, tests, and docs.
+   Check `Docs/decisions/` before revisiting a cross-cutting architecture choice.
 3. Inspect `git status` before editing.
 4. Confirm the requested subsystem from the user's prompt. Ask only when the
    scope is genuinely ambiguous or a choice would materially change behavior.

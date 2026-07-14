@@ -1,0 +1,226 @@
+version: 1
+
+# Authoritative routing map for human and AI-assisted changes. Keep detailed
+# behavior in the linked documentation rather than duplicating it here.
+coverage:
+  source_roots:
+    - Controller
+  test_roots:
+    - Tests
+  exclude:
+    # Legacy code is reference-only unless a task explicitly reactivates it.
+    - Controller/Legacy
+    # Package markers contain no owned behavior and generated caches are not tracked.
+    - Controller/**/__init__.py
+    - Tests/__init__.py
+
+subsystems:
+  gui:
+    risk: medium
+    source:
+      - Controller/vein_manager.py
+      - Controller/GUI
+      - Controller/Tools/app_info.py
+    tests:
+      - Tests/test_dashboard_state.py
+      - Tests/test_app_info.py
+      - Tests/test_gui_controllers.py
+      - Tests/test_gui_helpers.py
+      - Tests/test_gui_preflight.py
+      - Tests/test_log_workers.py
+      - Tests/test_status_poller.py
+      - Tests/test_vein_manager_runtime.py
+    docs:
+      - Docs/vein_manager_summary.md
+      - Docs/gui_modernization.md
+    invariants:
+      - Keep blocking work off the GUI thread.
+      - Delegate server and monitor process control to shared controller or Tools logic.
+
+  lifecycle:
+    risk: high
+    source:
+      - Controller/start_server.py
+      - Controller/shutdown_server.py
+      - Controller/launch_manager.py
+      - Controller/Tools/process.py
+      - Controller/Tools/restart.py
+      - Controller/Tools/runtime.py
+      - Controller/Tools/monitors.py
+      - Controller/Tools/uninstall_cleanup.py
+    tests:
+      - Tests/test_launch_manager.py
+      - Tests/test_process_helpers.py
+      - Tests/test_restart.py
+      - Tests/test_runtime_helpers.py
+      - Tests/test_start_server.py
+      - Tests/test_uninstall_cleanup.py
+    docs:
+      - Docs/start_server_summary.md
+      - Docs/shutdown_server_summary.md
+      - Docs/control_layer_overview.md
+    invariants:
+      - Preserve controlled shutdown, intentional-stop markers, and restart throttling.
+      - Do not start or terminate a real server during automated tests.
+
+  monitoring:
+    risk: high
+    source:
+      - Controller/monitor_log.py
+      - Controller/crash_monitor.py
+      - Controller/Tools/log_events.py
+      - Controller/Tools/state_io.py
+      - Controller/Tools/vein_http_api.py
+      - Controller/Tools/discord.py
+    tests:
+      - Tests/test_log_events.py
+      - Tests/test_discord.py
+      - Tests/test_monitor_log_state.py
+      - Tests/test_monitors_and_log_summary.py
+      - Tests/test_state_io.py
+      - Tests/test_vein_http_api.py
+    docs:
+      - Docs/monitor_log_summary.md
+      - Docs/crash_monitor_summary.md
+      - Docs/management_logs.md
+    invariants:
+      - Treat Vein logs as read-only and use bounded polling.
+      - Keep offline player state distinct from historical log state.
+
+  backups:
+    risk: high
+    source:
+      - Controller/nightly_backup.py
+      - Controller/Tools/backups.py
+      - Controller/Tools/backups_api.py
+    tests:
+      - Tests/test_backups_api.py
+      - Tests/test_backups_behavior.py
+      - Tests/test_backups_helpers.py
+    docs:
+      - Docs/nightly_backup_summary.md
+      - Docs/tools_summary.md
+    invariants:
+      - Copy source saves; never modify or delete them.
+      - Respect configured backup gates and retention boundaries.
+
+  configuration:
+    risk: high
+    source:
+      - Controller/config.py
+      - Controller/config_helper.py
+      - Controller/health_check.py
+      - Controller/Tools/config_io.py
+      - Controller/Tools/config_summary.py
+      - Controller/Tools/features.py
+      - Controller/Tools/health_check.py
+      - Controller/Tools/paths.py
+      - Config/config.example.yaml
+    tests:
+      - Tests/test_config_helper.py
+      - Tests/test_config_io.py
+      - Tests/test_config_load_full.py
+      - Tests/test_config_loading.py
+      - Tests/test_health_check.py
+      - Tests/test_paths_and_summary.py
+    docs:
+      - Docs/config_reference.md
+      - Docs/config_summary.md
+      - Docs/config_helper_summary.md
+    invariants:
+      - Keep YAML primary and local config untracked.
+      - Derive normal log and save paths from the selected server root.
+
+  quick_start_and_server_config:
+    risk: high
+    source:
+      - Controller/GUI/quickstart.py
+      - Controller/GUI/server_config_view.py
+      - Controller/Tools/server_quickstart.py
+      - Controller/Tools/server_config_editor.py
+      - Controller/Tools/server_config_preview.py
+      - Controller/Tools/server_config_validator.py
+    tests:
+      - Tests/test_server_config_editor.py
+      - Tests/test_server_config_preview.py
+      - Tests/test_server_config_validator.py
+      - Tests/test_server_quickstart.py
+    docs:
+      - Docs/quick_start.md
+      - Docs/config_reference.md
+    invariants:
+      - Preview, back up, atomically write, and validate guarded INI changes.
+      - Never treat a populated existing server root as a new-server destination.
+
+  steamcmd_installer_and_packaging:
+    risk: high
+    source:
+      - Controller/Tools/steamcmd_runner.py
+      - Controller/Tools/update_steam.py
+      - Controller/Tools/steam_version.py
+      - Controller/Tools/packing
+      - Installer
+      - Scripts/BuildInstaller.bat
+      - .github/workflows/release-installer.yml
+    tests:
+      - Tests/test_packaging_build.py
+      - Tests/test_release_workflow.py
+      - Tests/test_steam_version.py
+      - Tests/test_steamcmd_runner.py
+      - Tests/test_update_steam.py
+    docs:
+      - Docs/packaging_overview.md
+      - Docs/env_setup_summary.md
+      - RELEASING.md
+    invariants:
+      - Package operators without requiring Python on the target machine.
+      - Keep smoke artifacts separate from tagged release assets.
+
+  management_logs_and_cli:
+    risk: medium
+    source:
+      - Controller/Tools/mgmt_logs.py
+      - Controller/Tools/log_search.py
+      - Controller/logcat.py
+      - Controller/log_summary.py
+      - Controller/migrate_mgmt_logs.py
+      - Controller/vein_tools.py
+    tests:
+      - Tests/test_cli_wrappers.py
+      - Tests/test_log_search.py
+      - Tests/test_mgmt_logs.py
+    docs:
+      - Docs/management_logs.md
+      - Docs/tools_summary.md
+    invariants:
+      - Keep management logs separate from the Vein game log.
+      - Preserve packaged CLI parity for supported operator actions.
+
+  ci_release_and_documentation:
+    risk: medium
+    source:
+      - .github/workflows
+      - Docs/subsystems.yaml
+      - Controller/Tools/architecture_check.py
+      - Controller/Tools/documentation_check.py
+      - Controller/Tools/source_hygiene_check.py
+      - Scripts/ValidateChange.bat
+      - Scripts/ValidateChange.ps1
+      - Scripts/PublishValidated.bat
+      - Scripts/PublishValidated.ps1
+    tests:
+      - Tests/test_ci_workflow.py
+      - Tests/test_architecture_check.py
+      - Tests/test_documentation_check.py
+      - Tests/test_release_workflow.py
+      - Tests/test_source_hygiene_check.py
+      - Tests/test_validation_workflow.py
+    docs:
+      - Docs/decisions
+      - Docs/docs_for_codex.md
+      - Docs/documentation_maintenance.md
+      - Docs/publishing_workflow.md
+      - RELEASING.md
+    invariants:
+      - Require local validation and remote CI for owner publishing.
+      - Keep version declarations, changelog releases, and tags consistent.

@@ -24,6 +24,7 @@ class ValidationWorkflowTests(unittest.TestCase):
         for expected in (
             "documentation_check.py",
             "source_hygiene_check.py",
+            "architecture_check.py",
             "unittest discover -s Tests",
             "Controller\\health_check.py",
             "TestSuite.bat",

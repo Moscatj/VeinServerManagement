@@ -4,6 +4,10 @@
 > This document serves as the **comprehensive technical reference** for developers and contributors working on the Vein Server Management Suite.
 > It expands upon the root [README.md](../README.md) by detailing system architecture, environment setup, configuration structure, and internal behavior across all modules.
 
+Use [subsystems.yaml](subsystems.yaml) to route a change to its source, focused
+tests, documentation, risk, and invariants. Cross-cutting choices that should
+not be rediscovered each session are recorded under [decisions/](decisions/).
+
 ---
 
 ## ⚙️ Overview
