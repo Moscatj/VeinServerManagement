@@ -11,7 +11,7 @@ parsing, Steam helpers, HTTP API helpers, and CLI wrappers.
 
 Measured on the v2.9.0 codebase during the 2026-07-14 documentation audit:
 
-- Total tests: 361 passing, 2 skipped
+- Total tests: 370 passing, 2 skipped
 - Overall coverage: 74%
 - Backend helper coverage is substantially higher than GUI coverage.
 

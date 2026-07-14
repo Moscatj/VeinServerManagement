@@ -80,9 +80,7 @@ If you touch shutdown, crash detection, backups, or process control, read the re
 Run the unit suite before opening a pull request:
 
 ```powershell
-python -m unittest discover -s Tests
-Scripts\TestSuite.bat __RUN__
-Scripts\RunCoverage.bat
+Scripts\ValidateChange.bat
 ```
 
 New behavior should include unit tests when the behavior is practical to test without starting the Vein server. Bug fixes should include a regression test when practical. If a change is intentionally not unit-tested, explain why in the pull request.
@@ -102,6 +100,11 @@ Use a focused branch and include:
 - Release impact: `none`, `patch`, `minor`, or `major`.
 
 Pull requests should not be merged while CI is failing.
+
+External contributors must use a pull request. The repository owner may use
+the validated direct-publish workflow documented in
+[Docs/publishing_workflow.md](Docs/publishing_workflow.md); every pushed owner
+commit must still pass its GitHub CI run.
 
 For user-facing changes, add a short note to `CHANGELOG.md` under `Unreleased`.
 

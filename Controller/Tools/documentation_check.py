@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import unquote
 
 
 RELEASE_HEADING_RE = re.compile(
@@ -18,6 +19,10 @@ SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
 TAG_RE = re.compile(r"v(?P<version>\d+\.\d+\.\d+)")
 HARDCODED_INSTALLER_RE = re.compile(
     r"VeinServerManagement-Setup-v\d+\.\d+\.\d+\.exe"
+)
+MARKDOWN_LINK_RE = re.compile(
+    r"(?<!!)\[[^\]]*\]\((?P<target><[^>]+>|[^\s)]+)"
+    r"(?:\s+[\"'][^\"']*[\"'])?\)"
 )
 
 
@@ -160,6 +165,27 @@ def _check_generic_examples(root: Path, errors: list[str]) -> None:
             )
 
 
+def _check_relative_links(root: Path, errors: list[str]) -> None:
+    for path in _markdown_files(root):
+        text = _read(path, errors)
+        for match in MARKDOWN_LINK_RE.finditer(text):
+            raw = match.group("target").strip("<>")
+            if not raw or raw.startswith("#"):
+                continue
+            target = unquote(raw.split("#", 1)[0].split("?", 1)[0])
+            if not target or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target):
+                continue
+            candidate = (path.parent / target).resolve()
+            if candidate.exists():
+                continue
+            relative = path.relative_to(root)
+            line = text.count("\n", 0, match.start()) + 1
+            errors.append(
+                f"{relative}:{line}: relative Markdown link target does not "
+                f"exist: {raw}"
+            )
+
+
 def check_documentation(root: Path, *, tag: str | None = None) -> list[str]:
     """Return human-readable consistency errors for a repository root."""
 
@@ -183,6 +209,7 @@ def check_documentation(root: Path, *, tag: str | None = None) -> list[str]:
             )
 
     _check_generic_examples(root, errors)
+    _check_relative_links(root, errors)
     return errors
 
 

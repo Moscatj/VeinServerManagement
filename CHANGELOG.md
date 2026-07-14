@@ -6,6 +6,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a shared local/CI validation command and an owner publishing helper that
+  refuses ambiguous worktrees, validates before commit, pushes only on request,
+  and waits for GitHub CI on the exact commit. Contributors remain PR-only.
+- Expanded documentation checks to validate relative Markdown links and moved
+  secret/local-marker scanning into a reusable, tested source-hygiene command.
 - Audited and refreshed all root documentation and the operator/developer
   documentation set for the v2.9.0 installer, GUI, configuration, monitoring,
   security, packaging, testing, and roadmap baseline.

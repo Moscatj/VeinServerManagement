@@ -75,8 +75,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("Check documentation and version consistency", workflow)
-        self.assertIn("Controller\\Tools\\documentation_check.py", workflow)
+        self.assertIn("Run repository validation", workflow)
+        self.assertIn("Scripts\\ValidateChange.bat -PythonExe python", workflow)
+
+        validation = (ROOT / "Scripts" / "ValidateChange.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("documentation_check.py", validation)
+        self.assertIn("source_hygiene_check.py", validation)
+        self.assertIn("TestSuite.bat", validation)
+        self.assertIn("RunCoverage.bat", validation)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ part of this repository.
 | Architecture | `Docs/control_layer_overview.md`, `Docs/Developer_Guide.md` |
 | Tests and coverage | `Docs/testing.md`, `Docs/coverage_strategy.md` |
 | Documentation upkeep | `Docs/documentation_maintenance.md` |
+| Validated publishing | `Docs/publishing_workflow.md`, `Scripts/ValidateChange.bat`, `Scripts/PublishValidated.bat` |
 | Installer behavior | `Docs/packaging_overview.md` |
 | GUI refactor direction | `Docs/gui_modernization.md` |
 
@@ -92,7 +93,8 @@ explicitly requests work there.
 2. Load only the implementation, tests, and references needed for that task.
 3. Make a small diff, preserving unrelated work.
 4. Add focused tests and update docs when behavior changes.
-5. Validate according to the risk tiers in `AGENTS.md`.
+5. Validate according to the risk tiers in `AGENTS.md`; use
+   `Scripts\ValidateChange.bat` for the complete local gate.
 6. Report remaining manual or clean-machine testing honestly.
 
 Actively suggest worthwhile workflow improvements, but treat changes to AI

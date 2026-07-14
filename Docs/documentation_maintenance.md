@@ -28,6 +28,7 @@ authority for AI behavior and permissions.
 | New or completed roadmap feature | `ROADMAP.md`, relevant phase/design document, `CHANGELOG.md` |
 | Test/coverage policy or measured baseline | `Docs/testing.md`, `Docs/coverage_strategy.md`, `AGENTS.md` when the gate changes |
 | AI/contributor workflow | propose first; after approval update `AGENTS.md`, this guide, `CONTRIBUTING.md`, and affected GitHub templates |
+| Commit/push/CI workflow | `Docs/publishing_workflow.md`, `AGENTS.md`, `CONTRIBUTING.md`, CI workflow |
 | Release/version | current-version sweep below, `CHANGELOG.md`, `RELEASING.md` |
 
 Not every listed file must change. Each must be reviewed, and unchanged files

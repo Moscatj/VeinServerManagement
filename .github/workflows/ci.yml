@@ -20,69 +20,9 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Check documentation and version consistency
-        run: py -3 Controller\Tools\documentation_check.py
-
       - name: Install dev dependencies
         run: py -3 -m pip install -r requirements-dev.txt
 
-      - name: Run unit tests
-        run: py -3 -m unittest discover -s Tests
-
-      - name: Prepare health-check fixture paths
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path `
-            Server, `
-            Server\Vein\Saved\SaveGames, `
-            Server\Vein\Saved\Logs `
-            | Out-Null
-
-      - name: Run health check
-        run: py -3 Controller\health_check.py
-
-      - name: Run diagnostic suite
+      - name: Run repository validation
         shell: cmd
-        env:
-          CI: "true"
-        run: Scripts\TestSuite.bat __RUN__
-
-      - name: Run coverage
-        shell: cmd
-        run: Scripts\RunCoverage.bat
-
-      - name: Secret and local marker scan
-        shell: pwsh
-        run: |
-          $patterns = @(
-            'sk-[A-Za-z0-9_-]{20,}',
-            '(?:ghp_|github_pat_)[A-Za-z0-9_]{20,}',
-            'https://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/[^\s"'']+',
-            '-----BEGIN [A-Z ]*PRIVATE KEY-----',
-            'G:[\\/]',
-            'REPLACE_WITH_STRONG_SECRET_KEY',
-            '\bRHG\b',
-            'Red Head Software'
-          )
-          $ignored = @(
-            '.github/workflows/ci.yml',
-            'Config/Backup/',
-            'Controller/Legacy/WebAdmin/user_accounts.json'
-          )
-          $findings = @()
-          foreach ($file in git ls-files) {
-            $normalized = $file -replace '\\', '/'
-            if ($ignored | Where-Object { $normalized.StartsWith($_) }) { continue }
-            if ($normalized -match '\.(ico|png|jpg|jpeg|gif|pdf|exe|dll|pyd|pyc)$') { continue }
-            $content = Get-Content -LiteralPath $file -Raw -ErrorAction SilentlyContinue
-            if ($null -eq $content) { continue }
-            foreach ($pattern in $patterns) {
-              if ($content -match $pattern) {
-                $findings += "$file matched $pattern"
-              }
-            }
-          }
-          if ($findings.Count -gt 0) {
-            $findings | ForEach-Object { Write-Error $_ }
-            exit 1
-          }
+        run: Scripts\ValidateChange.bat -PythonExe python

@@ -58,7 +58,8 @@ When unsure, choose the smaller version impact and document the reason.
 
 Before creating a release tag:
 
-1. Confirm `main` is clean and up to date with `origin/main`.
+1. Confirm `main` is clean and up to date with `origin/main`. Confirm GitHub CI
+   passed for the exact commit that will be tagged.
 2. Move the relevant `Unreleased` entries in `CHANGELOG.md` into a dated release
    heading, for example `## X.Y.Z - YYYY-MM-DD`.
 3. Perform the release-time documentation sweep from
@@ -71,10 +72,7 @@ Before creating a release tag:
 
    ```powershell
    python Controller\Tools\documentation_check.py --tag vX.Y.Z
-   python -m unittest discover -s Tests
-   Scripts\TestSuite.bat __RUN__
-   Scripts\RunCoverage.bat
-   git diff --check
+   Scripts\ValidateChange.bat
    ```
 
    Replace `vX.Y.Z` with the intended tag. Do not create the tag if this check

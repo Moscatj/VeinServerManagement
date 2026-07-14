@@ -7,11 +7,12 @@ The project has a `unittest` suite under `Tests/` and a Windows diagnostic wrapp
 Run these before finalizing code changes:
 
 ```powershell
-python -m unittest discover -s Tests
-python Controller\health_check.py
-Scripts\TestSuite.bat __RUN__
-Scripts\RunCoverage.bat
+Scripts\ValidateChange.bat
 ```
+
+This shared command is also called by GitHub CI and includes the individual
+unit, health, diagnostic, coverage, documentation/link, source-hygiene, and
+whitespace checks.
 
 `Scripts\TestSuite.bat` now exits non-zero when unit tests fail, so it is safe for automation.
 `Controller\health_check.py` exits non-zero on failed diagnostics and allows warnings for optional local dependencies or environment-specific paths.
@@ -55,3 +56,6 @@ will not package or publish a release whose tag conflicts with the changelog or
 documented release baseline.
 
 Pull requests should not be merged while CI is failing.
+Owner direct pushes are not considered successfully published until the CI run
+for that exact commit passes; see
+[publishing_workflow.md](publishing_workflow.md).

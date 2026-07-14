@@ -32,6 +32,7 @@ This folder contains all **developer** and **system-level** documentation.
 - [testing.md](testing.md) — Unit test, coverage, and CI expectations
 - [coverage_strategy.md](coverage_strategy.md) — Practical coverage priorities and current baseline
 - [documentation_maintenance.md](documentation_maintenance.md) — Version, roadmap, readability, and AI-context upkeep
+- [publishing_workflow.md](publishing_workflow.md) — Owner direct publishing, shared validation, required remote CI, and contributor pull requests
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
 - [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
@@ -67,6 +68,7 @@ This folder contains all **developer** and **system-level** documentation.
 | Config Structure | [config_reference.md](config_reference.md) |
 | Environment Setup | [env_setup_summary.md](env_setup_summary.md) |
 | Testing and CI | [testing.md](testing.md) |
+| Validated publishing | [publishing_workflow.md](publishing_workflow.md) |
 | Coverage Strategy | [coverage_strategy.md](coverage_strategy.md) |
 | Health Check | [health_check.md](health_check.md) |
 | Server Quick Start | [quick_start.md](quick_start.md) |

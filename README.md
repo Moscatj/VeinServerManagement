@@ -224,9 +224,7 @@ See [Docs/linux_wsl_support.md](Docs/linux_wsl_support.md) and
 Code changes should include or update unit tests when practical. At minimum, run:
 
 ```powershell
-python -m unittest discover -s Tests
-Scripts\TestSuite.bat __RUN__
-Scripts\RunCoverage.bat
+Scripts\ValidateChange.bat
 ```
 
 GitHub Actions runs documentation/version consistency checks, tests,
@@ -247,6 +245,7 @@ Start here:
 - [Docs/testing.md](Docs/testing.md)
 - [Docs/coverage_strategy.md](Docs/coverage_strategy.md)
 - [Docs/documentation_maintenance.md](Docs/documentation_maintenance.md)
+- [Docs/publishing_workflow.md](Docs/publishing_workflow.md)
 - [Docs/health_check.md](Docs/health_check.md)
 - [Docs/management_logs.md](Docs/management_logs.md)
 - [CHANGELOG.md](CHANGELOG.md)

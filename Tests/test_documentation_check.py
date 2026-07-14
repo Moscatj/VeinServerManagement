@@ -123,6 +123,29 @@ class DocumentationCheckTests(unittest.TestCase):
 
             self.assertTrue(any("has no bullet release notes" in error for error in errors))
 
+    def test_missing_relative_markdown_link_is_rejected(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            (root / "Docs" / "guide.md").write_text(
+                "See [missing guide](missing.md).\n", encoding="utf-8"
+            )
+
+            errors = documentation_check.check_documentation(root)
+
+            self.assertTrue(any("missing.md" in error for error in errors))
+
+    def test_existing_relative_and_external_links_pass(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            (root / "Docs" / "guide.md").write_text(
+                "See [readme](../README.md) and [site](https://example.com).\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(documentation_check.check_documentation(root), [])
+
 
 if __name__ == "__main__":
     unittest.main()

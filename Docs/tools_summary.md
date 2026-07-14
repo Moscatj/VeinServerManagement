@@ -32,8 +32,10 @@ must live in the appropriate Tools module.
   the Windows uninstaller.
 - **app_info.py** - Installed/source version and runtime details for About.
 - **documentation_check.py** - CI and pre-release validation for changelog,
-  release-tag, current-version declaration, and generic version-example
-  consistency.
+  release-tag, current-version declaration, generic version-example, and
+  relative Markdown-link consistency.
+- **source_hygiene_check.py** - Reusable local/CI scan for likely secrets,
+  private local markers, and unsafe external scan targets.
 - **discord.py** - Webhook utilities (`send_discord_message`, per-channel gating).
 - **state_io.py** - Atomic state/heartbeat writers shared by monitors and the GUI.
 
