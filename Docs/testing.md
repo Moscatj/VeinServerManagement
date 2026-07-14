@@ -63,10 +63,14 @@ GitHub Actions runs on every push and pull request:
 - Scans tracked files for high-confidence secrets and local markers
 - Builds and uploads a seven-day temporary installer artifact when staged
   bundle, installer, packaging, dependency, or workflow inputs change
+- Installs that package without SteamCMD in an isolated runner directory, runs
+  the packaged CLI and health check, uninstalls it, verifies app removal and
+  config preservation, and uploads seven-day diagnostic logs
 
 The required `Unit Tests And Safety Checks` result aggregates compatibility,
-full validation, and the applicable installer build. A failure in any of those
-jobs fails the required check rather than leaving a misleading partial success.
+full validation, and the applicable installer build/install/uninstall smoke
+test. A failure in any of those jobs fails the required check rather than
+leaving a misleading partial success.
 
 The tagged installer workflow reruns the documentation check with `--tag` and
 will not package or publish a release whose tag conflicts with the changelog or

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_SCRIPT = ROOT / "Controller" / "Tools" / "packing" / "build_gui_exe.py"
 INSTALLER_SCRIPT = ROOT / "Installer" / "VeinServerManager.iss"
 BUILD_INSTALLER_SCRIPT = ROOT / "Scripts" / "BuildInstaller.bat"
+SMOKE_INSTALLER_SCRIPT = ROOT / "Scripts" / "SmokeTestInstaller.ps1"
 CONFIG_TEMPLATE = ROOT / "Config" / "config.example.yaml"
 
 
@@ -42,6 +43,31 @@ class PackagingBuildTests(unittest.TestCase):
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 
         self.assertIn('Excludes: "Backups\\*,Logs\\*,Runtime\\*,Config\\config.yaml"', text)
+
+    def test_silent_management_app_only_install_skips_server_setup(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("function ManagementAppOnlyRequested(): Boolean;", text)
+        self.assertIn("{param:MANAGEMENTAPPONLY|0}", text)
+        self.assertIn("Result := WizardSilent", text)
+        self.assertIn("SkipServerRadio.Checked := True;", text)
+        self.assertIn("Silent management-app-only installation requested", text)
+
+    def test_installer_smoke_script_verifies_package_and_cleanup_contract(self) -> None:
+        text = SMOKE_INSTALLER_SCRIPT.read_text(encoding="utf-8")
+
+        for value in (
+            "/MANAGEMENTAPPONLY=1",
+            "VeinManager.exe",
+            "VeinTools.exe",
+            "Config\\config.yaml",
+            "Runtime\\uninstaller_path.txt",
+            '"--config", $config, "health-check"',
+            "Uninstaller did not preserve local configuration",
+        ):
+            self.assertIn(value, text)
+        self.assertIn("Installer smoke-test directory must be new or empty", text)
+        self.assertIn("Recorded uninstaller escapes", text)
 
     def test_installer_preserves_local_config_during_upgrade_and_repair(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

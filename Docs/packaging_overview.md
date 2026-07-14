@@ -120,6 +120,16 @@ Pull-request and push installer check:
 - When a change touches staged bundle inputs (`Controller`, `Config`, `Docs`,
   `Scripts`, root package guidance), installer sources, dependencies, or build
   workflows, CI builds the complete Inno Setup installer.
+- CI then installs the package into an isolated runner directory with the
+  silent-only `/MANAGEMENTAPPONLY=1` automation switch. This skips SteamCMD and
+  real server downloads while verifying `VeinManager.exe`, `VeinTools.exe`, the
+  installed config/version records, packaged CLI help, and the packaged health
+  check. It runs the generated uninstaller, confirms application binaries are
+  removed, and confirms local configuration is preserved by default.
+- `Scripts/SmokeTestInstaller.ps1` owns this install/uninstall contract. It
+  refuses a non-empty work directory, validates that the recorded uninstaller
+  remains inside the disposable install root, and retains setup, CLI, health,
+  and uninstall diagnostics under `dist/installer-smoke`.
 - Successful smoke builds are retained as temporary seven-day Actions
   artifacts. They are test products only and are never attached to a GitHub
   Release.
@@ -133,6 +143,9 @@ Installer responsibilities:
   and uninstall actions
 - Create writable app-owned `Config\`, `Logs\`, `Backups\`, `Runtime\`, `SteamCMD\`, and `Server\` folders
 - Ask whether to install/update the dedicated server with SteamCMD or use an existing server folder
+- Accept `/MANAGEMENTAPPONLY=1` only during silent automation so package smoke
+  tests can install the management app without network access or SteamCMD; this
+  does not replace the normal interactive server-choice workflow
 - Store SteamCMD in the management app folder and install new SteamCMD-managed server files under the app-managed `Server\` folder by default
 - Allow an existing `steamcmd.exe` folder to be selected instead of downloading a duplicate app-managed SteamCMD copy
 - Derive SaveGames and the Vein Game Log from the selected server root; custom locations are available through Quick Start's advanced overrides

@@ -141,6 +141,27 @@ jobs:
         shell: cmd
         run: Scripts\BuildInstaller.bat
 
+      - name: Smoke test packaged install and uninstall
+        if: steps.scope.outputs.relevant == 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist\installer\VeinServerManagement-Setup-v*.exe |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if ($null -eq $installer) {
+            throw "Built installer was not found."
+          }
+          Scripts\SmokeTestInstaller.ps1 -InstallerPath $installer.FullName
+
+      - name: Upload installer smoke diagnostics
+        if: always() && steps.scope.outputs.relevant == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: VeinServerManagement-installer-diagnostics-${{ github.sha }}
+          path: dist/installer-smoke
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload temporary installer artifact
         if: steps.scope.outputs.relevant == 'true'
         uses: actions/upload-artifact@v6

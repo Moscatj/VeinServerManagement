@@ -340,6 +340,15 @@ begin
   WizardForm.NextButton.Enabled := True;
 end;
 
+function ManagementAppOnlyRequested(): Boolean;
+var
+  Value: string;
+begin
+  Value := Lowercase(Trim(ExpandConstant('{param:MANAGEMENTAPPONLY|0}')));
+  Result := WizardSilent and
+    ((Value = '1') or (Value = 'true') or (Value = 'yes'));
+end;
+
 function CurrentAppDir(): string;
 begin
   Result := WizardDirValue();
@@ -759,6 +768,14 @@ begin
   SteamCmdMessagePumpPage := CreateOutputProgressPage('', '');
   SteamCmdMessagePumpPage.SetProgress(0, 1);
   ApplyIntentState;
+  if ManagementAppOnlyRequested() then
+  begin
+    InstallServerRadio.Checked := False;
+    ExistingServerRadio.Checked := False;
+    SkipServerRadio.Checked := True;
+    ApplyIntentState;
+    Log('Silent management-app-only installation requested; SteamCMD and server setup are skipped.');
+  end;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);

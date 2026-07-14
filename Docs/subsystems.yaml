@@ -191,6 +191,7 @@ subsystems:
       - Controller/Tools/packing
       - Installer
       - Scripts/BuildInstaller.bat
+      - Scripts/SmokeTestInstaller.ps1
       - Scripts/env_setup.bat
       - Scripts/SteamVersion.bat
       - Scripts/UpdateSteam.bat

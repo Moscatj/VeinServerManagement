@@ -48,6 +48,13 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("retention-days: 7", self.text)
         self.assertNotIn("softprops/action-gh-release", self.text)
 
+    def test_installer_check_smoke_tests_packaged_install_and_uninstall(self) -> None:
+        self.assertIn("Smoke test packaged install and uninstall", self.text)
+        self.assertIn("Scripts\\SmokeTestInstaller.ps1", self.text)
+        self.assertIn("Upload installer smoke diagnostics", self.text)
+        self.assertIn("if: always() && steps.scope.outputs.relevant == 'true'", self.text)
+        self.assertIn("dist/installer-smoke", self.text)
+
     def test_installer_steps_require_relevant_changes(self) -> None:
         self.assertGreaterEqual(
             self.text.count("if: steps.scope.outputs.relevant == 'true'"), 5
