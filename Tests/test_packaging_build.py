@@ -81,6 +81,15 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("Update/Repair preserves configuration and data", text)
         self.assertIn("FileExists(AddBackslash(AppDir) + 'Config\\config.yaml')", text)
 
+    def test_silent_uninstall_preserves_user_data_without_blocking(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+        uninstall_section = text[text.index("function InitializeUninstall(): Boolean;") :]
+
+        self.assertGreaterEqual(uninstall_section.count("SuppressibleMsgBox("), 4)
+        self.assertGreaterEqual(uninstall_section.count("IDNO"), 3)
+        self.assertIn("IDOK", uninstall_section)
+        self.assertNotIn("      MsgBox(", uninstall_section)
+
     def test_installer_detects_previous_server_and_steamcmd_paths(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
 

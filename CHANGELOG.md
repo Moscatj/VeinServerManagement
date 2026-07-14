@@ -30,6 +30,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   config preservation, and retains installer diagnostics for seven days.
 - Fixed the smoke runner to wait for GUI-subsystem installer and uninstaller
   processes and evaluate their actual exit codes.
+- Fixed silent uninstall hanging on custom preservation prompts by making those
+  prompts suppressible with safe defaults that retain backups, configuration,
+  and app-managed server data.
 - Fixed the packaging runtime check so Python 3.12 no longer emits the Python
   3.13 compatibility warning.
 - Added a shared local/CI validation command and an owner publishing helper that

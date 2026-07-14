@@ -1698,24 +1698,26 @@ begin
   if DirExists(ExpandConstant('{app}\Backups')) then
   begin
     RemoveBackups :=
-      MsgBox(
+      SuppressibleMsgBox(
         'Remove local Vein Server Management backups too?'#13#10#13#10 +
         ExpandConstant('{app}\Backups') + #13#10#13#10 +
         'Choose No to preserve backup files.',
         mbConfirmation,
-        MB_YESNO or MB_DEFBUTTON2
+        MB_YESNO or MB_DEFBUTTON2,
+        IDNO
       ) = IDYES;
   end;
 
   if DirExists(ExpandConstant('{app}\Config')) then
   begin
     RemoveLocalConfig :=
-      MsgBox(
+      SuppressibleMsgBox(
         'Remove local Vein Server Management config files too?'#13#10#13#10 +
         ExpandConstant('{app}\Config') + #13#10#13#10 +
         'Choose No to preserve local settings for a future reinstall.',
         mbConfirmation,
-        MB_YESNO or MB_DEFBUTTON2
+        MB_YESNO or MB_DEFBUTTON2,
+        IDNO
       ) = IDYES;
   end;
 
@@ -1725,24 +1727,26 @@ begin
     begin
       AppManagedServerDir := ServerDir;
       RemoveAppManagedServer :=
-        MsgBox(
+        SuppressibleMsgBox(
           'The Vein dedicated server appears to be installed inside the app folder:'#13#10#13#10 +
           ServerDir + #13#10#13#10 +
           'Deleting it can permanently remove world saves, logs, SteamCMD data, and server files.'#13#10#13#10 +
           'Choose No to preserve all server data.'#13#10#13#10 +
           'Delete the app-managed Vein dedicated server folder too?',
           mbCriticalError,
-          MB_YESNO or MB_DEFBUTTON2
+          MB_YESNO or MB_DEFBUTTON2,
+          IDNO
         ) = IDYES;
     end
     else
     begin
-      MsgBox(
+      SuppressibleMsgBox(
         'The Vein dedicated server folder is outside the app install folder and will not be removed:'#13#10#13#10 +
         ServerDir + #13#10#13#10 +
         'The uninstaller will remove the management app only after stopping monitors/server processes.',
         mbInformation,
-        MB_OK
+        MB_OK,
+        IDOK
       );
     end;
   end;

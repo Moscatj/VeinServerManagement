@@ -212,6 +212,9 @@ Installer responsibilities:
 - Remove reused `Controller`, `Uninstall`, and app-root directories after an upgrade only when they are empty. This handles folders that predated the latest installer run without recursively deleting preserved user data.
 - Run a best-effort uninstall cleanup that stops log/crash monitors first and then performs a controlled server shutdown only when a Vein server process is running
 - Preserve external Vein dedicated server installs by default. If the recorded server root is inside the app install folder, the uninstaller offers an explicit opt-in deletion prompt with save-loss warnings and defaults to preserving data.
+- Silent uninstall suppresses those custom prompts with the same preservation
+  defaults: backups, local configuration, and app-managed server data remain
+  unless an interactive operator explicitly chooses deletion.
 - (Future) Allow optional installation of services/shortcuts for the crash/log monitors
 
 Recommended folder layout:
