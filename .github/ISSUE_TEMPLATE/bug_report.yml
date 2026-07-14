@@ -35,11 +35,13 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Include Windows version, Python version, and whether you used GUI, scripts, or direct Python entrypoints.
+      description: Include app version, Windows version, install method, and entry point. Include Python only for a source/developer run.
       placeholder: |
+        App version:
         Windows:
-        Python:
+        Install method: GitHub installer / source checkout
         Entry point:
+        Python (source runs only):
     validations:
       required: true
   - type: textarea

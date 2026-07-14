@@ -8,24 +8,22 @@
 It handles environment setup, configuration loading, process management, monitoring, and Discord startup messaging.
 
 **Core responsibilities:**
-- Initialize the runtime environment and resolve `config.yaml`.
-- Validate the server executable and print a preflight summary.
-- Handle pre-existing server instances (restart, skip, or backup).
-- Optionally run SteamCMD updates and restore saves.
-- Launch the Vein server and start crash/log monitors as needed.
-- Send live Discord messages during each startup stage.
+- Load and validate the selected config and server executable.
+- Refuse duplicate launches and synchronize runtime state to an existing server.
+- Optionally update through SteamCMD without making update failure fatal.
+- Start log/crash monitors before launching so the full boot is observed.
+- Launch the dedicated runtime executable, record its PID/state, and report
+  actionable failures through management logs and Discord.
 
 ---
 
 ## Dependencies
 - **config_helper** → loads `config.yaml` and feature toggles.
-- **utils.py** → provides:
-  - Server discovery and launch (`find_running_server`, `start_vein_server`)
-  - Flag and lock helpers (`create_startup_lock`, `clear_flag`, `end_intentional_shutdown`)
-  - Discord notifications
-  - Backups, Steam updates, quiet window management
-- **psutil**, **subprocess**, **pathlib.Path** → process control and I/O.
-- Designed for Windows (uses `taskkill`, PowerShell-style command flags).
+- **Tools.process** → server discovery, executable launch, and headless flags.
+- **Tools.runtime** → startup locks, server state, and restart quiet periods.
+- **Tools.monitors** → clean monitor stop/reset before startup.
+- **Tools.update_steam** and **Tools.discord** → optional update and status reporting.
+- **Tools.mgmt_logs** → packaged/source monitor stdout and stderr capture.
 
 ---
 
@@ -39,68 +37,34 @@ It handles environment setup, configuration loading, process management, monitor
   - `features.enable_log_monitor`
   - `enable_steam_update`
 - Behavior toggles:
-  - `preboot_shutdown`
-  - `backup_on_detect`
-  - `shutdown_timeout_sec`
-  - `pre_shutdown_warning_seconds`
-  - `stale_flag_delay_sec`
-  - `show_monitor_window`
   - `startup_quiet_seconds`
 
 ---
 
 ## Main Functions
 
-### `_print_preflight_summary()`
-- Builds a preflight summary showing:
-  - Server directory
-  - Backup root
-  - Executable candidates
-  - Map URL, ports, IP, and feature toggles
-- Posts a startup summary to Discord.
-- Aborts startup if no valid executable is found.
+### `_spawn_py(script_name)`
+- Uses `VeinTools.exe` subcommands in packaged builds and the selected Python
+  runtime in source builds.
+- Captures monitor output in management-log streams.
 
-### `_graceful_shutdown(proc, timeout)`
-- Attempts to shut down the server gracefully:
-  1. Run `shutdown_server.py` if available.
-  2. Try `proc.terminate()` and wait.
-  3. Fall back to `taskkill /T /F`.
-- Ensures clean restarts and prevents orphaned processes.
+### `_start_monitors()`
+- Stops stale monitor instances, clears stale PID/stop files, and starts the
+  enabled monitors once.
 
-### `_preflight_guard()`
-Handles already-running or stale instances:
-- If a live server is found:
-  - Sync runtime flag to the actual PID.
-  - Optionally:
-    - Warn users before shutdown (`pre_shutdown_warning_seconds`)
-    - Run backups (`backup_on_detect`)
-    - Post restart messages to Discord
-    - Gracefully stop the existing server
-  - Clears old flags before continuing.
-- If no live process but a stale flag exists:
-  - Optionally back up files, clear the flag, and continue.
-
-### `_creation_flags(show_window)` / `spawn_once(tag_substring, argv, show_window)`
-- Determines process flags for Windows visibility.
-- Launches helper monitors only if not already running.
-
-### `maybe_start_monitors(cfg)`
-- Starts `crash_monitor.py` and `monitor_log.py` if enabled.
-- Uses `spawn_once()` to prevent duplicate processes.
+### `_steam_update_if_enabled()`
+- Distinguishes success, failure, and unavailable SteamCMD. Startup continues
+  with the installed build when an update cannot complete.
 
 ### `main()`
 **Startup sequence:**
-1. Create startup lock and clear intentional shutdown flags.
-2. Print preflight summary and run `_preflight_guard()`.
-3. Optionally:
-   - Run SteamCMD update.
-   - Restore missing saves.
-   - Rotate logs.
-4. Launch the server via `start_vein_server()` (with correct map, ports, and config).
-5. Post Discord “server online” message with PID.
-6. Spawn monitors if enabled.
-7. Clear startup lock on exit.
-8. Handle `KeyboardInterrupt` safely with shutdown cleanup.
+1. Validate config and detect an already-running server.
+2. Create the startup lock and publish offline/start state.
+3. Optionally run the non-fatal Steam update.
+4. Start monitors and give the log monitor a short PID-file settle window.
+5. Set the restart quiet period and launch the selected executable.
+6. Record the PID and report that the process is waiting to become joinable.
+7. Stop newly spawned monitors if launch fails and always clear startup locks.
 
 ---
 
@@ -127,7 +91,8 @@ Sends structured messages to the configured Discord channels for:
 ## Integration Points
 - **vein_manager.py** → GUI front-end can call `start_server.py` to start the server.
 - **crash_monitor.py** / **monitor_log.py** → spawned here after startup.
-- **utils.py** → provides all process, Discord, and backup functionality.
+- **Controller/Tools/** → provides process, runtime, monitor, logging, Discord,
+  and Steam update functionality.
 - **config_helper.py** → provides configuration paths and toggles.
 
 ---
@@ -143,12 +108,11 @@ Sends structured messages to the configured Discord channels for:
 ## Quick Reference
 | Change | Edit Function |
 |---------|----------------|
-| Adjust startup summary text | `_print_preflight_summary()` |
-| Modify restart/skip logic | `_preflight_guard()` |
-| Change Steam update sequence | `main()` (Steam section) |
-| Add GUI-specific hooks | `maybe_start_monitors()` |
+| Change monitor child launching | `_spawn_py()` / `_start_monitors()` |
+| Change Steam update narration | `_steam_update_if_enabled()` |
+| Change launch orchestration | `main()` |
 | Adjust quiet window | `startup_quiet_seconds` config value |
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

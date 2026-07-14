@@ -3,7 +3,7 @@
 Place `VeinServerManager.ico` in this directory to brand both the packaged
 `VeinManager.exe` and the final installer.
 
-The build scripts automatically look for:
+The repository currently includes this icon. Build scripts automatically look for:
 
 ```
 Installer/assets/VeinServerManager.ico

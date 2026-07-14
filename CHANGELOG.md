@@ -6,6 +6,20 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Audited and refreshed all root documentation and the operator/developer
+  documentation set for the v2.9.0 installer, GUI, configuration, monitoring,
+  security, packaging, testing, and roadmap baseline.
+- Consolidated AI development rules into a shorter authoritative `AGENTS.md`,
+  removed duplicate prompt examples and approval loops, separated agent
+  permissions from operator-initiated runtime capabilities, adopted risk-based
+  validation, and aligned contributor/issue/PR guidance.
+- Added documentation stewardship rules for automatic release-version sweeps,
+  completed-roadmap updates, human-readable project context, and approval-first
+  AI workflow governance with active improvement suggestions.
+- Added CI and tagged-release enforcement for changelog ordering, release notes,
+  semantic tag matching, synchronized current-version declarations, and generic
+  installer-version examples.
+
 ## 2.9.0 - 2026-07-13
 
 - Improved update/repair server detection by falling back to the installed YAML configuration when the runtime server-path record is unavailable, and clarified that the prefilled location is an existing server being maintained rather than a new server destination.

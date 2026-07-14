@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.7.0`, with the next unreleased checkpoint in progress:
+Released through `v2.9.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -23,55 +23,73 @@ Released through `v2.7.0`, with the next unreleased checkpoint in progress:
 - Packaged installs support an app-managed default layout with `SteamCMD\` and
   `Server\` under the app folder, while still allowing existing external server
   and SteamCMD paths.
-- Uninstall cleanup stops management monitors/server processes and can remove
-  app-owned logs, runtime state, SteamCMD, server files, config, and backups
-  only through explicit user prompts.
+- The installer supports intentional fresh, side-by-side, update/repair, and
+  uninstall paths. It preserves local state during maintenance, reuses existing
+  server/SteamCMD locations, and can reinstall a missing managed server.
+- SteamCMD operations show live download/validation progress, initialize a new
+  SteamCMD copy before use, retry once automatically, and retain diagnostic
+  logs. The current Inno Setup operation is blocking and therefore explicitly
+  non-cancellable; interrupted work resumes through Update/Repair.
+- Uninstall cleanup stops management monitors/server processes and removes
+  transient app-owned directories. Server data, config, and backups require
+  explicit deletion choices.
 - The management suite now includes read-only diagnostics for dedicated server
   layout and key Vein `Game.ini` / `Engine.ini` settings.
 - The GUI dashboard surfaces a read-only server preflight summary so operators
   can spot missing files or mismatched ports before starting the server.
-- The GUI includes a read-only server config preview for key `Game.ini` and
-  `Engine.ini` values, with secrets masked.
+- The GUI includes a server-config preview and guarded editor for allowlisted
+  `Game.ini` and `Engine.ini` values. Secrets are masked, changes require a
+  preview and confirmation, and every write is backed up and validated.
 - Server Quick Start supports guarded New Server and Existing Server setup,
   including existing-install detection and protected secret replacement fields.
+- Packaged lifecycle and monitor commands run through `VeinTools.exe`; normal
+  users do not need Python. Log and save locations derive from the selected
+  server root unless an advanced override is configured.
 
 ## Near-Term Priorities
 
-- Improve README presentation with current GUI screenshots.
+- Add current GUI and installer screenshots to the README without making the
+  landing page difficult to scan.
 - Keep GitHub Release pages populated with meaningful release notes and
   versioned installer artifacts.
-- Enable branch protection on `main` after release workflows are stable.
+- Require the established CI checks on `main` without blocking the tag-driven
+  release workflow.
 - Continue focused unit coverage for non-GUI controller and Tools modules.
 - Review legacy modules and document what is retained for reference versus
   still supported.
-- Expand the first-run setup/config validation flow so users can fix missing
-  SteamCMD, server executable, port, and game-config issues from guided actions
-  instead of only seeing diagnostics.
-- Continue hardening Server Quick Start after packaged fresh-install testing.
-- Build the guarded game-config editor on top of the read-only preview, with
-  backup, diff/preview, validation, and rollback guidance before any writes.
-- Continue hardening GUI server-config editing with better field-specific
-  controls, rollback helpers, and clearer validation guidance.
+- Continue clean-machine installer tests for fresh install, side-by-side
+  install, update/repair, missing-server reinstall, uninstall, and interrupted
+  SteamCMD recovery.
+- Add an in-app first-run checklist that connects installer results, Quick
+  Start, preflight, firewall/router guidance, and the first successful launch.
+- Continue the phased GUI modernization described in
+  `Docs/gui_modernization.md`, emphasizing navigation, readable responsive
+  layouts, status clarity, and reusable tested controllers.
+- Improve server-config editing with field-specific controls, backup restore
+  guidance, and clearer validation errors.
+- Add a guided network-readiness workflow for Windows Firewall, router port
+  forwarding, and external reachability checks without silently changing
+  network configuration.
 
 ## Installer And Binary Distribution Goals
 
 Target user experience:
 
-- Users who only want to run the suite download `VeinServerManagement-Setup.exe`
-  from GitHub Releases.
+- Users who only want to run the suite download the versioned
+  `VeinServerManagement-Setup-vX.Y.Z.exe` from GitHub Releases.
 - The installer places `VeinManager.exe` and `VeinTools.exe` on disk, creates
   shortcuts, and stages a local `Config/config.yaml` from the public template.
 - Users do not need to clone the repository or install Python for normal use.
 - Developers still clone the repo when they want tests, source changes, or local
   packaging builds.
 
-Near-term installer hardening:
+Ongoing installer hardening:
 
 - Keep `Scripts\BuildInstaller.bat` as the canonical local build command.
 - Build `VeinManager.exe` and `VeinTools.exe` from the current tagged source.
 - Publish generated binaries as GitHub Release artifacts, not committed files.
-- Add a packaging smoke test that confirms the staged bundle contains the GUI,
-  CLI, docs, scripts, and sanitized config.
+- Keep packaging tests that confirm the staged bundle contains the GUI, CLI,
+  docs, required runtime helpers, and sanitized config.
 - Validate a fresh installer run on a clean Windows profile or VM before major
   public releases.
 - Future code-signing hardening:
@@ -152,12 +170,12 @@ licensing distinction, and acceptance criteria.
 - Keep read-only `health-check` and `server-config-check` useful as release and
   first-run validation gates.
 
-## Game Config Management Goals
+## Game Config Management
 
-The management tool should eventually edit Vein dedicated server config files
-for operators who do not want to hand-edit Unreal INI files.
+The guarded editor and Quick Start now edit selected Vein dedicated server
+settings for operators who do not want to hand-edit Unreal INI files.
 
-Allowed future scope:
+Implemented safety contract:
 
 - Read, preview, validate, and write only:
   - `Vein\Saved\Config\WindowsServer\Game.ini`
@@ -168,6 +186,12 @@ Allowed future scope:
 - Create a timestamped backup under `Backups\ConfigEdits\` before every write.
 - Show a clear preview/diff before saving changes.
 - Re-run validation after writing and surface any mismatches in the GUI.
+
+Next improvements:
+
+- Add clearer per-setting descriptions and appropriate field widgets.
+- Make backup discovery and operator-driven restore easier.
+- Expand the allowlist only when a setting is documented and can be validated.
 
 Out of scope:
 
@@ -237,7 +261,7 @@ Open design questions:
   - log parsing and summarization
   - Steam update/version helper behavior
   - config validation and fallback behavior
-  - server config validation and future guarded INI write behavior
+  - server config validation and guarded INI write behavior
 - Keep GUI testing focused on controller/helper seams unless a stable UI test
   harness is added later.
 

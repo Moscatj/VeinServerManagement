@@ -28,6 +28,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check documentation, changelog, and release version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+            python Controller\Tools\documentation_check.py --tag "${{ github.ref_name }}"
+          } else {
+            python Controller\Tools\documentation_check.py
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Install Python app and packaging dependencies
         run: python -m pip install -r requirements-dev.txt -r requirements-packaging.txt
 

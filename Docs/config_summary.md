@@ -20,7 +20,9 @@ This module:
 ## Search Order for Runtime Config
 1. Environment variable **`VEIN_CONFIG`** — absolute path to YAML or JSON file.
 2. `<VEIN_MGMT_ROOT>\Config\config.yaml` — preferred local runtime location, ignored by Git.
-3. `<VEIN_MGMT_ROOT>\Controller\config.json` — legacy fallback.
+3. `<VEIN_MGMT_ROOT>\Config\config.yml` — alternate YAML name.
+4. `<VEIN_MGMT_ROOT>\Config\config.json` — legacy fallback.
+5. `<VEIN_MGMT_ROOT>\Controller\config.json` — oldest legacy fallback.
 
 Also respects environment variables:
 - `VEIN_MGMT_ROOT` → defines the Server Management root.
@@ -60,7 +62,7 @@ Injects sane defaults for missing or empty values, such as:
 - `backup_on_detect` = True
 - `shutdown_timeout_sec` = 60
 - `restart_throttle_seconds` = 120
-- `server_executables` = ["VeinServer.exe", "VeinServer-Win64-Test.exe"]
+- `server_executables` = ["VeinServer-Win64-Test.exe", "VeinServer.exe"]
 - `backup_root` = `<VEIN_MGMT_ROOT>\Backups` (if missing)
 
 Also applies `DISCORD_WEBHOOK_URL` from the environment if present.
@@ -160,4 +162,4 @@ This ensures all paths and defaults are applied before use.
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

@@ -21,7 +21,7 @@ backups, Discord routing, and Steam update settings.
 
 - server_executables (list)  
   • Executable names to try in order when starting the server.  
-  • Current: ["VeinServer.exe", "VeinServer-Win64-Test.exe"]
+  • Current: ["VeinServer-Win64-Test.exe", "VeinServer.exe"]
 
 - runtime_dir  
   • Where runtime flags, PIDs, and state JSONs are written.  

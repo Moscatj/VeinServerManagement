@@ -108,7 +108,7 @@ is aligned with their setup guidance:
 
 If the active configuration does not resolve to a supported Vein server
 executable, the command bar disables Start, Restart, and both monitor Start
-actions. A visible `Set Up Serverâ€¦` action opens Quick Start; stop actions only
+actions. A visible `Set Up Server…` action opens Quick Start; stop actions only
 become available for processes that are actually running. The Quick Start page
 uses scrollbars and minimum control heights on smaller displays instead of
 compressing fields into unreadable rows.
@@ -152,9 +152,11 @@ Quick Start intentionally avoids writing `Config/config.example.yaml`; if an
 example template is currently selected, Apply targets the local
 `Config/config.yaml` path instead.
 
-## Future Install Flow
+## Planned Unified In-App Setup Flow
 
-The intended GUI flow is:
+The Windows installer already handles management-app placement and optional
+SteamCMD/server installation. A future in-app wizard should connect that result
+to Quick Start and network readiness through this flow:
 
 1. Choose app-managed or existing server location.
 2. Choose app-managed or existing SteamCMD.

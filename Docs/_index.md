@@ -1,33 +1,37 @@
-# 📘 Vein Server Management Suite — Documentation Index
+# Vein Server Management Suite Documentation
 
-> **Version:** v2.3.4
+> **Version baseline:** v2.9.0
 > **Maintainers:** Project contributors
 > **Purpose:** Central index for all project documentation files.
-> Start here if you’re exploring or extending the Vein Server Management system.
+> Start here when operating, exploring, or extending the management suite.
 
 ---
 
-## 🧩 Project Overview
+## Project Overview
 
-The Vein Server Management Suite automates hosting, monitoring, and maintaining a **dedicated Vein game server** on Windows.
-It handles startup, crash recovery, scheduled backups, and Discord event reporting, all driven by a local `config.yaml` created from the tracked `config.example.yaml` template.
+The Vein Server Management Suite installs, configures, hosts, monitors, and
+maintains a dedicated Vein server on Windows. The packaged app includes a
+guided installer, GUI, dependency-free operator CLI, SteamCMD integration,
+guarded server-config editing, monitoring, backups, and Discord reporting.
 
 For general setup and usage, start with the root-level [README.md](../README.md).
 This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-## 📂 Table of Contents
+## Table of Contents
 
-### 🧠 System Architecture
+### System Architecture and Operations
 - [control_layer_overview.md](control_layer_overview.md) — High-level architecture and cross-module flow
 - [Developer_Guide.md](Developer_Guide.md) — Full developer manual (detailed system design)
+- [docs_for_codex.md](docs_for_codex.md) — Compact AI/contributor project map; rules remain in [AGENTS.md](../AGENTS.md)
 - [env_setup_summary.md](env_setup_summary.md) — Environment initialization (batch setup)
 - [config_reference.md](config_reference.md) — Complete `config.yaml` key reference
 - [config_summary.md](config_summary.md) — Configuration loader (`config.py`)
 - [config_helper_summary.md](config_helper_summary.md) — Helper API for accessing config safely
 - [testing.md](testing.md) — Unit test, coverage, and CI expectations
 - [coverage_strategy.md](coverage_strategy.md) — Practical coverage priorities and current baseline
+- [documentation_maintenance.md](documentation_maintenance.md) — Version, roadmap, readability, and AI-context upkeep
 - [health_check.md](health_check.md) - Read-only project diagnostics and preflight checks
 - [management_logs.md](management_logs.md) - Management log layout, retention, archive, and CLI helpers
 - [packaging_overview.md](packaging_overview.md) - Windows executable and installer build workflow
@@ -38,7 +42,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-### ⚙️ Core Controllers
+### Core Controllers
 | Controller | Summary |
 |-------------|----------|
 | [start_server_summary.md](start_server_summary.md) | Server startup process and preflight checks |
@@ -49,7 +53,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-### 💾 Supporting Modules
+### Supporting Modules
 | Module | Summary |
 |--------|----------|
 | [tools_summary.md](tools_summary.md) | Shared Tools modules for processes, backups, Discord, diagnostics, and runtime helpers |
@@ -57,7 +61,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-### 🧱 Reference & Data
+### Reference and Data
 | Topic | File |
 |-------|------|
 | Config Structure | [config_reference.md](config_reference.md) |
@@ -75,7 +79,7 @@ This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-### 🧰 Advanced Topics
+### Advanced Topics
 - [Developer_Guide.md](Developer_Guide.md) — Deep technical documentation
 - [control_layer_overview.md](control_layer_overview.md) — Architecture and data flow
 - [config_helper_summary.md](config_helper_summary.md) — Feature toggles and typed getters
@@ -83,21 +87,26 @@ This folder contains all **developer** and **system-level** documentation.
 
 ---
 
-## 🧾 Versioning & Maintenance
+## Versioning and Maintenance
 
 | Version | Date | Summary |
 |----------|------|----------|
+| **v2.9.0** | 2026-07-13 | Guided installer maintenance, SteamCMD progress/retry, and packaged monitoring/path hardening |
+| **v2.8.x** | 2026-07 | GUI foundation, clean-machine lifecycle support, Linux roadmap, and launch hardening |
+| **v2.7.0** | 2026-07-10 | Guarded Quick Start for new and existing servers |
+| **v2.5.x-v2.6.0** | 2026-07 | Packaged installer, release automation, diagnostics, and guarded INI editing |
 | **v2.2.1** | 2026 | Backend test coverage hardening |
 | **v2.2.0** | 2026 | Public source hardening baseline, CI, tests, source hygiene, and release process |
-| **v2.1** | 2025 | Documentation refresh, modular split, and GUI integration |
-| **v2.0** | 2024 | Initial stable server + monitor release |
-| **v1.x** | 2023 | Pre-release prototypes and manual backups |
+
+The public tag history begins at v2.2.0. See
+[CHANGELOG.md](../CHANGELOG.md) for the authoritative release record.
 
 ---
 
-## 🧭 Quick Navigation (for VS Code users)
+## Quick Navigation
 
-If you’re browsing inside VS Code, this folder supports sidebar navigation and search for any keyword like **"monitor"**, **"backup"**, or **"discord"**.
+Search this folder for terms such as **monitor**, **backup**, **installer**, or
+**Discord**.
 Each summary file uses consistent section headers so you can quickly find:
 - **Purpose**
 - **Behavior**
@@ -107,7 +116,7 @@ Each summary file uses consistent section headers so you can quickly find:
 
 ---
 
-## 🧩 Recommended Reading Order
+## Recommended Reading Order
 
 1. [control_layer_overview.md](control_layer_overview.md)
 2. [config_reference.md](config_reference.md)
@@ -120,15 +129,17 @@ Each summary file uses consistent section headers so you can quickly find:
 
 ---
 
-## 🧑‍💻 Maintainers Notes
+## Maintainer Notes
 
-- Primary Development Environment: Windows 11 + Python 3.11
+- Primary development environment: Windows 11 with Python 3.12 for packaging.
 - Recommended IDE: Visual Studio Code
-- Continue AI Integration: Enabled for contextual repo analysis
-- Always run scripts via `env_setup.bat` to ensure variables are properly set.
+- AI workflow: follow [AGENTS.md](../AGENTS.md); use
+  [docs_for_codex.md](docs_for_codex.md) only as the project map.
+- Source wrappers call `env_setup.bat`; packaged users run `VeinManager.exe` or
+  `VeinTools.exe` and do not need Python.
 - When modifying configuration logic, keep `config.py` and `config_helper.py` synchronized.
-- Discord integration can be tested independently using webhook test URLs.
+- Never put real webhook URLs in tracked docs, tests, or example config.
 
 ---
 
-_Last updated: November 2025 — Vein Server Management contributors_
+_Audited against v2.9.0 on 2026-07-14._

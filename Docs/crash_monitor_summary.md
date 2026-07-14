@@ -20,7 +20,8 @@ If the server exits unexpectedly (flag says “running” but no process exists)
 - **PID:** `Runtime/crash_monitor.pid` — PID of the monitor.
 - **State:** `Runtime/crash_monitor_state.json` — `{ts, mode, pid}` for GUI gumdrop.
 - **Stop flag:** `Runtime/stop_crash_monitor.flag` — request a clean exit.
-- **Server state flag (from utils):** `Runtime/server_running.flag` — indicates server should be running.
+- **Server state flag:** `Runtime/server_running.flag` — records whether a
+  managed server should be running.
 
 **State “modes” written:**
 - `startup`, `stopped`, `disabled`, `intentional_shutdown`, `idle`, `watching`, `restart_pending`
@@ -37,7 +38,7 @@ These are read via the shared config helper; no hardcoded constants beyond safe 
 ---
 
 ## Discord Notifications
-Channel: `crash_monitor` (gate-checked via shared utils)
+Channel: `monitor` (routed and gate-checked by `Tools.discord`)
 
 Typical messages:
 - 🟢 Crash monitor started / active
@@ -116,9 +117,9 @@ Typical messages:
 | Faster/slower polling | `crash_monitor_interval_seconds` |
 | Idle reminder cadence | `crash_monitor_idle_notify_minutes` |
 | Disable monitoring without stopping script | `features.enable_crash_monitor` |
-| Adjust Discord chatter | Gate via utils channel settings or message text here |
-| Throttle restarts | Tune startup grace + auto-restart quiet periods (utils/config) |
+| Adjust Discord chatter | Use Discord channel/message gates in config |
+| Throttle restarts | Tune crash-monitor backoff/breaker and runtime quiet-period settings |
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

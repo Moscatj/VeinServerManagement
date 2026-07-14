@@ -14,20 +14,21 @@ It marks the shutdown as **intentional** (so the crash monitor won’t auto-rest
 - Looks up `VEIN_CONFIG` deterministically from:
   1) `os.environ["VEIN_CONFIG"]`
   2) `Config/config.yaml`
-  3) a last-resort `Controller/config.yaml`
+  3) `Config/config.yml`
+  4) legacy JSON locations through the normal config loader
 - Exports `VEIN_MGMT_ROOT` and `VEIN_CONFIG` to the environment so helpers can read them.
 - Prints which config is being used for visibility in the console.
 
 ---
 
-## Key Helpers Used (from `utils` / `config_helper`)
-- **Monitors:** `stop_log_monitor()`, `stop_crash_monitor()`
-- **Discord:** `send_discord_message(...)`
-- **Backups:** `backup_save_file(SAVE_FILE, reason="Shutdown")`
-- **Flags & state:** `clear_flag()`, `begin_intentional_shutdown(window_sec=...)`, `end_intentional_shutdown()`
-- **Server control:** `list_all_vein_server_procs(verbose=True)`, `stop_all_vein_processes_aggressive()`
-- **Throttling:** `set_autorestart_quiet_period(...)`
-- **Config:** `config.get("pre_shutdown_warning_seconds", 0)` (optional warning window)
+## Key Helpers
+- **Tools.monitors:** `stop_log_monitor()`, `stop_crash_monitor()`
+- **Tools.discord:** `send_discord_message(...)`
+- **Tools.backups_api:** `make_backup(reason="Shutdown")`
+- **Tools.runtime:** intentional-shutdown markers, server state, locks, and
+  autorestart quiet periods
+- **Tools.process:** process discovery and the shared aggressive stop fallback
+- **config_helper:** normalized configuration and feature gates
 
 ---
 
@@ -116,4 +117,4 @@ Then clears locks and prints guidance to fix `config.yaml`.
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

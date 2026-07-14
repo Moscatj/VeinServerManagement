@@ -3,13 +3,18 @@
 [![CI](https://github.com/Moscatj/VeinServerManagement/actions/workflows/ci.yml/badge.svg)](https://github.com/Moscatj/VeinServerManagement/actions/workflows/ci.yml)
 [![License: Non-Commercial Source Available](https://img.shields.io/badge/License-Non--Commercial%20Source%20Available-blue.svg)](LICENSE)
 
-A Python and PySide6 toolkit for hosting and supervising a Vein dedicated server on Windows.
+A packaged PySide6 management suite and Python toolkit for installing, configuring,
+hosting, and supervising a Vein dedicated server on Windows.
 
 This repository does not contain the game server. It is a management layer that can either install/manage a Vein dedicated server under the packaged app folder or point at an existing Steam-installed server elsewhere on disk.
 
 ## Project Status
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
+
+The current stable release is **v2.9.0**. Windows users can install it without
+Python or other developer tools from the
+[GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 
 ## Features
 
@@ -24,6 +29,10 @@ This is a personal source-available portfolio project. It is suitable for experi
 - GUI server preflight summary for install/config readiness before starting the server.
 - GUI preview and guarded editing for key Vein `Game.ini` / `Engine.ini` server settings.
 - Server Quick Start modes for complete new-server setup and selective, guarded updates to existing servers.
+- Guided installer flows for fresh installs, side-by-side app instances,
+  in-place update/repair, missing-server reinstall, and uninstall.
+- Live SteamCMD download/validation progress with initialization, automatic
+  retry, and resumable repair behavior.
 
 ## Repository Layout
 
@@ -192,7 +201,8 @@ dist\installer\VeinServerManagement-Setup-vX.Y.Z.exe
 ```
 
 Generated installers and binaries should be published through GitHub Releases, not committed to the repository.
-Release tags run the installer workflow and attach a versioned installer, such as `VeinServerManagement-Setup-v2.3.12.exe`, to the GitHub Release.
+Release tags run the installer workflow and attach a versioned installer, such
+as `VeinServerManagement-Setup-vX.Y.Z.exe`, to the GitHub Release.
 
 See [Docs/packaging_overview.md](Docs/packaging_overview.md) for the full packaging workflow.
 
@@ -219,7 +229,10 @@ Scripts\TestSuite.bat __RUN__
 Scripts\RunCoverage.bat
 ```
 
-GitHub Actions runs tests, diagnostics, coverage, and a lightweight secret/local-marker scan on every push and pull request.
+GitHub Actions runs documentation/version consistency checks, tests,
+diagnostics, coverage, and a lightweight secret/local-marker scan on every push
+and pull request. Tagged installer builds additionally require the tag to match
+the newest dated changelog release and all current-version declarations.
 
 Coverage is a guide, not a hard 100% target. The priority is meaningful coverage around config loading, process control, runtime state, backups, log parsing, API helpers, and other behavior that can regress. See [Docs/coverage_strategy.md](Docs/coverage_strategy.md) for the testing philosophy and current coverage baseline.
 
@@ -233,6 +246,7 @@ Start here:
 - [Docs/config_reference.md](Docs/config_reference.md)
 - [Docs/testing.md](Docs/testing.md)
 - [Docs/coverage_strategy.md](Docs/coverage_strategy.md)
+- [Docs/documentation_maintenance.md](Docs/documentation_maintenance.md)
 - [Docs/health_check.md](Docs/health_check.md)
 - [Docs/management_logs.md](Docs/management_logs.md)
 - [CHANGELOG.md](CHANGELOG.md)

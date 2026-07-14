@@ -20,6 +20,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check documentation and version consistency
+        run: py -3 Controller\Tools\documentation_check.py
+
       - name: Install dev dependencies
         run: py -3 -m pip install -r requirements-dev.txt
 

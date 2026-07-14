@@ -23,7 +23,8 @@ Example:
     config = load_config()
     features = config.get("features", {})
 
-- `load_config()` comes from `config.py` and reads/parses the JSON config file.
+- `load_config()` comes from `config.py`; YAML is primary and JSON is retained
+  only as a legacy fallback.
 - `features` is a shortcut to `config["features"]`, containing boolean flags and Discord channel toggles.
 
 ---
@@ -118,4 +119,4 @@ Used by controllers for:
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

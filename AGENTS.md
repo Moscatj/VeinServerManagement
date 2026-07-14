@@ -1,357 +1,182 @@
-# AGENTS.md — Rules for AI Assistants (Codex Agent Mode, ChatGPT, Copilot, etc.)
-
-This document defines **strict rules and safeguards** for AI agents operating on the  
-**Vein Server Management Suite**, located at the repository root.
-
-yaml
-Copy code
-
-These rules are designed to ensure that agent mode **never edits or damages anything
-outside the repository**, never touches the actual Vein game installation, and only
-makes safe, reviewable changes.
-
----
-
-# 1. ABSOLUTE FILESYSTEM BOUNDARIES (CRITICAL)
-
-### ✅ Allowed Write / Edit Area (repo root)
-The **only location where the agent may modify, add, or delete files** is the
-repository root and its child paths.
-
-markdown
-Copy code
-
-This includes:
-
-- All folders under it:
-  - `Controller/`
-  - `Controller/Tools/`
-  - `Config/`
-  - `Scripts/`
-  - `Docs/`
-  - `Backups/` (only writing new backup files)
-  - `Runtime/` (writing small JSON/PID files is expected)
-  - `Logs/`
-- Any new module or file **inside this folder** is allowed.
-
-### ❌ Forbidden Areas (read-only)
-The following paths are **strictly read-only**:
-
-<VEIN_INSTALL>
-<VEIN_INSTALL>\Saved
-<VEIN_INSTALL>\Logs
-<VEIN_INSTALL>\Content
-<VEIN_INSTALL>\Binaries\
-
-markdown
-Copy code
-
-AI MUST NOT:
-
-- Change, delete, or overwrite ANY Vein game file
-- Modify game logs (only read them)
-- Modify world/save files (only COPY them for backups)
-- Patch, update, or delete anything in the Vein folder
-
-**The Vein folder is treated as immutable game data.**
-
-### ✔ Allowed actions in Vein/:
-- Reading log files
-- Reading save files
-- Copying save files (for backups only)
-- User-approved management-tool writes to
-  `<VEIN_INSTALL>\Vein\Saved\Config\WindowsServer\Game.ini` and
-  `<VEIN_INSTALL>\Vein\Saved\Config\WindowsServer\Engine.ini`. These writes are
-  only allowed for a guarded game-config editor feature.
-
-### ❌ Prohibited actions in Vein/:
-- Editing files
-- Deleting files
-- Moving files
-- Truncating logs
-- Changing permissions
-- Renaming directories
-- Writing ANYTHING
-
-### Game config editor exception
-
-The user has approved a narrow future exception for editing Vein dedicated server
-configuration from the management tool. This does **not** permit arbitrary game
-file writes.
-
-Any implementation that writes `Game.ini` or `Engine.ini` must:
-
-- Be explicitly user-initiated from the management tool.
-- Limit writes to dedicated server config files under
-  `Vein\Saved\Config\WindowsServer\`.
-- Show or generate a preview of intended settings before writing.
-- Create a timestamped backup under repo-owned `Backups\ConfigEdits\` before
-  every write.
-- Validate the resulting config after write and report failures clearly.
-- Never edit saves, logs, binaries, content, SteamCMD files, or arbitrary game
-  files.
-
-If an AI ever believes an external write is required, the AI must respond:
-
-> “External file modifications are forbidden without explicit user authorization.”
-
----
-
-# 2. FILE CREATION / DELETION RULES
-
-### Allowed without permission:
-- Creating or editing new Python files **inside**:
-  - `Controller/`
-  - `Controller/Tools/`
-  - `Scripts/`
-  - `Docs/`
-  - `Config/`
-
-- Writing to:
-  - `Logs/`
-  - `Runtime/`
-  - `Backups/` (only new backup files)
-
-### Requires explicit permission from the user:
-- Creating files **in any parent directory**
-- Creating files in the parent directory outside the repository
-- Creating temporary files outside the repo
-- Writing anywhere inside `Vein/`
-- Writing `Game.ini` or `Engine.ini` outside the current read-only validator
-
-### Always forbidden:
-- Deleting folders outside the repo
-- Deleting anything inside `Vein/`
-- Deleting user backups unless explicit permission is given
-- Modifying system environment variables or registry
-- Running high-risk shell commands (`rm -rf`, PowerShell deletions, registry edits)
-
----
-
-# 3. PROJECT STRUCTURE (Authoritative)
-
-All Python logic exists within the following directories:
-
-### ✔ Main logic  
-Controller/
-
-shell
-Copy code
-
-### ✔ Shared modules  
-Controller/Tools/
-
-shell
-Copy code
-
-### ✔ Config  
-Config/config.example.yaml is the tracked public template.
-Config/config.yaml is the local runtime config and is ignored by Git.
-
-shell
-Copy code
-
-### ✔ Batch wrappers  
-Scripts/*.bat
-
-arduino
-Copy code
-
-### ✔ Runtime state (read/write)  
-Runtime/
-
-shell
-Copy code
-
-### ✔ Documentation  
-Docs/
-
-yaml
-Copy code
-
----
-
-# 4. REMOVAL OF utils.py (IMPORTANT)
-
-The file:
-
-Controller/utils.py
-
-markdown
-Copy code
-
-has been removed after the Tools module split.
-
-### New rules:
-- Do not recreate `utils.py`
-- Do not add new imports that depend on `utils.py`
-- Compatibility fixes must be made in the appropriate `Controller/Tools/` module
-- New functionality must be implemented in the appropriate module under:
-
-Controller/Tools/
-
-yaml
-Copy code
-
-When unsure where to put new logic, AI must ask:
-
-> “Which Tools module should this functionality belong to?”
-
----
-
-# 5. CONFIG HANDLING RULES
-
-- Use `Controller/config.py` and `Controller/config_helper.py`
-- Do not hardcode absolute paths
-- Always honor values in:
-Config/config.yaml
-
-yaml
-Copy code
-- `Config/config.yaml` is local-only; keep public defaults in `Config/config.example.yaml`
-- YAML is the primary config; JSON is legacy and must not be expanded
-- Agent must not rewrite config to a new format without explicit permission
-
----
-
-# 6. SAFE SHUTDOWN & BACKUP RULES
-
-These files define the canonical safe shutdown pipeline:
-
-Controller/shutdown_server.py
-Controller/Tools/backups.py
-Controller/Tools/process.py
-Controller/Tools/runtime.py
-
-yaml
-Copy code
-
-AI must:
-
-- Preserve intentional shutdown markers
-- Preserve Discord notifications
-- Respect backup config flags
-- Never introduce auto-deletion of saves
-
-Backups must only **copy** save files from the Vein directory.
-
----
-
-# 7. CRASH & LOG MONITOR RULES
-
-Files:
-- `Controller/crash_monitor.py`
-- `Controller/monitor_log.py`
-- `Controller/Tools/log_events.py`
-- `Controller/Tools/state_io.py`
-
-Rules:
-
-- Monitors may only read from Vein logs and saves
-- Output must be placed inside `Runtime/`
-- Never delete user logs
-- Never assume specific log text—use patterns / config
-
----
-
-# 8. GUI & RUNTIME SAFETY RULES
-
-Applies to:
-- `Controller/vein_manager.py`
-- `Controller/monitor_log.py`
-- `Controller/crash_monitor.py`
-- Any long-running helper that executes alongside the game server
-
-Rules:
-
-- Never block the GUI thread (heavy log parsing, disk IO, HTTP calls must use `QRunnable`/background workers)
-- GUI must not kill processes directly and must call shared logic from Tools modules
-- GUI must not modify game files
-- Crash/log monitors must remain lightweight: avoid tight loops, sleep sensibly, and **never** perform work that could impact the Vein server’s CPU/disk usage without user approval
-- Any new feature that reads large logs, snapshots saves, or touches runtime state should:
-  - Run off the UI thread (if initiated from the GUI)
-  - Use bounded work units / sleeps inside monitors
-  - Avoid accessing the Vein server filesystem except for allowed read-only operations
-- Features that could impact in-game performance (e.g., frequent backups, aggressive scans, high-frequency polling) require explicit user approval before implementation.
-
----
-
-# 9. CODING STANDARDS FOR NEW WORK
-
-- Use Python 3.11+
-- Use type hints where practical
-- Use pathlib, not os.path
-- Prefer small, focused modules under `Controller/Tools/`
-- Avoid circular imports
-- Update docs when behavior changes
-- Add or update unit tests for new behavior when practical
-- Run unit tests before finalizing code changes
-
----
-
-# 10. AGENT MODE SAFETY RULES
-
-These rules apply to Codex **Agent Mode**.
-
-### Agent Mode MAY:
-- Edit files inside VeinServerManagement repo
-- Add new modules inside Controller/Tools/
-- Update config, docs, or scripts
-- Run Git or Python commands **inside the repo only**
-
-### Agent Mode MUST NOT:
-- Execute commands outside the repo  
-  (e.g., no `cd ..`, no writing to parent directories)
-- Touch any file in `<VEIN_INSTALL>\`
-- Modify OS-level configuration
-- Install software without permission
-- Kill processes outside the Vein server
-
-### When unsure:
-AI must ask:
-
-> “This action may be destructive or outside the repo. Do you approve?”
-
----
-
-# 11. SESSION STARTUP CHECKLIST (For AI)
-
-Before performing any task:
-
-1. Read  
-   - `README.md`
-   - `AGENTS.md`
-   - `Docs/docs_for_codex.md`
-2. Summarize:
-   - Allowed write locations
-   - Forbidden areas
-   - utils.py deprecation rules
-3. Ask:
-   > “Which subsystem are we modifying?”
-4. Propose a small, reviewable plan
-5. Wait for user approval
-
----
-
-# 12. REQUIRED ACTION APPROVALS
-
-Codex must ask for explicit confirmation before:
-
-- File creation **outside** `VeinServerManagement`
-- Deleting any file
-- Writing into `Vein/`
-- Adding or changing game-config write behavior without the backup/preview
-  safeguards documented above
-- Running shell commands that alter system state
-- Changing shutdown or backup behavior
-
----
-
-# 13. TESTING REQUIREMENTS
-
-Code changes are not considered complete until relevant tests have been run.
-
-Required local checks for normal code changes:
+# AGENTS.md — AI Development Contract
+
+This file is the authoritative instruction set for AI assistants working on the
+Vein Server Management Suite. `Docs/docs_for_codex.md` provides project
+orientation but does not duplicate or override these rules.
+
+## 1. Scope And Authority
+
+The repository root and its descendants are the normal write boundary for AI
+development work. Agents may inspect, create, and edit repository source files
+when required by the user's request. Move or remove tracked source only when
+the user explicitly requests it or removal is an unambiguous part of the
+authorized refactor; never remove local user data as cleanup.
+
+Agents must:
+
+- run repository commands with the repository as the working directory;
+- preserve unrelated user changes in a dirty worktree;
+- avoid hardcoded machine-specific paths, credentials, and private data;
+- treat `Config/config.yaml`, runtime state, logs, backups, and generated
+  packages as local user data unless the task explicitly concerns them;
+- ask before an action that is destructive, changes OS state, writes outside
+  the repository, or materially expands the user's requested scope.
+
+An explicit user request already authorizes ordinary in-repository work needed
+to complete that request. Do not ask for a second approval merely to edit a
+named subsystem, add focused tests, update its documentation, or run its normal
+non-destructive checks.
+
+## 2. External And System Boundaries
+
+AI development commands must not write to a real Vein installation, SteamCMD
+installation, save directory, or other path outside this repository unless the
+user explicitly authorizes that exact external operation in the current task.
+
+Without that authorization, agents may only perform relevant read-only checks
+outside the repository, such as locating an installed compiler, reading a
+version, or inspecting a user-provided diagnostic file.
+
+Always require explicit authorization before:
+
+- installing or uninstalling software;
+- modifying the registry, system/user environment, services, firewall, router,
+  scheduled tasks, or permissions;
+- starting SteamCMD against a real server root;
+- starting, stopping, or killing a real game-server process outside a test;
+- deleting external files, saves, backups, logs, or server data;
+- writing real `Game.ini` or `Engine.ini` files as an agent action.
+
+Never use broad destructive commands such as recursive deletion against an
+unverified or external path. Never expose secrets in commands, logs, diffs, or
+responses.
+
+## 3. Runtime Product Capabilities
+
+The shipped application has narrower, operator-initiated capabilities that are
+implemented in repository code but are not blanket permission for an AI agent
+to exercise them against a real installation.
+
+Approved product workflows are:
+
+- SteamCMD may install, update, validate, or repair the operator-selected Vein
+  server root after an explicit installer/GUI choice.
+- Backups may read and copy saves into the configured backup root. They must
+  never delete or alter source saves.
+- Monitors may read Vein logs and save metadata. They must not modify or
+  truncate game logs.
+- The guarded config editor may write only
+  `Vein/Saved/Config/WindowsServer/Game.ini` and `Engine.ini` after a user
+  action, preview, timestamped backup under `Backups/ConfigEdits`, atomic write,
+  and post-write validation.
+
+No product workflow may silently edit or delete saves, game logs, binaries,
+content, or arbitrary Steam/game files.
+
+## 4. Architecture Rules
+
+- Python entrypoints and application logic live under `Controller/`.
+- Shared logic belongs in focused modules under `Controller/Tools/`.
+- GUI modules belong under `Controller/GUI/` and should delegate mutations and
+  process control to shared Tools/controller logic.
+- `Controller/utils.py` was removed. Do not recreate or import it.
+- YAML is primary. Use `Controller/config.py` and
+  `Controller/config_helper.py`; JSON remains legacy compatibility only.
+- `Config/config.example.yaml` is the tracked public template.
+  `Config/config.yaml` is ignored local state and must not be committed.
+- Use `pathlib`, type hints where practical, small modules, and dependency
+  directions that avoid circular imports.
+
+## 5. Lifecycle, Backup, And Monitor Invariants
+
+Changes to shutdown, restart, backups, process control, and monitors must
+preserve these invariants:
+
+- controlled shutdown remains centralized in `Controller/shutdown_server.py`
+  and shared `Controller/Tools/` helpers;
+- intentional-shutdown markers, restart throttling, Discord notifications, and
+  configured backup gates are not bypassed silently;
+- the GUI does not directly kill server or monitor processes;
+- long-running GUI work uses `QRunnable`, workers, subprocesses, or another
+  non-blocking mechanism;
+- monitor loops use bounded work and sensible sleeps;
+- log parsing uses patterns/configuration instead of relying on one exact line;
+- higher-frequency scans, aggressive polling, or frequent backups require an
+  explicit product decision because they can affect game performance.
+
+If the user explicitly requests a change to one of these subsystems, that is
+sufficient authority to implement it. Call out the risk, preserve the
+invariants, and test the behavior; do not pause for a redundant confirmation.
+
+## 6. Working Method
+
+At the start of a new session:
+
+1. Read `AGENTS.md` and `README.md`.
+2. Read `Docs/docs_for_codex.md` and only the subsystem references relevant to
+   the task.
+3. Inspect `git status` before editing.
+4. Confirm the requested subsystem from the user's prompt. Ask only when the
+   scope is genuinely ambiguous or a choice would materially change behavior.
+5. Use a short plan for multi-step work; simple, well-scoped fixes may proceed
+   directly.
+
+During implementation:
+
+- prefer small, reviewable diffs;
+- use `rg`/`rg --files` for discovery and `apply_patch` for manual edits;
+- add or update focused tests for behavior that can be exercised safely;
+- update operator/developer docs when behavior, config, packaging, or workflows
+  change;
+- keep generated binaries, local config, runtime state, logs, and backups out
+  of commits.
+
+## 7. Documentation And Workflow Stewardship
+
+Documentation is part of the implementation, not optional cleanup.
+
+- Update affected user, operator, developer, config, packaging, and AI guidance
+  in the same change as behavior.
+- When preparing a version/release, automatically synchronize current-version
+  declarations in `README.md`, `ROADMAP.md`, `RELEASING.md`, `Docs/_index.md`,
+  and `Docs/docs_for_codex.md`. Prefer `vX.Y.Z` in generic examples so fewer
+  files require version churn.
+- Do not blindly replace historical changelog entries, release tables, measured
+  coverage snapshots, or “audited against” markers; update those only when the
+  underlying release, measurement, or audit changes.
+- When a roadmap feature lands, move it into the current baseline or mark the
+  relevant phase complete, then rewrite remaining goals so implemented work is
+  not still described as future work.
+- Keep documentation human-readable: lead with user outcomes, use plain
+  language, remove stale duplication, and link to one authoritative source
+  instead of copying policy between files.
+- During project work, actively identify and suggest useful workflow,
+  instruction, testing, or documentation improvements.
+- Do not implement a proposed change to AI behavior, permissions, approval
+  rules, testing gates, release policy, or contributor governance until the
+  user approves that workflow change. Once approved, update the authoritative
+  policy and remove conflicting guidance in the same task.
+
+Follow `Docs/documentation_maintenance.md` for the maintenance matrix and
+release-time version sweep.
+
+## 8. Validation By Change Risk
+
+Use the smallest validation set that provides credible evidence, then expand it
+when the change affects high-risk behavior.
+
+### Documentation-only changes
+
+- run `git diff --check`;
+- validate relative Markdown links and referenced commands/paths;
+- run focused documentation or packaging tests when docs are consumed by build
+  automation;
+- the full Python suite is optional unless the documentation change accompanies
+  code or updates a measured test/coverage baseline.
+
+### Normal code/config/script changes
+
+Run:
 
 ```bat
 python -m unittest discover -s Tests
@@ -359,41 +184,42 @@ Scripts\TestSuite.bat __RUN__
 Scripts\RunCoverage.bat
 ```
 
-AI agents must add or update focused unit tests when changing behavior that can
-be exercised without starting the Vein server or writing to the game install.
-If tests are not practical, the final response must explain why.
+Focused tests may be used during development, but the full checks above are the
+default completion gate. If a check is impractical or unsafe, explain why.
 
-For test-only or coverage-focused work, AI agents must follow
-`Docs/coverage_strategy.md`. Coverage is a risk guide, not a hard 100% target.
-Prefer meaningful backend tests over brittle GUI or line-chasing tests.
+### Installer, lifecycle, backup, or monitor changes
 
----
+In addition to the normal suite, run the most relevant packaging/static checks
+and document any manual clean-machine or live-server validation still needed.
+Tests must use mocks, fixtures, and temporary directories rather than a real
+Vein installation.
 
-# 14. VERSIONING & RELEASE RULES
+Coverage is a risk guide, not a 100% target. Follow
+`Docs/coverage_strategy.md` for test-only work.
 
-This project uses lightweight semantic versioning for public release tags:
+## 9. Git, Changelog, And Releases
 
-```text
-vMAJOR.MINOR.PATCH
-```
+- Do not discard, reset, or overwrite unrelated user changes.
+- Do not commit, push, create a pull request, or tag unless the user requests
+  that repository action.
+- Add user-facing changes to `CHANGELOG.md` under `Unreleased`.
+- Classify committed work as `none`, `patch`, `minor`, or `major` using
+  `RELEASING.md`.
+- Do not create or push a release tag unless the user explicitly asks for a
+  release or tag.
+- Before tagging, move changelog entries into a dated version section, run the
+  release checks, including
+  `python Controller\Tools\documentation_check.py --tag vX.Y.Z`, and use an
+  annotated tag with meaningful notes. A documentation/version conflict blocks
+  tag creation.
 
-AI agents must classify every committed change as one of:
+## 10. Final Handoff
 
-- `none` — no release impact.
-- `patch` — bug fixes, docs, tests, CI, hardening, non-breaking cleanup.
-- `minor` — user-facing features or meaningful new capabilities.
-- `major` — breaking config, CLI/script, runtime-contract, or architecture changes.
+Report:
 
-Rules:
+- the outcome and important files changed;
+- validation performed and any untested/manual follow-up;
+- safety or migration considerations;
+- release impact and whether a tag is recommended for committed work.
 
-- Do not create a release tag for every commit.
-- Do not create or push release tags unless the user explicitly asks for a release or tag.
-- Update `CHANGELOG.md` under `Unreleased` for user-facing changes.
-- Before creating a release tag, move the release's `CHANGELOG.md` entries out of `Unreleased` and into a dated `## X.Y.Z - YYYY-MM-DD` section.
-- Release tags must be annotated with a useful summary and short notes, not a generic `Release vX.Y.Z` message.
-- Follow `RELEASING.md` when preparing a release.
-- In final responses for committed work, state the release impact and whether a version tag is recommended.
-
----
-
-# End of AGENTS.md (Agent Mode Safe Edition)
+Do not claim a task is complete when required work remains or validation failed.

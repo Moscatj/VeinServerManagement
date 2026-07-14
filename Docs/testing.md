@@ -40,6 +40,8 @@ Coverage is a guide, not a hard 100% target. Prefer meaningful tests around risk
 
 GitHub Actions runs on every push and pull request:
 
+- Checks changelog ordering, current-version declarations, release notes, and
+  generic version examples with `Controller\Tools\documentation_check.py`
 - Installs `requirements-dev.txt`
 - Uses `Config/config.example.yaml` as `VEIN_CONFIG`
 - Runs unit tests
@@ -47,5 +49,9 @@ GitHub Actions runs on every push and pull request:
 - Runs `Scripts\TestSuite.bat __RUN__`
 - Runs `Scripts\RunCoverage.bat`
 - Scans tracked files for high-confidence secrets and local markers
+
+The tagged installer workflow reruns the documentation check with `--tag` and
+will not package or publish a release whose tag conflicts with the changelog or
+documented release baseline.
 
 Pull requests should not be merged while CI is failing.

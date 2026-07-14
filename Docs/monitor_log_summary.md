@@ -192,4 +192,4 @@ Sends a message to Discord only if that channel is enabled.
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

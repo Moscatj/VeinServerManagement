@@ -2,7 +2,10 @@
 
 Thanks for your interest in contributing.
 
-This project is a Windows-focused management suite for the Vein dedicated server. It is designed to manage a local server install while keeping game files outside the repository.
+This project currently ships a Windows management suite for the Vein dedicated
+server. Native Linux and WSL2 support remain roadmap work. Source development
+keeps the game install outside the repository; packaged installs may use an
+app-managed `Server\` folder.
 
 ## Repository Layout
 
@@ -19,7 +22,7 @@ This project is a Windows-focused management suite for the Vein dedicated server
 Clone the repository:
 
 ```bash
-git clone https://github.com/<owner>/VeinServerManagement.git
+git clone https://github.com/Moscatj/VeinServerManagement.git
 cd VeinServerManagement
 ```
 
@@ -48,7 +51,7 @@ python Controller\shutdown_server.py
 Or use the batch files under `Scripts/`:
 
 ```powershell
-Scripts\TestSuite.bat
+Scripts\TestSuite.bat __RUN__
 Scripts\StartServer.bat
 Scripts\StartAllMonitors.bat
 Scripts\Start_VeinManager.bat
@@ -60,10 +63,15 @@ Scripts\StopServer.bat
 - Target Python 3.11+.
 - Prefer `pathlib` for filesystem work.
 - Keep new shared logic in `Controller/Tools/`.
-- Do not add new functionality to deprecated `Controller/utils.py`.
+- Do not recreate or import the removed `Controller/utils.py`.
 - Use `Controller/config.py` and `Controller/config_helper.py` for config access.
 - Avoid hardcoded absolute paths.
 - Update docs when behavior or config surface changes.
+
+Use [Docs/documentation_maintenance.md](Docs/documentation_maintenance.md) to
+review the appropriate human and AI context for each change. Release work must
+synchronize current-version declarations and completed roadmap items rather
+than leaving those updates for a later cleanup.
 
 If you touch shutdown, crash detection, backups, or process control, read the related docs first and keep changes small and reviewable.
 
@@ -117,21 +125,12 @@ Use `ENV:VARIABLE_NAME` config values where supported, or document required envi
 
 ## AI-Assisted Work
 
-This project supports AI-assisted development. If using an AI coding assistant:
+AI-assisted contributions follow the same engineering and review standards as
+other changes. Read [AGENTS.md](AGENTS.md) for the authoritative permission,
+safety, validation, Git, and release contract, then use
+[Docs/docs_for_codex.md](Docs/docs_for_codex.md) as a compact project map.
 
-1. Read `README.md`.
-2. Read `AGENTS.md`.
-3. Skim `Docs/control_layer_overview.md` and `Docs/Developer_Guide.md`.
-4. Confirm that `Config/config.example.yaml` is the tracked template and `Config/config.yaml` is local-only.
-5. Confirm that the actual Vein game install is outside the repo and must not be modified.
-
-Review AI-generated changes carefully, especially around filesystem access, shutdown, backups, crash monitoring, and process control.
-
-AI-assisted changes should also classify release impact before finalizing:
-
-- `none`: no release impact.
-- `patch`: bug fix, docs, tests, CI, hardening, or non-breaking cleanup.
-- `minor`: user-facing feature or meaningful new capability.
-- `major`: breaking behavior or large architecture/config change.
-
-For test-only work, AI assistants should follow `Docs/coverage_strategy.md` and prioritize backend risk reduction over raw percentage increases.
+Review generated changes especially carefully around filesystem boundaries,
+installer/SteamCMD behavior, shutdown, backups, process control, monitors,
+guarded INI writes, secrets, and GUI thread safety. The contributor remains
+responsible for the final diff and test evidence.

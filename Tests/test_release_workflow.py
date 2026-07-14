@@ -58,7 +58,25 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("CHANGELOG.md does not contain release notes", workflow)
         self.assertIn("Set-Content -Path release-notes.md", workflow)
         self.assertIn("body_path: release-notes.md", workflow)
-        self.assertIn("name: ${{ github.ref_name }}", workflow)
+
+    def test_release_installer_workflow_checks_tag_and_documentation_before_build(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+
+        check = workflow.index("Check documentation, changelog, and release version")
+        install = workflow.index("Install Python app and packaging dependencies")
+        build = workflow.index("Build installer")
+        self.assertLess(check, install)
+        self.assertLess(check, build)
+        self.assertIn("documentation_check.py --tag", workflow)
+        self.assertIn("github.ref_name", workflow)
+
+    def test_normal_ci_checks_documentation_version_consistency(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Check documentation and version consistency", workflow)
+        self.assertIn("Controller\\Tools\\documentation_check.py", workflow)
 
 
 if __name__ == "__main__":

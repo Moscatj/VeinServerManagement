@@ -21,7 +21,19 @@ must live in the appropriate Tools module.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.
 - **health_check.py** - Read-only project, dependency, path, SteamCMD, secret, and server-config diagnostics.
 - **server_config_validator.py** - Read-only Vein dedicated server layout and `Game.ini` / `Engine.ini` validation.
+- **server_config_preview.py / server_config_editor.py** - Secret-masked INI
+  previews plus allowlisted edits with backup, atomic write, and validation.
 - **server_quickstart.py** - Guarded New Server and Existing Server setup planning, validation, importing, and apply helpers.
+- **steamcmd_runner.py** - Packaged SteamCMD execution with progress parsing,
+  initialization, retry support, and installer-facing status.
+- **mgmt_logs.py / log_search.py** - Management-log allocation, retention,
+  archive, search, and error-summary support.
+- **uninstall_cleanup.py** - Best-effort controlled process cleanup invoked by
+  the Windows uninstaller.
+- **app_info.py** - Installed/source version and runtime details for About.
+- **documentation_check.py** - CI and pre-release validation for changelog,
+  release-tag, current-version declaration, and generic version-example
+  consistency.
 - **discord.py** - Webhook utilities (`send_discord_message`, per-channel gating).
 - **state_io.py** - Atomic state/heartbeat writers shared by monitors and the GUI.
 
@@ -41,4 +53,4 @@ This decomposition makes it clear which module provides which behavior and preve
 
 ---
 
-_Last updated after adding the Server Quick Start backend planner._
+_Audited against v2.9.0 on 2026-07-14._

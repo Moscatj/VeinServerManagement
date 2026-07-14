@@ -4,69 +4,60 @@
 ---
 
 ## Purpose
-Creates a **Nightly** backup of the active Vein server save and prunes old Nightly backups by **count** and **age** using settings from `config.yaml`. It uses shared utilities for the actual zip creation, pruning, and Discord notifications—no hardcoded paths.
+Runs one **Nightly** backup through the shared backup service. Save discovery,
+ZIP creation, Discord notification, and retention remain centralized rather
+than being reimplemented by the scheduler entrypoint.
 
 ---
 
-## Behavior (What it does)
-1. Reads config values:
-   - `backup_root`
-   - `backup_folders.Nightly` (subfolder name under `backup_root`)
-   - `nightly_backup.enable`
-   - `nightly_backup.max_backups`
-   - `nightly_backup.max_backup_age_days`
-   - `nightly_backup.discord_notify`
-2. Verifies the current save file exists (via `utils.SAVE_FILE`).
-3. Ensures the Nightly folder exists.
-4. Calls `utils.backup_save_file(..., reason="Nightly", override_destination=NightlyDir)` to create a timestamped zip.
-5. Optionally sends Discord success/failure messages to the **backups** channel.
-6. Temporarily overrides global retention (`max_backups`, `backup_max_age_days`) **just for Nightly cleanup**, then calls `utils.cleanup_old_backups(NightlyDir)`, and restores the original values.
-7. Prints progress and exits.
+## Behavior
+1. Optionally validates the explicit `VEIN_CONFIG` for useful diagnostics.
+2. Calls `Tools.backups.make_backup("Nightly")`; the backup layer resolves
+   configuration, the save file, destination, notification, and retention.
+3. Calls `prune_backups("Nightly")` after creation. The backup layer already
+   prunes on creation, so this is a safe second pass.
+4. Returns success for a completed backup or intentional `BackupSkip`, and exit
+   code `2` for unexpected failures.
 
 ---
 
 ## Key Functions
-- `nightly_backup()` — Runs one full Nightly backup cycle (idempotent).
+- `main()` — Runs one Nightly backup cycle and returns an operator-friendly exit code.
 
-**Imports/Utilities used**
-- `from config_helper import config` — live configuration dictionary
-- `from utils import backup_save_file, cleanup_old_backups, send_discord_message, SAVE_FILE` — shared helpers
-- `pathlib.Path` — safe path ops
+**Shared modules used**
+- `Tools.config_io.load_and_validate_config` for optional validation.
+- `Tools.backups.make_backup`, `BackupSkip`, and `prune_backups` for backup behavior.
 
 ---
 
 ## Configuration Keys (from `config.yaml`)
-- `backup_root` (string)
-- `backup_folders.Nightly` (string; default `"Nightly"` if missing)
-- `nightly_backup.enable` (bool; default `True`)
-- `nightly_backup.max_backups` (int; default `30`)
-- `nightly_backup.max_backup_age_days` (int; default `60`)
-- `nightly_backup.discord_notify` (bool; default `True`)
+- `backups.enabled`, `backups.root`, and optional `backups.folders.Nightly`
+- optional `backups.retention.Nightly` count/age policy
+- `nightly_backup` schedule metadata is available to launchers; the entrypoint
+  itself delegates enable/skip decisions to the shared backup layer
+- legacy/global retention keys are normalized by the config compatibility layer
 
 **Discord**: messages post to the **backups** channel (honors your global Discord enable + channel gating in features).
 
 ---
 
 ## Side Effects / Files
-- Ensures `"<backup_root>/<Nightly>/"` exists.
+- Ensures the configured Nightly destination exists.
 - Writes a `*.zip` backup with timestamped name into the Nightly folder.
 - Deletes old Nightly backups per Nightly retention policy.
 
 ---
 
 ## Integration Points
-- **Controller/Tools/backups.py**
-  - `backup_save_file()` — creates zip of `SAVE_FILE` into a destination folder
-  - `cleanup_old_backups()` — prunes by count and age
-  - `send_discord_message()` — optional completion/skip notifications
-  - `SAVE_FILE` — resolved path to the current server save
-- **config_helper.py** — supplies the loaded `config` dict
+- **Controller/Tools/backups.py** owns save discovery, ZIP creation, Discord
+  notifications, and reason-specific pruning.
+- **Controller/Tools/paths.py** resolves the configured or derived SaveGames path.
 
 ---
 
 ## Exit Conditions
-- If `nightly_backup.enable` is `False`, prints a notice and exits.
-- If `SAVE_FILE` does not exist, prints and optionally posts a Discord warning, then exits.
+- Disabled backups, missing saves, and other intentional skips print the reason
+  and return success.
 
 ---
 
@@ -85,15 +76,17 @@ Creates a **Nightly** backup of the active Vein server save and prunes old Night
 2. **Trigger**: Daily at a quiet time (e.g., 3:00 AM)
 3. **Options**: Run task whether user is logged on or not
 
-*(If you prefer .bat: make `Scripts\RunNightlyBackup.bat` that calls `env_setup.bat` then runs `py -3 Controller\nightly_backup.py`.)*
+Packaged Task Scheduler jobs can call `VeinTools.exe nightly-backup`; source
+jobs can call `python Controller\nightly_backup.py` from the repository root.
 
 ---
 
 ## Troubleshooting
-- **“Save file missing”**: Verify `utils.SAVE_FILE` points to an existing file and that `save_dir`/`save_filenames` are set correctly in `config.yaml`.
+- **“Save file missing”**: Verify the server root, derived `SaveGames` folder,
+  advanced `save_games.override`, and `save_filenames` in `config.yaml`.
 - **No zips created**: Check write permissions for `backup_root` and Nightly folder.
 - **No Discord messages**: Verify global Discord enable, backups channel gating, and webhook environment/URL resolution.
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

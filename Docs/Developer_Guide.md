@@ -1,4 +1,4 @@
-# Vein Server Management Suite — Developer Guide (v2.1)
+# Vein Server Management Suite — Developer Guide (v2.9)
 
 > **Purpose:**
 > This document serves as the **comprehensive technical reference** for developers and contributors working on the Vein Server Management Suite.
@@ -11,7 +11,9 @@
 The Vein Server Management Suite is a modular control framework for running a **dedicated Vein server** on Windows.
 It provides automated startup, crash recovery, scheduled backups, and Discord notifications — all driven by a single configuration file.
 
-This guide explains the internal design of the v2.1 system, covering environment setup, configuration schema, startup and shutdown sequences, monitoring behavior, and backup automation.
+This guide explains the v2.9 architecture, including packaged and source
+execution, configuration, lifecycle control, monitoring, backups, installer
+maintenance, and guarded server configuration.
 
 ---
 
@@ -46,19 +48,18 @@ This guide explains the internal design of the v2.1 system, covering environment
 
 ## 🧠 Environment Setup
 
-All launch scripts rely on variables defined in **Scripts/env_setup.bat**:
+Source batch wrappers call `Scripts/env_setup.bat`, which derives and exports
+`VEIN_MGMT_ROOT`, `VEIN_MGMT_SCRIPTS`, and `VEIN_MGMT_CONTROLLER` from the
+repository location. Individual wrappers choose their Python launcher and the
+controller config loader resolves `VEIN_CONFIG` when explicitly supplied.
 
-set VEIN_MGMT_ROOT=<VEIN_MGMT_ROOT>
-set VEIN_MGMT_CONTROLLER=%VEIN_MGMT_ROOT%\Controller
-set VEIN_CONFIG=%VEIN_MGMT_ROOT%\Config\config.yaml
-set PYEXE=py -3
-
-yaml
-Copy code
+Packaged operators do not use the batch environment or need Python. They run
+`VeinManager.exe` and `VeinTools.exe` from the installed app root.
 
 - These variables define paths for all Python controllers.
 - The environment is session-scoped — no registry modifications.
-- Adjust `VEIN_MGMT_ROOT` if the suite is relocated.
+- The wrapper derives `VEIN_MGMT_ROOT`; do not hardcode it when relocating the
+  repository.
 
 For details, see [Docs/env_setup_summary.md](env_setup_summary.md).
 
@@ -176,7 +177,7 @@ Persistent settings (window layout, overrides) stored via `QSettings`.
 
 ## 💬 Discord Integration
 
-All Discord messages flow through `utils.send_discord_message()`
+All Discord messages flow through `Controller/Tools/discord.py`
 and are controlled by feature flags and channel gates in `config.yaml`.
 
 | Channel | Events |
@@ -195,30 +196,30 @@ and are controlled by feature flags and channel gates in `config.yaml`.
 
 - Executes a single Nightly backup cycle.
 - Reads Nightly-specific retention (`nightly_backup.*` keys).
-- Calls `utils.backup_save_file()` with reason `"Nightly"`.
+- Calls `Tools.backups.make_backup("Nightly")`.
 - Prunes old Nightly backups and optionally posts Discord status.
 
 To schedule:
 py -3 Controller\nightly_backup.py
 
-yaml
-Copy code
 Add to Windows Task Scheduler for automated nightly runs.
 
 ---
 
-## 🔧 Utilities (`utils.py`)
+## 🔧 Shared Tools Modules
 
-Core shared logic for all controllers:
-- Process detection and PID management
-- Runtime flag file creation/removal
-- Backup and cleanup functions
-- SteamCMD execution
-- Discord webhook messaging
-- Log rotation
-- Exception-safe filesystem operations
+The removed monolithic `Controller/utils.py` must not be recreated. Shared
+logic lives in focused modules under `Controller/Tools/`, including:
 
-Every controller imports this module for consistent, reusable functionality.
+- `process.py` and `runtime.py` for process discovery and lifecycle state;
+- `monitors.py` and `restart.py` for monitor/restart orchestration;
+- `backups.py` and `backups_api.py` for save-copy backups and retention;
+- `discord.py` for webhook routing;
+- `paths.py` for canonical save and game-log discovery;
+- `server_config_*` and `server_quickstart.py` for validated, guarded setup;
+- `steamcmd_runner.py`, `update_steam.py`, and `steam_version.py` for SteamCMD.
+
+See [tools_summary.md](tools_summary.md) for the current module map.
 
 ---
 
@@ -273,8 +274,6 @@ VeinServerManagement/
 ├── Developer_Guide.md (this file)
 ├── ...other summaries...
 
-yaml
-Copy code
 
 ---
 
@@ -289,4 +288,4 @@ Copy code
 
 ---
 
-_Last updated: 2025 — Developer Guide for Vein Server Management Suite v2.1_
+_Audited against v2.9.0 on 2026-07-14._

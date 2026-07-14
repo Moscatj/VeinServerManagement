@@ -108,14 +108,15 @@ GitHub release workflow:
 - The workflow builds the PyInstaller bundle, compiles the Inno Setup installer,
   extracts release notes from the matching `CHANGELOG.md` version section,
   uploads the installer as an Actions artifact, and attaches
-  a versioned installer such as `VeinServerManagement-Setup-v2.3.12.exe` to the GitHub Release.
+  a versioned installer such as `VeinServerManagement-Setup-vX.Y.Z.exe` to the GitHub Release.
 - Manual `workflow_dispatch` runs build a temporary Actions artifact without
   publishing a release asset.
 
 Installer responsibilities:
 
 - Copy the staged folder into `C:\Program Files\VeinServerManagement`
-- Create Start Menu/Desktop shortcuts (`VeinManager`, docs, log folder)
+- Create Start Menu/Desktop shortcuts for `VeinManager`, documentation, config,
+  and uninstall actions
 - Create writable app-owned `Config\`, `Logs\`, `Backups\`, `Runtime\`, `SteamCMD\`, and `Server\` folders
 - Ask whether to install/update the dedicated server with SteamCMD or use an existing server folder
 - Store SteamCMD in the management app folder and install new SteamCMD-managed server files under the app-managed `Server\` folder by default
@@ -241,9 +242,10 @@ Fresh install check:
   Download percentages are shown when SteamCMD reports them; the animation
   remains active during startup, validation, and other indeterminate work.
 - SteamCMD console instructions that are not meaningful installer progress are
-  retained in `steamcmd-install.log` but omitted from the live status line. The
-  progress page can cancel its installer-owned SteamCMD child after confirmation;
-  partial server files are preserved for a later retry or validation pass.
+  retained in `steamcmd-install.log` but omitted from the live status line.
+  Inno Setup's current SteamCMD phase blocks wizard interaction, so it does not
+  show a nonfunctional Cancel button. If setup is interrupted externally,
+  partial server files are preserved for a later Update/Repair validation pass.
 
 Uninstall behavior:
 
@@ -262,9 +264,13 @@ Uninstall behavior:
 ## 4. Roadmap / Next Steps
 
 1. **Code signing** - eventually sign `VeinManager.exe`, `VeinTools.exe`, and the final installer, then verify signatures and publish checksums with releases.
-2. **Installer smoke tests** - add CI or a local release checklist step that builds the PyInstaller bundle and validates `VeinManager.exe`, `VeinTools.exe`, and staged config files exist.
+2. **Installer smoke tests** - keep packaging/build tests aligned with the
+   staged executables, required controller modules, docs, and sanitized config;
+   add clean-VM execution coverage where practical.
 3. **Installer polish** - add clearer post-install config guidance, integrate with Windows Firewall prompts, and optionally register scheduled tasks only when the operator opts in.
-4. **Fresh install validation** - test the installer on a clean Windows profile or VM with no repo checkout and no local Python dependency.
+4. **Fresh install validation** - repeat clean Windows profile/VM tests for
+   fresh, side-by-side, maintenance, missing-server repair, and uninstall paths
+   with no repo checkout or local Python dependency.
 5. **Native Linux and WSL2 packaging** - after the backend is platform-neutral,
    publish versioned x86-64 `.deb` and `.tar.gz` assets with checksums from the
    same tags that build the Windows installer. The Linux first-run installer

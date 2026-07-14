@@ -23,4 +23,18 @@ If a secret is committed accidentally, revoke it immediately. Removing it from t
 
 ## Runtime Safety
 
-The Vein game install is outside this repository. Management code should only read game logs/saves and should not modify game install files.
+Source-development game installs should remain outside this repository.
+Packaged installs may maintain an app-managed server, and the installer may run
+SteamCMD to install, update, validate, or repair the operator-selected server
+root.
+
+Outside SteamCMD maintenance, game data is read-only except for two narrow,
+operator-initiated workflows:
+
+- backups copy save data into the management suite's backup area;
+- the guarded server-config editor may update only `Game.ini` and `Engine.ini`
+  after showing a preview, creating a timestamped backup, and validating the
+  result.
+
+The suite must never silently edit or delete saves, game logs, binaries, or
+content files.

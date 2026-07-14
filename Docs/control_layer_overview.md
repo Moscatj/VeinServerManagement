@@ -1,5 +1,5 @@
 # Control Layer Overview
-**Vein Server Management Suite (v2.1)**
+**Vein Server Management Suite (v2.9)**
 
 This document ties together the main control scripts and their shared dependencies so you — and AI tools — can understand the full system flow at a glance.
 
@@ -28,7 +28,7 @@ This document ties together the main control scripts and their shared dependenci
 |--------|------|
 | **vein_manager.py** | PySide6 GUI that provides visual control, config editing, live log display, and monitor status indicators. |
 | **config.example.yaml / config.yaml** | Tracked public template and ignored local runtime config defining all paths, features, and behavior. |
-| **env_setup.bat** | Initializes environment variables (`VEIN_MGMT_ROOT`, `VEIN_CONFIG`, etc.) for all scripts. |
+| **env_setup.bat** | Derives source-wrapper root/controller/script variables. Packaged execution does not use it. |
 | **Runtime/** | Folder for live flag/state/heartbeat files used by monitors and the GUI. |
 | **Backups/** | Categorized folders for Manual, Startup, Autosave, Crash, and Nightly backups. |
 
@@ -44,7 +44,7 @@ This document ties together the main control scripts and their shared dependenci
 │
 ▼
 ┌─────────────────────┐
-│ env_setup.bat │ → Defines VEIN_MGMT_ROOT, PYEXE, etc.
+│ env_setup.bat │ → Defines source-wrapper root paths
 └─────────────────────┘
 │
 ▼
@@ -95,8 +95,6 @@ This document ties together the main control scripts and their shared dependenci
 │ Discord Webhooks │ → Startup, crash, join, backup, and shutdown events
 └─────────────────────┘
 
-yaml
-Copy code
 
 ---
 
@@ -111,9 +109,9 @@ Copy code
 | Log search CLI | `Controller/logcat.py` | Operators / support | Regex search across all management logs respecting per-subsystem layout |
 | Log summary CLI | `Controller/log_summary.py` | Operators / support | Emits JSON summaries (`Logs/summary.json` + per-subsystem `summary.json`) |
 | Crash monitor state | `crash_monitor.py` | `vein_manager.py` | JSON (`crash_monitor_state.json`) |
-| Backups | `utils.backup_save_file()` | File system | ZIP files |
-| Config | `config.py` | All controllers | Dict / cached JSON |
-| Discord posts | `utils.send_discord_message()` | Discord webhook | JSON payloads |
+| Backups | `Tools.backups` / `Tools.backups_api` | File system | ZIP files |
+| Config | `config.py` | All controllers | Normalized dict from YAML (legacy JSON fallback) |
+| Discord posts | `Tools.discord.send_discord_message()` | Discord webhook | JSON payloads |
 
 ---
 
@@ -141,4 +139,4 @@ Copy code
 
 ---
 
-_Last updated: 2025 — Vein Server Management contributors_
+_Audited against v2.9.0 on 2026-07-14._

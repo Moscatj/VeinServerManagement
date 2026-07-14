@@ -21,7 +21,7 @@ Core goals:
 |-------|--------------|
 | **UI Components** | Built with PySide6 (`QtWidgets`, `QtCore`, `QtGui`). Tabs, dialogs, and status lights visualize configuration and monitor data. |
 | **GUI Helpers** | `Controller/GUI/` hosts emerging reusable widgets that will gradually move layout logic out of `vein_manager.py`. |
-| **Controllers** | Interfaces with backend scripts (`start_server.py`, `shutdown_server.py`, `monitor_log.py`, `crash_monitor.py`) via subprocess calls. |
+| **Controllers** | `Controller/GUI/` modules own process actions, navigation, status rendering, logs, Quick Start, config editing, and dashboard behavior while backend scripts remain the lifecycle authority. |
 | **Runtime Helpers** | Manages PID files, flags, runtime directories, and heartbeat files from the `Runtime/` folder. |
 | **Persistence** | Saves user overrides and window state via `QSettings`. |
 | **Log Tailer** | Streams the live log file within the GUI in real time using a timer-driven file tailer. |
@@ -79,10 +79,11 @@ The `Help > About Vein Server Manager` menu opens a copyable version/runtime dia
 ---
 
 ### 5. **Configuration Editing**
-- JSON configs are loaded, parsed, and displayed in a scrollable tabbed editor.
+- YAML configs are the primary editable format; legacy JSON remains readable.
 - `KVRow` widgets dynamically adapt input fields (checkboxes, numeric inputs, or text fields).
 - Users can filter keys or validate syntax before saving.
-- `save_atomic()` writes JSON to a temporary file and atomically replaces the original.
+- `save_atomic()` preserves YAML behavior where supported and replaces the
+  selected config atomically.
 - Automatic reloading via `QFileSystemWatcher` detects external config edits.
 
 ---
@@ -158,7 +159,7 @@ Watches the selected log file and streams content into the GUI in real time:
 ### 10. **Integration Points**
 | Module | Used For |
 |---------|-----------|
-| `utils.py` | File creation, PID management, and subprocess consistency. |
+| `Controller/Tools/` | Process, runtime, monitor, logging, backup, path, SteamCMD, and guarded server-config services. |
 | `config_helper.py` | Reading normalized paths and feature flags. |
 | `start_server.py`, `shutdown_server.py` | Server process control. |
 | `monitor_log.py`, `crash_monitor.py` | Real-time monitoring integration. |
@@ -178,9 +179,10 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ## Example Interaction Flow
 1. User opens `Vein Manager`.
-2. Manager loads the latest `config.yaml` and runtime states.
+2. Manager loads the selected YAML config and runtime states.
 3. The user can:
-   - Click “Start Server” → runs `start_server.py`
+   - Click “Start Server” → runs the source controller or packaged
+     `VeinTools.exe start-server` command
    - Toggle monitors (start/stop)
    - Edit configuration directly and save atomically
    - View logs live or rely on external monitor Discord updates
@@ -193,7 +195,7 @@ Watches the selected log file and streams content into the GUI in real time:
 |------|------------|
 | Start/Stop server | Main → `start_server()` / `stop_server()` |
 | Manage monitors | `start_lm()` / `start_cm()` / their stop variants |
-| Edit config | Tabs + JSON editor + filter |
+| Edit config | Tabs + YAML-aware editor + filter |
 | Advanced overrides | `AdvancedDialog` |
 | Monitor status updates | `StatusPoller` |
 | Live log streaming | `FileTail` |
@@ -201,4 +203,4 @@ Watches the selected log file and streams content into the GUI in real time:
 
 ---
 
-_Last updated by AI code analysis for the Vein Server Management project._
+_Audited against v2.9.0 on 2026-07-14._

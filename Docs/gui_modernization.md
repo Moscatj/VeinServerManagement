@@ -38,7 +38,15 @@ The GUI should help an operator answer three questions quickly:
 
 ## Phases
 
+Status at v2.9.0: Phase 1 is implemented. Parts of Phases 2, 3, 4, 6, and 7
+have landed through reusable GUI modules, the Home dashboard, scroll-safe Quick
+Start, status-aware process buttons, and consolidated log views. The remaining
+items below describe the target experience, not a claim that each phase is
+complete.
+
 ### Phase 1 - UX Foundation
+
+**Status: completed baseline; continue applying it to refactored pages.**
 
 - Add shared visual tokens and narrowly scoped application styling.
 - Add reusable page headers, status badges, inline notices, and button roles.

@@ -21,7 +21,7 @@ body:
     id: risks
     attributes:
       label: Safety and stability considerations
-      description: Note any impact on shutdown, backups, process control, crash monitoring, game-file access, or performance.
+      description: Note any impact on installer/SteamCMD behavior, shutdown, backups, process control, monitors, guarded config writes, secrets, GUI responsiveness, or game performance.
   - type: textarea
     id: tests
     attributes:

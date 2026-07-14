@@ -9,17 +9,20 @@ parsing, Steam helpers, HTTP API helpers, and CLI wrappers.
 
 ## Current Baseline
 
-As of `v2.2.1`:
+Measured on the v2.9.0 codebase during the 2026-07-14 documentation audit:
 
-- Total tests: 174
-- Overall coverage: 64%
+- Total tests: 361 passing, 2 skipped
+- Overall coverage: 74%
 - Backend helper coverage is substantially higher than GUI coverage.
 
 High-value backend coverage:
 
-- `Controller/Tools/backups.py`: 83%
+- `Controller/Tools/backups.py`: 82%
 - `Controller/Tools/process.py`: 91%
 - `Controller/Tools/runtime.py`: 96%
+- `Controller/Tools/server_config_editor.py`: 96%
+- `Controller/Tools/server_quickstart.py`: 93%
+- `Controller/Tools/steamcmd_runner.py`: 88%
 - `Controller/Tools/steam_version.py`: 96%
 - `Controller/Tools/update_steam.py`: 98%
 - `Controller/Tools/vein_http_api.py`: 99%
@@ -69,12 +72,13 @@ approaches are:
 
 ## Future Backend Targets
 
-Good next targets, if more backend coverage work is desired:
+Good next targets, if more coverage work is desired:
 
-- `Controller/Tools/mgmt_logs.py`: manifest, retention, archive edge cases.
-- `Controller/Tools/log_search.py`: since parsing, archive inclusion, regex failure behavior.
+- GUI controller/view seams in `Controller/GUI/config_editor.py`,
+  `config_renderer.py`, `logs.py`, and `panels.py` without asserting pixels.
+- `Controller/launch_manager.py`: bootstrap failures and packaged/source routing.
+- `Controller/Tools/uninstall_cleanup.py`: failure and already-stopped paths.
 - `Controller/Tools/discord.py`: disabled channels, webhook failures, payload shaping.
-- `Controller/config.py` and `Controller/config_helper.py`: additional fallback and invalid-value paths.
 - `Controller/vein_tools.py`: command dispatch and CLI error paths.
 
 ## Release Policy

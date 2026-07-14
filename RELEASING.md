@@ -8,7 +8,7 @@ Version tags use this format:
 vMAJOR.MINOR.PATCH
 ```
 
-The current release baseline is `v2.2.0`.
+The current release baseline is `v2.9.0`.
 
 ## Version Meaning
 
@@ -59,17 +59,29 @@ When unsure, choose the smaller version impact and document the reason.
 Before creating a release tag:
 
 1. Confirm `main` is clean and up to date with `origin/main`.
-2. Move the relevant `Unreleased` entries in `CHANGELOG.md` into a dated release heading, for example `## X.Y.Z - YYYY-MM-DD`, and commit that changelog update before tagging.
-3. Run:
+2. Move the relevant `Unreleased` entries in `CHANGELOG.md` into a dated release
+   heading, for example `## X.Y.Z - YYYY-MM-DD`.
+3. Perform the release-time documentation sweep from
+   [Docs/documentation_maintenance.md](Docs/documentation_maintenance.md):
+   synchronize current-version declarations, update completed roadmap items,
+   preserve historical/audit markers, and replace nonessential hardcoded
+   version examples with `vX.Y.Z`.
+4. Commit the changelog and documentation updates before tagging.
+5. Run:
 
    ```powershell
+   python Controller\Tools\documentation_check.py --tag vX.Y.Z
    python -m unittest discover -s Tests
    Scripts\TestSuite.bat __RUN__
    Scripts\RunCoverage.bat
    git diff --check
    ```
 
-4. Create an annotated tag with a useful summary and the highest-signal release notes:
+   Replace `vX.Y.Z` with the intended tag. Do not create the tag if this check
+   reports a changelog, current-version declaration, release-note, ordering, or
+   generic-version-example conflict.
+
+6. Create an annotated tag with a useful summary and the highest-signal release notes:
 
    ```powershell
    git tag -a vX.Y.Z -m "vX.Y.Z - <short summary>" -m "- Added/changed/fixed ..."
@@ -83,13 +95,16 @@ Before creating a release tag:
    - Cleaned up transient app-owned uninstall folders."
    ```
 
-5. Push the tag:
+7. Push the tag:
 
    ```powershell
    git push origin vX.Y.Z
    ```
 
-6. GitHub Actions will build the Windows installer from the tagged source,
+8. Push `main` as well when the release commit is not already on the remote,
+   then verify that the branch and tag resolve to the same commit.
+9. GitHub Actions will validate the actual tag against the documentation and
+   changelog, then build the Windows installer from the tagged source,
    extract release notes from the matching `CHANGELOG.md` section, and attach a
    versioned installer such as `VeinServerManagement-Setup-vX.Y.Z.exe` to the
    GitHub Release. The release installer workflow can also be run manually with
@@ -110,3 +125,7 @@ For normal code/documentation changes, AI assistants should:
 - Update `CHANGELOG.md` for user-facing changes.
 - Recommend the next version number when the user asks about releasing.
 - Keep release tagging separate from ordinary commits unless instructed.
+
+For a user-requested tagged release, assistants must perform the release-time
+documentation sweep and pass `documentation_check.py --tag vX.Y.Z` before
+creating the annotated tag. A failed gate blocks tagging until corrected.
