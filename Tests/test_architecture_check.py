@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -53,6 +55,11 @@ class ArchitectureCheckTests(unittest.TestCase):
         }
         (root / "Docs" / "subsystems.yaml").write_text(
             yaml.safe_dump(registry, sort_keys=False), encoding="utf-8"
+        )
+
+    def _registry(self, root: Path) -> dict:
+        return yaml.safe_load(
+            (root / "Docs" / "subsystems.yaml").read_text(encoding="utf-8")
         )
 
     def test_current_repository_passes(self) -> None:
@@ -203,6 +210,95 @@ class ArchitectureCheckTests(unittest.TestCase):
             (root / "Scripts" / "notes.txt").write_text("notes\n", encoding="utf-8")
 
             self.assertEqual(architecture_check.check_architecture(root), [])
+
+    def test_route_reports_exact_owner_context(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+
+            reports, errors = architecture_check.route_paths(
+                root, self._registry(root), ["Controller/feature.py"]
+            )
+
+            self.assertEqual(errors, [])
+            self.assertEqual(reports[0]["path"], "Controller/feature.py")
+            self.assertEqual(reports[0]["matches"][0]["name"], "feature")
+            self.assertEqual(reports[0]["matches"][0]["matched_fields"], ["source"])
+
+    def test_route_uses_directory_owner_for_planned_path(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+
+            reports, errors = architecture_check.route_paths(
+                root, self._registry(root), ["Controller/GUI/planned_view.py"]
+            )
+
+            self.assertEqual(errors, [])
+            self.assertEqual(reports[0]["matches"][0]["name"], "feature")
+
+    def test_route_reports_every_matching_subsystem(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            registry = self._registry(root)
+            registry["subsystems"]["second"] = {
+                "risk": "high",
+                "source": ["Controller/feature.py"],
+                "tests": ["Tests/test_feature.py"],
+                "docs": ["Docs/feature.md"],
+                "invariants": ["Keep the second fixture safe."],
+            }
+
+            reports, errors = architecture_check.route_paths(
+                root, registry, ["Docs/feature.md"]
+            )
+
+            self.assertEqual(errors, [])
+            self.assertEqual(
+                [match["name"] for match in reports[0]["matches"]],
+                ["feature", "second"],
+            )
+
+    def test_route_rejects_unowned_path(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+
+            reports, errors = architecture_check.route_paths(
+                root, self._registry(root), ["README.md"]
+            )
+
+            self.assertEqual(reports, [])
+            self.assertTrue(any("no subsystem owns" in error for error in errors))
+
+    def test_route_rejects_path_outside_repository(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+
+            reports, errors = architecture_check.route_paths(
+                root, self._registry(root), ["../outside.py"]
+            )
+
+            self.assertEqual(reports, [])
+            self.assertTrue(any("escapes repository" in error for error in errors))
+
+    def test_route_cli_prints_human_readable_context(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            output = StringIO()
+
+            with redirect_stdout(output):
+                result = architecture_check.main(
+                    ["--root", str(root), "--route", "Controller/feature.py"]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertIn("Route: Controller/feature.py", output.getvalue())
+            self.assertIn("Subsystem: feature", output.getvalue())
+            self.assertIn("Focused tests:", output.getvalue())
 
 
 if __name__ == "__main__":

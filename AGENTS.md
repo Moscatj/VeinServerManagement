@@ -123,6 +123,8 @@ At the start of a new session:
 2. Read `Docs/docs_for_codex.md`, select the subsystem in
    `Docs/subsystems.yaml`, and load only its relevant source, tests, and docs.
    Check `Docs/decisions/` before revisiting a cross-cutting architecture choice.
+   For a known path, `python Controller/Tools/architecture_check.py --route PATH`
+   prints its owning subsystem context.
 3. Inspect `git status` before editing.
 4. Confirm the requested subsystem from the user's prompt. Ask only when the
    scope is genuinely ambiguous or a choice would materially change behavior.

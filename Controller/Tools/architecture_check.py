@@ -104,16 +104,88 @@ def _excluded(relative: str, patterns: list[str]) -> bool:
 def _owned_by_registry(root: Path, relative: str, entries: set[str]) -> bool:
     candidate = (root / relative).resolve()
     for entry in entries:
-        owner = (root / entry).resolve()
-        if candidate == owner:
+        if _registry_entry_covers(root, candidate, entry):
             return True
-        if owner.is_dir():
-            try:
-                candidate.relative_to(owner)
-                return True
-            except ValueError:
-                pass
     return False
+
+
+def _registry_entry_covers(root: Path, candidate: Path, entry: str) -> bool:
+    owner = (root / entry).resolve()
+    if candidate == owner:
+        return True
+    if owner.is_dir():
+        try:
+            candidate.relative_to(owner)
+            return True
+        except ValueError:
+            pass
+    return False
+
+
+def route_paths(
+    root: Path, registry: dict[str, Any], values: Iterable[str]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Return subsystem context for repository-relative or absolute paths."""
+
+    root = root.resolve()
+    reports: list[dict[str, Any]] = []
+    errors: list[str] = []
+    subsystems = registry.get("subsystems", {})
+    for value in values:
+        raw_path = Path(value)
+        candidate = (raw_path if raw_path.is_absolute() else root / raw_path).resolve()
+        try:
+            relative = candidate.relative_to(root).as_posix()
+        except ValueError:
+            errors.append(f"route path escapes repository: {value}")
+            continue
+
+        matches: list[dict[str, Any]] = []
+        for name, entry in subsystems.items():
+            matched_fields = [
+                field
+                for field in ("source", "tests", "docs")
+                if any(
+                    _registry_entry_covers(root, candidate, owner)
+                    for owner in entry.get(field, [])
+                )
+            ]
+            if not matched_fields:
+                continue
+            matches.append(
+                {
+                    "name": name,
+                    "risk": entry["risk"],
+                    "matched_fields": matched_fields,
+                    "tests": entry["tests"],
+                    "docs": entry["docs"],
+                    "invariants": entry["invariants"],
+                }
+            )
+        if not matches:
+            errors.append(f"no subsystem owns route path: {relative}")
+            continue
+        reports.append({"path": relative, "matches": matches})
+    return reports, errors
+
+
+def _print_route_reports(reports: Iterable[dict[str, Any]]) -> None:
+    for report in reports:
+        print(f"\nRoute: {report['path']}")
+        for match in report["matches"]:
+            fields = ", ".join(match["matched_fields"])
+            print(f"  Subsystem: {match['name']}")
+            print(f"  Risk: {match['risk']}")
+            print(f"  Matched as: {fields}")
+            print("  Focused tests:")
+            for value in match["tests"]:
+                print(f"    - {value}")
+            print("  Documentation:")
+            for value in match["docs"]:
+                print(f"    - {value}")
+            print("  Invariants:")
+            for value in match["invariants"]:
+                print(f"    - {value}")
 
 
 def _check_reverse_coverage(
@@ -350,6 +422,12 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parents[2],
         help="Repository root",
     )
+    parser.add_argument(
+        "--route",
+        nargs="+",
+        metavar="PATH",
+        help="Show owning subsystem context for one or more repository paths",
+    )
     args = parser.parse_args(argv)
     errors = check_architecture(args.root)
     if errors:
@@ -358,6 +436,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {error}")
         return 1
     print("Architecture and subsystem registry checks passed.")
+    if args.route:
+        registry_errors: list[str] = []
+        registry = _check_registry(args.root.resolve(), registry_errors)
+        if registry is None or registry_errors:
+            print("Route lookup failed:")
+            for error in registry_errors:
+                print(f"  - {error}")
+            return 1
+        reports, route_errors = route_paths(args.root, registry, args.route)
+        _print_route_reports(reports)
+        if route_errors:
+            print("\nRoute lookup failed:")
+            for error in route_errors:
+                print(f"  - {error}")
+            return 1
     return 0
 
 

@@ -19,6 +19,8 @@ missing routed paths and unowned production `Controller/**/*.py`,
 `Tests/test_*.py`, installer definitions, scripts, public config templates, or
 workflow files selected by `coverage.tracked_groups`. Only narrow patterns
 listed under `coverage.exclude` in `Docs/subsystems.yaml` are skipped.
+Its optional `--route PATH [PATH ...]` mode also provides a read-only change
+context report without altering the validation gate.
 
 `Scripts\TestSuite.bat` now exits non-zero when unit tests fail, so it is safe for automation.
 `Controller\health_check.py` exits non-zero on failed diagnostics and allows warnings for optional local dependencies or environment-specific paths.

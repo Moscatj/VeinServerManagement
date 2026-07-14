@@ -7,6 +7,8 @@
 Use [subsystems.yaml](subsystems.yaml) to route a change to its source, focused
 tests, documentation, risk, and invariants. Cross-cutting choices that should
 not be rediscovered each session are recorded under [decisions/](decisions/).
+Use `python Controller/Tools/architecture_check.py --route PATH` for a concise
+context report when the affected path is already known.
 
 ---
 

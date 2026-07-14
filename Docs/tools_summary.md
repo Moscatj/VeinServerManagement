@@ -34,7 +34,8 @@ must live in the appropriate Tools module.
 - **architecture_check.py** - Subsystem-registry validation plus guardrails for
   reverse source/test/infrastructure ownership, removed modules, production
   absolute paths, GUI process termination, and guarded server-config writer
-  ownership.
+  ownership. Its `--route` mode reports the risk, focused tests, documentation,
+  and invariants for one or more affected paths.
 - **documentation_check.py** - CI and pre-release validation for changelog,
   release-tag, current-version declaration, generic version-example, and
   relative Markdown-link consistency.

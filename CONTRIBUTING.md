@@ -82,6 +82,15 @@ installer definitions, batch/PowerShell scripts, public config templates, and
 GitHub workflows selected in `coverage.tracked_groups`; validation rejects
 unowned files so the routing map cannot silently fall behind the codebase.
 
+To inspect the context for a file or planned path under an owned directory, run:
+
+```powershell
+python Controller\Tools\architecture_check.py --route Controller/start_server.py
+```
+
+The report includes every matching subsystem, risk level, focused tests,
+documentation, and invariants.
+
 If you touch shutdown, crash detection, backups, or process control, read the related docs first and keep changes small and reviewable.
 
 ## Testing

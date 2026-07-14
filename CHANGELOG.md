@@ -17,6 +17,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 - Added concise decision records for the packaging runtime, derived server-data
   paths, GUI process delegation, app-managed SteamCMD, and Windows-first/Linux-
   ready direction.
+- Added a read-only subsystem routing command that reports risk, focused tests,
+  documentation, and invariants for existing or planned repository paths.
 - Added Python 3.11/3.12 unit-test compatibility jobs, retained the full
   validation and coverage gate on packaging-standard Python 3.12, and made the
   existing required check aggregate every applicable CI job.

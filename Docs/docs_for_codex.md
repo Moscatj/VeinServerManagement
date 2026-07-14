@@ -86,13 +86,23 @@ the installer, script, public-config, and workflow patterns declared under
 Assign new files as part of the same change rather than leaving routing cleanup
 for a later documentation pass.
 
+For a known file or a planned path beneath an owned directory, request its
+context directly:
+
+```powershell
+python Controller\Tools\architecture_check.py --route Controller/start_server.py
+```
+
+The read-only report lists every matching subsystem, risk, focused tests,
+documentation, and invariants. Multiple paths may follow `--route`.
+
 Legacy modules under `Controller/Legacy/` are reference-only unless the user
 explicitly requests work there.
 
 ## Efficient Workflow
 
 1. Read `AGENTS.md`, inspect `git status`, and identify the subsystem from the
-   request.
+   request or the routing command above.
 2. Load only the implementation, tests, and references needed for that task.
 3. Make a small diff, preserving unrelated work.
 4. Add focused tests and update docs when behavior changes.
