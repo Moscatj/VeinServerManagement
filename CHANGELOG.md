@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Prevented local validation, diagnostic, and coverage runs from sending real
+  Discord webhook messages, even when a developer machine has the configured
+  webhook environment variable set.
+
 ## 2.10.0 - 2026-07-14
 
 - Simplified the GUI into one task-oriented workspace with direct Home, Logs,

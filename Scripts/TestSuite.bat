@@ -9,6 +9,7 @@ rem ============================================================
 
 set "TEST_MONITORS=PROBE"
 set "TEST_SERVER=0"
+set "VEIN_DISABLE_DISCORD=1"
 
 if /i "%~1" neq "__RUN__" (
   start "Vein Test Suite" "%ComSpec%" /k "%~f0" __RUN__
@@ -54,6 +55,7 @@ echo [env] CONFIG2=%CONFIG2%
 echo [env] CONFIG3=%CONFIG3%
 echo [env] PYEXE=%PYEXE%
 echo [env] VEIN_CONFIG=%VEIN_CONFIG%
+echo [env] Discord notifications: DISABLED FOR TESTS
 echo.
 
 rem ---------------- verify core files -------------------------

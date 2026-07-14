@@ -9,6 +9,8 @@ VALIDATE_PS1 = ROOT / "Scripts" / "ValidateChange.ps1"
 VALIDATE_BAT = ROOT / "Scripts" / "ValidateChange.bat"
 PUBLISH_PS1 = ROOT / "Scripts" / "PublishValidated.ps1"
 PUBLISH_BAT = ROOT / "Scripts" / "PublishValidated.bat"
+TEST_SUITE_BAT = ROOT / "Scripts" / "TestSuite.bat"
+COVERAGE_BAT = ROOT / "Scripts" / "RunCoverage.bat"
 
 
 class ValidationWorkflowTests(unittest.TestCase):
@@ -22,6 +24,7 @@ class ValidationWorkflowTests(unittest.TestCase):
         text = VALIDATE_PS1.read_text(encoding="utf-8")
 
         for expected in (
+            "VEIN_DISABLE_DISCORD",
             "documentation_check.py",
             "source_hygiene_check.py",
             "architecture_check.py",
@@ -33,6 +36,11 @@ class ValidationWorkflowTests(unittest.TestCase):
             "git diff --cached --check",
         ):
             self.assertIn(expected, text)
+
+    def test_all_local_test_runners_disable_discord(self) -> None:
+        for path in (VALIDATE_PS1, TEST_SUITE_BAT, COVERAGE_BAT):
+            with self.subTest(path=path.name):
+                self.assertIn("VEIN_DISABLE_DISCORD", path.read_text(encoding="utf-8"))
 
     def test_publish_validates_before_commit_and_push_then_watches_ci(self) -> None:
         text = PUBLISH_PS1.read_text(encoding="utf-8")

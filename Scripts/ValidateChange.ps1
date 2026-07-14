@@ -9,6 +9,7 @@ Push-Location $root
 
 $previousCi = $env:CI
 $previousConfig = $env:VEIN_CONFIG
+$previousDisableDiscord = $env:VEIN_DISABLE_DISCORD
 $previousPython = $env:PYTHON_BIN
 
 function Invoke-ValidationStep {
@@ -26,6 +27,7 @@ function Invoke-ValidationStep {
 
 try {
     $env:CI = "true"
+    $env:VEIN_DISABLE_DISCORD = "1"
     $env:VEIN_CONFIG = Join-Path $root "Config\config.example.yaml"
     $env:PYTHON_BIN = $PythonExe
 
@@ -67,6 +69,7 @@ try {
 }
 finally {
     $env:CI = $previousCi
+    $env:VEIN_DISABLE_DISCORD = $previousDisableDiscord
     $env:VEIN_CONFIG = $previousConfig
     $env:PYTHON_BIN = $previousPython
     Pop-Location

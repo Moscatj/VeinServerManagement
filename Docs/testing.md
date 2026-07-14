@@ -14,6 +14,12 @@ This shared command is also called by GitHub CI and includes the individual
 unit, health, diagnostic, coverage, documentation/link, source-hygiene,
 architecture/subsystem-registry, and whitespace checks.
 
+The standard validation, diagnostic, and coverage runners set
+`VEIN_DISABLE_DISCORD=1` for their child processes. The shared Discord sender
+treats that value as a hard network-send prohibition, so local webhook
+environment variables cannot cause test notifications. The setting is
+process-scoped and is restored when the PowerShell validation runner exits.
+
 The architecture check validates registry paths in both directions. It rejects
 missing routed paths and unowned production `Controller/**/*.py`,
 `Tests/test_*.py`, installer definitions, scripts, public config templates, or
@@ -32,6 +38,7 @@ context report without altering the validation gate.
 - Config parsing, path handling, runtime state, backups, process control, log parsing, and API helpers should be covered by focused unit tests.
 - GUI rendering and long-running monitor loops can be tested through controller/helper seams and mocks rather than brittle full UI tests.
 - Tests must not write to the external Vein game install.
+- Tests must not send Discord notifications or other real network messages.
 - Tests should use `TemporaryDirectory(dir=ROOT)` or mocks for filesystem/process/network boundaries.
 
 ## Coverage

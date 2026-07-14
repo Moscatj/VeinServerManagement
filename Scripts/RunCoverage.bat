@@ -3,6 +3,7 @@ setlocal EnableExtensions
 title Vein Coverage Report
 
 pushd "%~dp0\.." >nul 2>&1
+set "VEIN_DISABLE_DISCORD=1"
 
 if not defined PYTHON_BIN (
   py -3.12 -m coverage --version >nul 2>&1

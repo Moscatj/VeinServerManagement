@@ -9,6 +9,9 @@ It detects server readiness, player activity, autosaves, and crash signatures, w
 state file for the GUI, idles lightly while the server is offline, and exits
 cleanly when a stop flag is set.
 
+Automated local test runners set `VEIN_DISABLE_DISCORD=1`; the shared Discord
+sender refuses all webhook posts while that process-scoped safeguard is active.
+
 **Core responsibilities**
 - Pick the active Vein log file from the explicit path, configured log folder,
   or conventional app-managed server folders.

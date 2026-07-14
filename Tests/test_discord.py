@@ -23,7 +23,9 @@ class DiscordTests(unittest.TestCase):
 
     def test_send_discord_message_respects_channel_and_truncates(self) -> None:
         requests = mock.Mock()
-        with mock.patch.object(discord, "requests", requests), mock.patch.object(
+        with mock.patch.dict(os.environ, {"VEIN_DISABLE_DISCORD": ""}), mock.patch.object(
+            discord, "requests", requests
+        ), mock.patch.object(
             discord,
             "is_discord_channel_enabled",
             return_value=True,
@@ -48,6 +50,23 @@ class DiscordTests(unittest.TestCase):
             return_value=False,
         ):
             discord.send_discord_message("hello")
+
+        requests.post.assert_not_called()
+
+    def test_send_discord_message_noops_when_notifications_are_disabled(self) -> None:
+        requests = mock.Mock()
+        with mock.patch.dict(os.environ, {"VEIN_DISABLE_DISCORD": "1"}), mock.patch.object(
+            discord, "requests", requests
+        ), mock.patch.object(
+            discord,
+            "is_discord_channel_enabled",
+            return_value=True,
+        ), mock.patch.object(
+            discord,
+            "_discord_webhook_url",
+            return_value="https://example.test/webhook",
+        ):
+            discord.send_discord_message("must not leave this process")
 
         requests.post.assert_not_called()
 

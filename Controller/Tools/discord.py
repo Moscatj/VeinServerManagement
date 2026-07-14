@@ -13,6 +13,14 @@ except Exception:  # pragma: no cover
     requests = None  # type: ignore
 
 
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _discord_notifications_disabled() -> bool:
+    """Return whether this process is forbidden from sending Discord posts."""
+    return os.environ.get("VEIN_DISABLE_DISCORD", "").strip().lower() in _TRUE_VALUES
+
+
 def _discord_webhook_url() -> Optional[str]:
     """
     Resolve webhook URL from config with ENV: support.
@@ -46,7 +54,7 @@ def send_discord_message(message: str, channel: str = "startup") -> None:
     Post message to Discord via webhook.
     Respects global & per-channel flags; truncates near Discord limit.
     """
-    if not is_discord_channel_enabled(channel):
+    if _discord_notifications_disabled() or not is_discord_channel_enabled(channel):
         return
 
     url = _discord_webhook_url()
