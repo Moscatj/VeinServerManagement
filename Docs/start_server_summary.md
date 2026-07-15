@@ -98,6 +98,11 @@ Sends structured messages to the configured Discord channels for:
 ---
 
 ## Error Handling
+
+The local lifecycle integration test exercises this startup contract with
+temporary fake server and monitor subprocesses through observable joinable
+state. It never launches SteamCMD or a real VEIN executable.
+
 - Catches missing executable early and posts a Discord error.
 - Always clears startup lock and flags on exit.
 - Uses fallback logic for shutdown and restart safety.

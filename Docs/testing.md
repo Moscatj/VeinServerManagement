@@ -40,6 +40,10 @@ context report without altering the validation gate.
 - Tests must not write to the external Vein game install.
 - Tests must not send Discord notifications or other real network messages.
 - Tests should use `TemporaryDirectory(dir=ROOT)` or mocks for filesystem/process/network boundaries.
+- The focused lifecycle integration test launches only repository-owned fake
+  workers in a temporary directory. Process enumeration is replaced with a
+  controlled list of those children before production shutdown helpers run, so
+  it cannot discover or stop a real VEIN server or management monitor.
 
 ## Coverage
 

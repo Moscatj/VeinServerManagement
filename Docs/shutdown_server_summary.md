@@ -102,6 +102,9 @@ Then clears locks and prints guidance to fix `config.yaml`.
 - **Monitor-first stop:** Prevents misclassification of the shutdown as a crash.
 - **Best-effort backup:** Creates a save backup on shutdown; failures are logged but non-fatal.
 - **Cleanup:** Clears locks/flags even if some steps fail.
+- **Regression harness:** A bounded temporary-process test verifies stop flags
+  precede monitor termination, monitors stop before the server, terminal state
+  is persisted, and GUI recovery remains suppressed during controlled stop.
 
 ---
 

@@ -67,6 +67,7 @@ subsystems:
       - Scripts/StopServer.bat
     tests:
       - Tests/test_launch_manager.py
+      - Tests/test_lifecycle_integration.py
       - Tests/test_process_helpers.py
       - Tests/test_restart.py
       - Tests/test_runtime_helpers.py

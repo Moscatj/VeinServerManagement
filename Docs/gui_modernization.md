@@ -118,7 +118,7 @@ not a claim that each phase is complete.
 
 - Add focused helper/controller tests for every workflow.
 - Add a small stable set of Qt interaction tests.
-- Add an isolated lifecycle integration harness with fake long-running server,
+- [x] Add an isolated lifecycle integration harness with fake long-running server,
   log-monitor, and crash-monitor processes. Exercise start through joinable
   readiness, controlled shutdown, stop-flag timing, process exit, terminal
   runtime state, and protection against monitor relaunch during shutdown. The

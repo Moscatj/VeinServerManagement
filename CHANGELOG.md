@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a bounded local lifecycle integration harness that uses temporary fake
+  server, log-monitor, and crash-monitor subprocesses to verify joinable
+  startup, monitor-first controlled shutdown, terminal runtime state, and
+  protection against monitor relaunch without touching a real VEIN install.
 - Prevented local validation, diagnostic, and coverage runs from sending real
   Discord webhook messages, even when a developer machine has the configured
   webhook environment variable set.

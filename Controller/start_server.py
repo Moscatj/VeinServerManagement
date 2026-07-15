@@ -251,10 +251,10 @@ def main() -> int:
 
     # --- DEBUG breadcrumb ---
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         (RUNTIME_DIR / "restart_debug.log").write_text(
-            f"{datetime.utcnow().isoformat()}Z  start_server.py entry\n",
+            f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}  start_server.py entry\n",
             encoding="utf-8",
         )
     except Exception:
