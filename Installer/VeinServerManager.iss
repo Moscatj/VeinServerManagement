@@ -1446,7 +1446,7 @@ end;
 procedure UpdateConfigPaths(const ServerDir, SteamCmdExe: string);
 var
   RawContent: AnsiString;
-  ConfigPath, Content: string;
+  ConfigPath, Content, SetupSource: string;
   ServerRoot, SteamCmdPath: string;
 begin
   ConfigPath := ExpandConstant('{app}\Config\config.yaml');
@@ -1461,6 +1461,15 @@ begin
       ReplaceConfigValue(Content, '  steamcmd_path: "SteamCMD/steamcmd.exe"', '  steamcmd_path: "' + SteamCmdPath + '"')
     else
       ReplaceConfigValue(Content, '  steamcmd_path: "SteamCMD/steamcmd.exe"', '  steamcmd_path: ""');
+    if not ExistingAppInstall then
+    begin
+      if SetupNewServer then
+        SetupSource := 'installer_new'
+      else
+        SetupSource := 'existing_import';
+      ReplaceConfigValue(Content, '  server_root: ""', '  server_root: "' + ServerRoot + '"');
+      ReplaceConfigValue(Content, '  source: "unconfigured"', '  source: "' + SetupSource + '"');
+    end;
     SaveStringToFile(ConfigPath, Content, False);
   end;
 end;

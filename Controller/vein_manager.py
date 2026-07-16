@@ -58,7 +58,11 @@ if str(CTRL_DIR) not in sys.path:
 try:
     from Tools.config_io import load_and_validate_config
     from Tools import app_info, mgmt_logs
-    from Tools.server_quickstart import ExistingServerSettings, inspect_server_root
+    from Tools.server_quickstart import (
+        ExistingServerSettings,
+        assess_server_setup,
+        inspect_server_root,
+    )
 except Exception as e:
     print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
     sys.exit(1)
@@ -1528,6 +1532,12 @@ class Main(QtWidgets.QMainWindow):
             self.btnQuickSaveGamesBrowse.clicked.connect(self._browse_quick_start_save_games)
         if hasattr(self, "btnQuickStartLoadExisting"):
             self.btnQuickStartLoadExisting.clicked.connect(self._load_existing_quick_start_settings)
+        if hasattr(self, "btnQuickStartConnectExisting"):
+            self.btnQuickStartConnectExisting.clicked.connect(self._connect_existing_quick_start)
+        if hasattr(self, "btnQuickStartOpenSettings"):
+            self.btnQuickStartOpenSettings.clicked.connect(
+                lambda: self._on_view_selected("monitor.server_config")
+            )
         if hasattr(self, "edQuickServerRoot"):
             self.edQuickServerRoot.editingFinished.connect(self._inspect_quick_start_server_root)
             QtCore.QTimer.singleShot(0, self._initialize_quick_start_mode)
@@ -3023,20 +3033,30 @@ class Main(QtWidgets.QMainWindow):
         self.grpQuickSaveGamesOverride.setChecked(bool(save_games_override))
         update_quick_start_save_games_path(self)
         update_quick_start_game_log_path(self)
-        if configured_root:
-            inspection = inspect_server_root(configured_root, executables or None)
-            if inspection.is_existing_server:
-                self.edQuickServerRoot.setText(configured_root)
-                enforce_quick_start_root_mode(self, inspection)
+        selected_root = configured_root or self.edQuickServerRoot.text().strip()
+        if selected_root:
+            self.edQuickServerRoot.setText(selected_root)
+            inspection, assessment, metadata = assess_server_setup(
+                selected_root,
+                config_path=self.config_path,
+                executables=executables or None,
+            )
+            enforce_quick_start_root_mode(self, inspection, assessment, metadata)
+            if assessment.state.value == "existing_unregistered":
+                self._load_existing_quick_start_settings()
 
     def _inspect_quick_start_server_root(self):
         root = self.edQuickServerRoot.text().strip()
         if not root:
             return
         _, _, executables, _, _ = self._quick_start_runtime_paths()
-        inspection = inspect_server_root(root, executables or None)
-        if enforce_quick_start_root_mode(self, inspection):
-            if self.cmbQuickSetupMode.currentData() == "existing" and not getattr(
+        inspection, assessment, metadata = assess_server_setup(
+            root,
+            config_path=self.config_path,
+            executables=executables or None,
+        )
+        if enforce_quick_start_root_mode(self, inspection, assessment, metadata):
+            if assessment.state.value == "existing_unregistered" and not getattr(
                 self, "_quick_start_load_running", False
             ):
                 self._load_existing_quick_start_settings()
@@ -3051,7 +3071,6 @@ class Main(QtWidgets.QMainWindow):
         mode = self.cmbQuickSetupMode.currentData()
         set_quick_start_mode(self, mode)
         if mode != "existing":
-            self._inspect_quick_start_server_root()
             return
 
         configured_root, steamcmd_path, _, _, _ = self._quick_start_runtime_paths()
@@ -3110,9 +3129,37 @@ class Main(QtWidgets.QMainWindow):
         status = f"Loaded {len(settings.loaded_fields)} existing setting(s)"
         if missing:
             status += f"; {missing} config file(s) not found"
-        self.lblQuickStartStatus.setText(status + ". Edit only the values you want to change, then build a preview.")
+        self.lblQuickStartStatus.setText(
+            status
+            + (
+                ". Select Connect Existing Server to register it; its current game settings will be preserved."
+                if getattr(self, "_quick_start_compact_existing", False)
+                else ". Edit only the values you want to change, then build a preview."
+            )
+        )
         self.lblQuickStartStatus.set_kind("success")
         self._status(status + ".")
+
+    def _connect_existing_quick_start(self):
+        """Preview and explicitly connect an imported server without showing the wizard."""
+        try:
+            preview = build_quick_start_preview(self)
+        except Exception as exc:
+            preview = f"Existing server connection preview failed:\n{exc}"
+        self.txtQuickStartPreview.setPlainText(preview)
+        if "Can apply: yes" not in preview:
+            self.lblQuickStartStatus.setText(
+                "The existing server cannot be connected yet. Reload its settings and resolve the reported issue."
+            )
+            self.lblQuickStartStatus.set_kind("error")
+            self._status("Existing server connection needs attention.")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Existing Server Needs Attention",
+                preview,
+            )
+            return
+        self._confirm_apply_quick_start()
 
     def _confirm_apply_quick_start(self):
         answer = QtWidgets.QMessageBox.question(
@@ -3140,6 +3187,21 @@ class Main(QtWidgets.QMainWindow):
             QtCore.QTimer.singleShot(300, self.load_config_text)
             self._refresh_server_config_preview()
             self._kick_preflight_check()
+            try:
+                _, assessment, _ = assess_server_setup(
+                    self.edQuickServerRoot.text().strip(),
+                    config_path=self.config_path,
+                    executables=getattr(
+                        self, "_quick_start_existing_executables", None
+                    ),
+                )
+            except Exception:
+                assessment = None
+            if assessment is not None and assessment.state.value == "configured":
+                self.lblQuickStartStatus.setText(
+                    "Setup is complete. Opening Server Settings for everyday updates."
+                )
+                self._on_view_selected("monitor.server_config")
         if hasattr(self, "txtQuickStartPreview"):
             self.txtQuickStartPreview.setPlainText(result)
 

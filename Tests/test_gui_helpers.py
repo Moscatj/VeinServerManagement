@@ -25,11 +25,19 @@ from GUI.quickstart import (  # noqa: E402
     enforce_quick_start_root_mode,
     populate_existing_server_settings,
     quick_start_config_path,
+    route_quick_start_workflow,
+    set_quick_start_step,
     set_quick_start_password_visibility,
     set_quick_start_webhook_visibility,
     set_quick_start_mode,
 )
 from Tools.server_quickstart import ExistingServerSettings, ServerRootInspection  # noqa: E402
+from Tools.setup_state import (  # noqa: E402
+    SetupAssessment,
+    SetupMetadata,
+    SetupState,
+    SetupWorkflow,
+)
 from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
@@ -292,6 +300,40 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("Preview Server", preview)
         self.assertIn("AdminSteamIDs", preview)
 
+    def test_quick_start_wizard_navigation_preserves_form_state(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+
+        self.assertEqual(owner.quickStartStack.count(), 4)
+        self.assertEqual(owner.quickStartStack.currentIndex(), 0)
+        self.assertIn("Step 1 of 4", owner.lblQuickStartStep.text())
+        self.assertFalse(owner.btnQuickStartBack.isEnabled())
+        self.assertTrue(owner.btnQuickStartLoadExisting.isHidden())
+        self.assertTrue(owner.btnQuickStartPreview.isHidden())
+        self.assertTrue(owner.btnQuickStartApply.isHidden())
+
+        owner.edQuickServerRoot.setText("D:/Servers/Vein")
+        owner.btnQuickStartNext.click()
+        owner.edQuickServerName.setText("Persistent Server")
+        owner.btnQuickStartNext.click()
+        owner.spinQuickGamePort.setValue(7788)
+        owner.btnQuickStartNext.click()
+
+        self.assertEqual(owner.quickStartStack.currentIndex(), 3)
+        self.assertIn("Review & Apply", owner.lblQuickStartStep.text())
+        self.assertTrue(owner.btnQuickStartNext.isHidden())
+        self.assertFalse(owner.btnQuickStartPreview.isHidden())
+        self.assertFalse(owner.btnQuickStartApply.isHidden())
+
+        set_quick_start_step(owner, 1)
+        self.assertEqual(owner.edQuickServerRoot.text(), "D:/Servers/Vein")
+        self.assertEqual(owner.edQuickServerName.text(), "Persistent Server")
+        self.assertEqual(owner.spinQuickGamePort.value(), 7788)
+        self.assertIsInstance(widget, QtWidgets.QScrollArea)
+
     def test_quick_start_game_log_follows_server_root_until_overridden(self) -> None:
         class Owner:
             pass
@@ -477,6 +519,55 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIsInstance(widget, QtWidgets.QWidget)
         self.assertEqual(owner.cmbQuickSetupMode.currentData(), "existing")
         self.assertEqual(owner._quick_start_auto_detected_root, "C:/VeinServer")
+
+    def test_quick_start_routes_installer_server_to_first_setup_wizard(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        route_quick_start_workflow(
+            owner,
+            SetupAssessment(
+                SetupState.FIRST_SETUP,
+                SetupWorkflow.FIRST_SETUP,
+                "Finish Server Setup",
+                "Installed by SteamCMD and awaiting configuration.",
+            ),
+            SetupMetadata(source="installer_new"),
+        )
+
+        values = collect_quick_start_values(owner)
+        self.assertEqual(owner.cmbQuickSetupMode.currentData(), "new")
+        self.assertEqual(values["setup_workflow"], "first_setup")
+        self.assertEqual(values["setup_source"], "installer_new")
+        self.assertFalse(owner.lblQuickStartStep.isHidden())
+        self.assertTrue(owner.btnQuickStartLoadExisting.isHidden())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_quick_start_routes_configured_server_to_settings_action(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_quick_start_view(owner)
+        route_quick_start_workflow(
+            owner,
+            SetupAssessment(
+                SetupState.CONFIGURED,
+                SetupWorkflow.EXISTING_SERVER,
+                "Edit Server Settings",
+                "Setup is complete.",
+            ),
+            SetupMetadata(completed=True, source="existing_import"),
+        )
+
+        self.assertEqual(owner.cmbQuickSetupMode.currentData(), "existing")
+        self.assertFalse(owner.btnQuickStartOpenSettings.isHidden())
+        self.assertTrue(owner.btnQuickStartLoadExisting.isHidden())
+        self.assertTrue(owner.btnQuickStartConnectExisting.isHidden())
+        self.assertIn("already configured", owner.lblQuickStartStatus.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
 
 
 if __name__ == "__main__":

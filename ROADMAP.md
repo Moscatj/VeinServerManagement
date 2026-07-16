@@ -40,7 +40,9 @@ Released through `v2.10.0`:
 - The GUI includes a server-config preview and guarded editor for allowlisted
   `Game.ini` and `Engine.ini` values. Secrets are masked, changes require a
   preview and confirmation, and every write is backed up and validated.
-- Server Quick Start supports guarded New Server and Existing Server setup,
+- Server Setup routes new and installer-provisioned servers through guided First
+  Setup, connects unregistered existing servers compactly, and sends configured
+  servers to guarded everyday Server Settings,
   including existing-install detection and protected secret replacement fields.
 - Packaged lifecycle and monitor commands run through `VeinTools.exe`; normal
   users do not need Python. Log and save locations derive from the selected

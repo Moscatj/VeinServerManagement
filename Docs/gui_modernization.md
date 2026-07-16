@@ -70,10 +70,15 @@ not a claim that each phase is complete.
 
 ### Phase 3 - Guided Quick Start
 
-- Convert the long form into a multi-step wizard.
-- Add immediate field validation, preserved back/forward state, and progress.
+- [x] Convert the long form into a four-page wizard for Location, Identity &
+  Access, Network & Integrations, and Review & Apply.
+- [x] Add visible progress and preserved Back/Next form state.
+- [x] Route installer-provisioned and missing servers into the wizard, existing
+  unregistered servers into a compact connection flow, and completed servers
+  into everyday Server Settings.
+- Add immediate field validation beside the affected wizard controls.
 - Show a human-readable review before expandable YAML/INI technical details.
-- Keep existing-install detection, protected secrets, backups, and validation.
+- [x] Keep existing-install detection, protected secrets, backups, and validation.
 - Default novice installs to app-managed SteamCMD and dedicated-server paths.
 - Add a Network Readiness step that explains the selected UDP gameplay/query
   ports, offers explicit Windows Firewall rules, keeps the HTTP API private by

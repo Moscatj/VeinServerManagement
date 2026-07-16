@@ -28,7 +28,7 @@ What happens:
   - `Controller/`, `Config/`, `Scripts/`, and `Docs/`
   - empty `Backups/`, `Logs/`, and `Runtime/` directories
   - README/AGENTS/docs_for_codex for reference
-- `Config/config.yaml` is staged from the public app-managed template. During install, the installer asks for the Vein dedicated server root and optional SteamCMD path, then rewrites the installed runtime config paths to match those choices. SaveGames and the Vein Game Log are derived automatically from the server root. SteamCMD installs default to the app-managed `Server\` folder.
+- `Config/config.yaml` is staged from the public app-managed template. During install, the installer asks for the Vein dedicated server root and optional SteamCMD path, then rewrites the installed runtime config paths to match those choices. It also records whether that root was provisioned as a new SteamCMD server or selected as an existing server so the GUI can choose First Setup versus compact import. SaveGames and the Vein Game Log are derived automatically from the server root. SteamCMD installs default to the app-managed `Server\` folder.
 - During staging the builder copies `Config/config.example.yaml` into the bundle as `Config/config.yaml`, ensuring secrets from your live config never leak. Customize the installed copy after deployment.
 
 - A console-friendly launcher (`VeinTools.exe`) is built alongside the GUI so you can trigger helper scripts without installing Python.

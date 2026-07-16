@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CTRL = ROOT / "Controller"
@@ -21,12 +23,14 @@ from Tools.server_config_validator import (  # noqa: E402
 from Tools.server_config_preview import GAME_STATE_SECTION, SERVER_SETTINGS_SECTION  # noqa: E402
 from Tools.server_quickstart import (  # noqa: E402
     apply_quick_start_plan,
+    assess_server_setup,
     build_quick_start_plan,
     inspect_server_root,
     load_existing_server_settings,
     management_webhook_summary,
     ServerRootInspection,
 )
+from Tools.setup_state import SetupState, normalize_server_root  # noqa: E402
 
 
 def _sample_discord_webhook() -> str:
@@ -75,6 +79,8 @@ class ServerQuickStartTests(unittest.TestCase):
         self.assertEqual(plan.config_updates["server"]["multi_home_ip"], "0.0.0.0")
         self.assertIn("-log", plan.config_updates["server"]["extra_launch_args"])
         self.assertEqual(plan.config_updates["discord"]["defaults"]["server_name"], "Community Server")
+        self.assertFalse(plan.config_updates["setup"]["completed"])
+        self.assertEqual(plan.config_updates["setup"]["source"], "quick_start_new")
         self.assertIn(("http_api", "WARN"), {(issue.field, issue.severity) for issue in plan.issues})
 
     def test_build_quick_start_plan_requires_server_name_and_valid_ports(self) -> None:
@@ -113,6 +119,56 @@ class ServerQuickStartTests(unittest.TestCase):
         errors = {(issue.field, issue.severity) for issue in plan.issues}
         self.assertIn(("server_root", "ERROR"), errors)
         self.assertFalse(plan.can_apply)
+
+    def test_first_setup_allows_installer_provisioned_server_executable(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp) / "Server"
+            exe = root / "Vein" / "Binaries" / "Win64" / "VeinServer.exe"
+            exe.parent.mkdir(parents=True)
+            exe.write_text("", encoding="utf-8")
+
+            plan = build_quick_start_plan(
+                {
+                    "setup_mode": "new",
+                    "setup_workflow": "first_setup",
+                    "setup_source": "installer_new",
+                    "server_root": str(root),
+                    "server_name": "First Setup Server",
+                }
+            )
+
+        self.assertTrue(plan.can_apply)
+        self.assertTrue(plan.config_updates["setup"]["completed"])
+        self.assertEqual(plan.config_updates["setup"]["source"], "installer_new")
+
+    def test_assess_server_setup_uses_installer_metadata(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            root = base / "Server"
+            exe = root / "Vein" / "Binaries" / "Win64" / "VeinServer.exe"
+            exe.parent.mkdir(parents=True)
+            exe.write_text("", encoding="utf-8")
+            cfg = base / "Config" / "config.yaml"
+            cfg.parent.mkdir()
+            cfg.write_text(
+                yaml.safe_dump(
+                    {
+                        "setup": {
+                            "schema_version": 1,
+                            "completed": False,
+                            "server_root": str(root),
+                            "source": "installer_new",
+                            "completed_at": "",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            _, assessment, metadata = assess_server_setup(root, config_path=cfg)
+
+        self.assertEqual(assessment.state, SetupState.FIRST_SETUP)
+        self.assertEqual(metadata.source, "installer_new")
 
     def test_new_server_mode_rejects_occupied_destination(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -396,6 +452,12 @@ class ServerQuickStartTests(unittest.TestCase):
             self.assertTrue(result.server_config_result)
             self.assertTrue(result.server_config_result["backups"])
             self.assertTrue(Path(result.server_config_result["backups"][0]).exists())
+            saved = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+            self.assertTrue(saved["setup"]["completed"])
+            self.assertEqual(saved["setup"]["source"], "existing_import")
+            self.assertEqual(saved["setup"]["server_root"], normalize_server_root(server_root))
+            self.assertTrue(saved["setup"]["completed_at"])
+            self.assertIn("Server setup completed", result.messages[-1])
 
     def test_load_existing_server_settings_reads_supported_non_secret_values(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -490,6 +552,28 @@ class ServerQuickStartTests(unittest.TestCase):
 
             self.assertFalse(plan.can_apply)
             self.assertTrue(any("Load settings" in issue.message for issue in plan.issues))
+
+    def test_existing_connection_does_not_require_editing_server_name(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            server_root, config_dir = self._existing_server(Path(tmp))
+            (config_dir / "Engine.ini").write_text(
+                "[ConsoleVariables]\nvein.PvP=True\n",
+                encoding="utf-8",
+            )
+
+            plan = build_quick_start_plan(
+                {
+                    "setup_mode": "existing",
+                    "existing_loaded_root": str(server_root),
+                    "server_root": str(server_root),
+                    "server_config_fields": [],
+                    "server_name": "",
+                    "http_api_enabled": False,
+                }
+            )
+
+        self.assertTrue(plan.can_apply)
+        self.assertEqual(plan.server_config_edits, ())
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 # Server Quick Start
 
-Server Quick Start is the guided setup flow for new and existing server
-operators. It builds a reviewable plan before writing the local management
-config or guarded Vein server configuration files.
+Server Quick Start is the guided setup flow for a new or not-yet-configured
+server. Existing configured servers use the smaller Server Settings view for
+everyday changes. Importing an existing unregistered server is a compact,
+explicit connection step rather than a trip through the new-server wizard.
 
 ## Current Scope
 
@@ -90,17 +91,24 @@ is aligned with their setup guidance:
 
 ## Current GUI Flow
 
-1. Open `Quick Start` from the left navigation.
-2. Choose `New Server` or `Existing Server`.
-   If the selected folder already contains a Vein executable, `Game.ini`, or
-   `Engine.ini`, Quick Start automatically switches to Existing Server mode.
-3. For an existing server, Quick Start first uses the resolved server root and
-   executable candidates from the active YAML config and loads supported values
-   automatically. Each path field has a `Browse…` button: Server root opens a
-   folder picker and SteamCMD opens a file picker. Use `Load Existing Settings`
-   after selecting a different installation. Loading reads `Game.ini` and
-   `Engine.ini` in the background.
-4. Fill in new-server values or edit the imported existing-server values.
+Setup classifies the selected root and active management config before choosing
+a workflow. Finding an executable alone does not mean setup is complete.
+
+| Detected state | Setup experience | Primary action |
+| --- | --- | --- |
+| New or missing server | Four-page new-server wizard | Install/configure the server |
+| SteamCMD-installed server awaiting configuration | Same four-page wizard, starting at First Setup | Finish server setup |
+| Existing server with meaningful INI settings but no setup record | Compact Location/import panel | Load, then Connect Existing Server |
+| Existing configured server | No setup wizard | Open Server Settings |
+| Completed setup whose binaries are missing | New/repair guidance | Repair the missing server |
+| Conflicting root and completion record | Explicit workflow choice | Choose the intended server workflow |
+
+For New Server and First Setup:
+
+1. Open `Setup` from the left navigation.
+2. On **Location**, confirm the server, SteamCMD, SaveGames, and game-log paths.
+3. On **Identity & Access**, fill in server identity, password, gameplay, and
+   Steam ID values.
    The read-only `Vein SaveGames folder` follows Server root as
    `<server root>/Vein/Saved/SaveGames`. Expand its advanced override only for
    a nonstandard installation; backups then read from that custom directory.
@@ -108,12 +116,24 @@ is aligned with their setup guidance:
    `<server root>/Vein/Saved/Logs/Vein.log`. Expand the advanced override only
    for a nonstandard installation; the selected file is then shared by server
    launch and monitoring.
-5. Click `Build Preview`.
-6. Review blocking errors, warnings, management config updates, and proposed
+4. On **Network & Integrations**, review ports, public/API choices, and the
+   three separate Discord webhook destinations.
+5. Use **Back** and **Next** to revisit earlier pages. Entered values and
+   protected replacements are preserved.
+6. On **Review & Apply**, click `Build Preview`.
+7. Review blocking errors, warnings, management config updates, and proposed
    game config edits.
-7. Click `Apply Setup` to update the local management config.
-8. If the selected server root exists, Quick Start also backs up and writes the
+8. Click `Apply Setup` to update the local management config.
+9. If the selected server root exists, Quick Start also backs up and writes the
    proposed `Game.ini` / `Engine.ini` edits through the guarded editor path.
+10. After setup is confirmed complete, the GUI automatically opens Server
+    Settings for everyday guarded updates. If setup remains incomplete, the
+    wizard stays open.
+
+For an existing unregistered server, select its root, load its settings, and
+choose `Connect Existing Server`. This records the management paths and setup
+state while preserving current game settings. Future edits belong in Server
+Settings, which retains the guarded preview, backup, write, and validation path.
 
 If the active configuration does not resolve to a supported Vein server
 executable, the command bar disables Start, Restart, and both monitor Start
@@ -122,20 +142,15 @@ become available for processes that are actually running. The Quick Start page
 uses scrollbars and minimum control heights on smaller displays instead of
 compressing fields into unreadable rows.
 
-New Server mode produces a complete initial game configuration. Existing
-Server mode imports supported non-secret settings and only proposes game-file
-edits for fields changed after import. Existing passwords and Discord webhook
-URLs are not loaded into the form and remain unchanged unless the user enters a
-replacement. The password status explicitly reports whether an existing
-password is set, not set, or has not been checked. Each Discord webhook reports
-the same configured, not-configured, or unknown state. Show/Hide controls reveal
-only newly entered replacements; they never expose passwords or webhook tokens
-read from `Game.ini`. Changing the selected server root invalidates the import
-and requires loading that server again before a preview can be applied.
+New Server and First Setup produce a complete initial game configuration.
+Existing import reads supported non-secret settings only. Existing passwords
+and Discord webhook URLs are never loaded into fields or exposed in the compact
+connection flow.
 
-New Server mode only accepts a missing or empty destination. A populated folder
-is blocked, and a detected Vein installation is forced into Existing Server
-mode so it cannot be unintentionally reconfigured as a new server.
+New Server accepts a missing or empty destination. First Setup additionally
+accepts the executable installed by the installer because its durable setup
+record says configuration is still incomplete. Other populated folders remain
+blocked from new-server apply.
 
 ## Network Readiness
 
@@ -160,22 +175,6 @@ test. Those checks belong in the planned multi-step Network Readiness wizard.
 Quick Start intentionally avoids writing `Config/config.example.yaml`; if an
 example template is currently selected, Apply targets the local
 `Config/config.yaml` path instead.
-
-## Planned Unified In-App Setup Flow
-
-The Windows installer already handles management-app placement and optional
-SteamCMD/server installation. A future in-app wizard should connect that result
-to Quick Start and network readiness through this flow:
-
-1. Choose app-managed or existing server location.
-2. Choose app-managed or existing SteamCMD.
-3. Enter required server identity and network fields.
-4. Confirm save, runtime, management-log, and backup locations. The Vein Game
-   Log is derived automatically unless an advanced override is required.
-5. Review management config updates and INI diffs.
-6. Run SteamCMD install/update when requested.
-7. Apply only after explicit confirmation.
-8. Re-run Server Preflight and refresh the Server Config view.
 
 ## Multi-Server Direction
 

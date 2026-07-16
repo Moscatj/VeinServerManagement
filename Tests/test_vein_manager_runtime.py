@@ -16,6 +16,7 @@ if str(CTRL) not in sys.path:
     sys.path.insert(0, str(CTRL))
 
 import vein_manager  # noqa: E402
+from Tools.setup_state import SetupAssessment, SetupState, SetupWorkflow  # noqa: E402
 
 
 class VeinManagerRuntimeConfigTests(unittest.TestCase):
@@ -39,6 +40,61 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
                 owner.start_server.assert_called_once_with()
             else:
                 owner.stop_server.assert_called_once_with()
+
+    def test_completed_quick_start_opens_server_settings(self) -> None:
+        owner = mock.Mock()
+        owner.edQuickServerRoot.text.return_value = "C:/VeinServer"
+        owner.config_path = "Config/config.yaml"
+        owner._quick_start_existing_executables = None
+        assessment = SetupAssessment(
+            SetupState.CONFIGURED,
+            SetupWorkflow.EXISTING_SERVER,
+            "Edit Server Settings",
+            "Setup completed.",
+        )
+
+        with mock.patch.object(
+            vein_manager.QtWidgets.QMessageBox,
+            "question",
+            return_value=vein_manager.QtWidgets.QMessageBox.Yes,
+        ), mock.patch.object(
+            vein_manager, "apply_quick_start", return_value="Applied"
+        ), mock.patch.object(
+            vein_manager, "assess_server_setup", return_value=(mock.Mock(), assessment, mock.Mock())
+        ), mock.patch.object(
+            vein_manager.QtCore.QTimer, "singleShot"
+        ):
+            vein_manager.Main._confirm_apply_quick_start(owner)
+
+        owner._on_view_selected.assert_called_once_with("monitor.server_config")
+        self.assertIn("Opening Server Settings", owner.lblQuickStartStatus.setText.call_args.args[0])
+
+    def test_incomplete_quick_start_stays_in_wizard(self) -> None:
+        owner = mock.Mock()
+        owner.edQuickServerRoot.text.return_value = "C:/VeinServer"
+        owner.config_path = "Config/config.yaml"
+        owner._quick_start_existing_executables = None
+        assessment = SetupAssessment(
+            SetupState.NEW_OR_MISSING,
+            SetupWorkflow.NEW_SERVER,
+            "Install Server",
+            "Binaries are missing.",
+        )
+
+        with mock.patch.object(
+            vein_manager.QtWidgets.QMessageBox,
+            "question",
+            return_value=vein_manager.QtWidgets.QMessageBox.Yes,
+        ), mock.patch.object(
+            vein_manager, "apply_quick_start", return_value="Applied"
+        ), mock.patch.object(
+            vein_manager, "assess_server_setup", return_value=(mock.Mock(), assessment, mock.Mock())
+        ), mock.patch.object(
+            vein_manager.QtCore.QTimer, "singleShot"
+        ):
+            vein_manager.Main._confirm_apply_quick_start(owner)
+
+        owner._on_view_selected.assert_not_called()
 
     def test_source_python_uses_console_sibling_of_pythonw(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

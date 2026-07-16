@@ -11,6 +11,25 @@ server root selected in this config. Future multi-server support should add
 named profiles with separate server roots, ports, saves/logs, runtime state,
 backups, Discord routing, and Steam update settings.
 
+## Setup Workflow State
+
+The `setup` block records onboarding state separately from the presence of a
+server executable. It is maintained by the installer and Setup UI; operators
+normally should not edit it by hand.
+
+- `setup.schema_version`: metadata schema version; currently `1`.
+- `setup.completed`: true only after the selected server has completed guarded
+  setup/import successfully.
+- `setup.server_root`: normalized server root associated with that completion
+  record.
+- `setup.source`: provenance such as `installer_new`, `quick_start_new`, or
+  `existing_import`.
+- `setup.completed_at`: UTC completion timestamp, blank while incomplete.
+
+This distinction lets SteamCMD install binaries first and still route the first
+GUI launch into First Setup. A completed record with missing binaries routes to
+repair guidance instead of being mistaken for a brand-new configuration.
+
 ---
 
 ## Top-level Paths

@@ -145,13 +145,14 @@ Watches the selected log file and streams content into the GUI in real time:
   engine and the Server Config view. GUI editing requires selecting a setting,
   previewing the diff, and confirming Apply; writes create backups first and
   refresh validation afterward.
-- The Quick Start navigation view provides guarded New Server and Existing
-  Server setup forms for key server identity, networking, SteamCMD, admin,
-  whitelist, Discord chat, and gameplay settings. It generates a copyable plan,
-  blocks populated new-server destinations, automatically switches detected
-  installations to Existing Server mode, can update the local management
-  config, and applies game config changes only through the guarded
-  backup/diff/validation path when the selected server root exists.
+- The Setup navigation view classifies the selected root using both filesystem
+  evidence and durable installer/GUI setup metadata. New, missing, and
+  installer-provisioned servers use four Back/Next pages for Location, Identity
+  & Access, Network & Integrations, and Review & Apply. Existing unregistered
+  servers use a compact load/connect panel, while completed servers link to
+  everyday Server Settings. The wizard generates a copyable plan, blocks
+  unrelated populated destinations, and applies game config changes only
+  through the guarded backup/diff/validation path.
 - Command ribbon condenses all process buttons and exposes a copy-friendly
   status label. A persistent startup strip reports preparation, safeguards,
   process detection, joinable readiness, and failures without blocking the GUI;

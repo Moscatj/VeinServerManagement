@@ -162,6 +162,7 @@ subsystems:
       - Controller/GUI/quickstart.py
       - Controller/GUI/server_config_view.py
       - Controller/Tools/server_quickstart.py
+      - Controller/Tools/setup_state.py
       - Controller/Tools/server_config_editor.py
       - Controller/Tools/server_config_preview.py
       - Controller/Tools/server_config_validator.py
@@ -170,6 +171,7 @@ subsystems:
       - Tests/test_server_config_preview.py
       - Tests/test_server_config_validator.py
       - Tests/test_server_quickstart.py
+      - Tests/test_setup_state.py
     docs:
       - Docs/quick_start.md
       - Docs/config_reference.md

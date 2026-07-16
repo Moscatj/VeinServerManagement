@@ -420,6 +420,10 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertNotIn("  absolute_log_file:", text)
         self.assertIn('ReplaceConfigValue(Content, \'  steamcmd_path: "SteamCMD/steamcmd.exe"\'', text)
         self.assertIn('\'  steamcmd_path: ""\'', text)
+        self.assertIn("SetupSource := 'installer_new'", text)
+        self.assertIn("SetupSource := 'existing_import'", text)
+        self.assertIn('ReplaceConfigValue(Content, \'  server_root: ""\'', text)
+        self.assertIn('ReplaceConfigValue(Content, \'  source: "unconfigured"\'', text)
 
     def test_installer_supports_existing_steamcmd_for_server_install(self) -> None:
         text = INSTALLER_SCRIPT.read_text(encoding="utf-8")

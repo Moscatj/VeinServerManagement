@@ -18,6 +18,13 @@ from Tools.server_config_validator import (
     ONLINE_STEAM_SECTION,
     URL_SECTION,
 )
+from Tools.setup_state import (
+    SetupAssessment,
+    SetupMetadata,
+    SetupWorkflow,
+    classify_setup_state,
+    setup_metadata_update,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -63,6 +70,40 @@ class ServerRootInspection:
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def server_root_has_binary(inspection: ServerRootInspection) -> bool:
+    """Return whether an inspection found a supported server executable."""
+    return any(Path(indicator).suffix.lower() == ".exe" for indicator in inspection.indicators)
+
+
+def server_root_has_meaningful_config(inspection: ServerRootInspection) -> bool:
+    """Return whether an inspection found a supported server configuration file."""
+    return any(
+        Path(indicator).name.lower() in {"game.ini", "engine.ini"}
+        for indicator in inspection.indicators
+    )
+
+
+def assess_server_setup(
+    server_root: str | Path,
+    *,
+    config_path: str | Path | None = None,
+    executables: Sequence[str] | None = None,
+) -> tuple[ServerRootInspection, SetupAssessment, SetupMetadata]:
+    """Inspect a root and active management metadata for GUI workflow routing."""
+    inspection = inspect_server_root(server_root, executables)
+    config_file = Path(config_path).expanduser() if config_path else None
+    config = _load_yaml_mapping(config_file) if config_file else {}
+    metadata = SetupMetadata.from_config(config)
+    assessment = classify_setup_state(
+        server_root=server_root,
+        binaries_present=server_root_has_binary(inspection),
+        meaningful_config_present=server_root_has_meaningful_config(inspection),
+        metadata=metadata,
+        base_dir=config_file.parent.parent if config_file else None,
+    )
+    return inspection, assessment, metadata
 
 
 @dataclass(frozen=True)
@@ -508,6 +549,8 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
     if setup_mode not in QUICK_START_MODES:
         issues.append(QuickStartIssue("setup_mode", "ERROR", "Choose New Server or Existing Server."))
         setup_mode = NEW_SERVER_MODE
+    setup_workflow = _text(values.get("setup_workflow"), "").lower()
+    first_setup = setup_workflow == SetupWorkflow.FIRST_SETUP.value
     selected_fields = set(_strings(values.get("server_config_fields")))
 
     def should_edit(field: str) -> bool:
@@ -534,7 +577,7 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
     vac_enabled = _bool(values.get("vac_enabled"), False)
     show_scoreboard_badges = _bool(values.get("show_scoreboard_badges"), True)
 
-    if not server_name:
+    if not server_name and (setup_mode == NEW_SERVER_MODE or should_edit("server_name")):
         issues.append(QuickStartIssue("server_name", "ERROR", "Server name is required."))
 
     max_players = _positive_int(values.get("max_players"), 8, field="max_players", issues=issues)
@@ -569,6 +612,7 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
     executables = _strings(values.get("server_executables")) or DEFAULT_EXECUTABLES
     preferred_exe = _text(values.get("preferred_exe"), executables[0])
     extra_launch_args = _strings(values.get("extra_launch_args")) or DEFAULT_EXTRA_LAUNCH_ARGS
+    root_inspection = inspect_server_root(server_root, executables)
     exe_warning = _configured_executable_warning(server_root, executables)
     if exe_warning is not None:
         if setup_mode == EXISTING_SERVER_MODE:
@@ -576,8 +620,8 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
         else:
             issues.append(exe_warning)
     if setup_mode == NEW_SERVER_MODE:
-        destination = inspect_server_root(server_root, executables)
-        if destination.is_existing_server:
+        destination = root_inspection
+        if destination.is_existing_server and not first_setup:
             issues.append(
                 QuickStartIssue(
                     "server_root",
@@ -605,6 +649,15 @@ def build_quick_start_plan(values: Mapping[str, Any]) -> QuickStartPlan:
         )
 
     config_updates: dict[str, Any] = {
+        "setup": setup_metadata_update(
+            server_root,
+            source=(
+                _text(values.get("setup_source"), "quick_start_new")
+                if setup_mode == NEW_SERVER_MODE
+                else "existing_import"
+            ),
+            completed=server_root_has_binary(root_inspection),
+        ),
         "paths": {
             "server_root": server_root,
             "runtime_dir": _text(values.get("runtime_dir"), "Runtime"),
@@ -732,8 +785,22 @@ def apply_quick_start_plan(
     target = Path(config_path or DEFAULT_CONFIG_PATH).expanduser()
     template = _config_template_for(target)
     base = _load_yaml_mapping(template or target)
-    merged = _deep_merge(base, plan.config_updates)
-    if "game_log" in plan.config_updates:
+    effective_updates = deepcopy(plan.config_updates)
+    desired_setup = effective_updates.get("setup", {})
+    setup_source = str(
+        desired_setup.get("source", "unknown")
+        if isinstance(desired_setup, Mapping)
+        else "unknown"
+    )
+    server_root = str(effective_updates.get("paths", {}).get("server_root", ""))
+    effective_updates["setup"] = setup_metadata_update(
+        server_root,
+        source=setup_source,
+        completed=False,
+        base_dir=target.parent.parent,
+    )
+    merged = _deep_merge(base, effective_updates)
+    if "game_log" in effective_updates:
         # Quick Start owns the migration to the single canonical game-log
         # setting. Remove obsolete values so the saved YAML cannot imply that
         # users must maintain both a log directory and a log-file path.
@@ -743,7 +810,7 @@ def apply_quick_start_plan(
             paths.pop("absolute_log_file", None)
         merged.pop("logs_dir", None)
         merged.pop("absolute_log_file", None)
-    if "save_games" in plan.config_updates:
+    if "save_games" in effective_updates:
         paths = merged.get("paths")
         if isinstance(paths, dict):
             paths.pop("saves_dir", None)
@@ -763,7 +830,7 @@ def apply_quick_start_plan(
         _atomic_write(target, after)
 
     messages: list[str] = []
-    discord_updates = plan.config_updates.get("discord", {})
+    discord_updates = effective_updates.get("discord", {})
     if isinstance(discord_updates, Mapping) and discord_updates.get("webhooks"):
         messages.append(
             "App notifications webhook updated. Restart already-running monitors so they reload the management config."
@@ -786,6 +853,23 @@ def apply_quick_start_plan(
             messages.append(
                 "Skipped Game.ini/Engine.ini writes because the selected server root does not exist yet."
             )
+
+    setup_should_complete = bool(
+        isinstance(desired_setup, Mapping) and desired_setup.get("completed")
+    )
+    if server_config_applied and setup_should_complete:
+        completed_setup = setup_metadata_update(
+            server_root,
+            source=setup_source,
+            completed=True,
+            base_dir=target.parent.parent,
+        )
+        completed_merged = _deep_merge(merged, {"setup": completed_setup})
+        completed_after = _dump_yaml(completed_merged)
+        if completed_after != after:
+            _atomic_write(target, completed_after)
+            config_changed = True
+        messages.append("Server setup completed for the selected server root.")
 
     return QuickStartApplyResult(
         plan=plan,

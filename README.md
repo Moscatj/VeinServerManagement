@@ -30,7 +30,7 @@ Python or other developer tools from the
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
 - GUI server preflight summary for install/config readiness before starting the server.
 - GUI preview and guarded editing for key Vein `Game.ini` / `Engine.ini` server settings.
-- Server Quick Start modes for complete new-server setup and selective, guarded updates to existing servers.
+- State-aware Server Setup: a guided new/first setup wizard, compact existing-server connection, and guarded everyday Server Settings.
 - Guided installer flows for fresh installs, side-by-side app instances,
   in-place update/repair, missing-server reinstall, and uninstall.
 - Live SteamCMD download/validation progress with initialization, automatic

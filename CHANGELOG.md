@@ -6,6 +6,12 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Split Setup into state-aware workflows: new and installer-provisioned servers
+  use a four-page Back/Next wizard, existing unregistered servers use a compact
+  connection step, and configured servers open everyday Server Settings. Added
+  durable installer/GUI setup metadata so executable presence alone cannot
+  incorrectly mark first setup complete. Successful First Setup now
+  automatically transitions into Server Settings.
 - Added a bounded local lifecycle integration harness that uses temporary fake
   server, log-monitor, and crash-monitor subprocesses to verify joinable
   startup, monitor-first controlled shutdown, terminal runtime state, and

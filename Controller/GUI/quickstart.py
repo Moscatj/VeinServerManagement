@@ -21,6 +21,7 @@ from Tools.server_quickstart import (
     load_existing_server_settings,
     management_webhook_summary,
 )
+from Tools.setup_state import SetupAssessment, SetupMetadata, SetupState, SetupWorkflow
 from .design_system import (
     BUTTON_PRIMARY,
     BUTTON_SECONDARY,
@@ -30,6 +31,95 @@ from .design_system import (
     PageHeader,
     set_button_role,
 )
+
+
+QUICK_START_STEPS = (
+    ("Location", "Choose whether this is a new or existing server and confirm its local paths."),
+    ("Identity & Access", "Set the server identity, player access, and gameplay safeguards."),
+    ("Network & Integrations", "Review ports, local API exposure, and Discord destinations."),
+    ("Review & Apply", "Build a masked preview before applying any configuration changes."),
+)
+
+
+def set_quick_start_step(owner, index: int) -> None:
+    """Show one Quick Start page without recreating or clearing its widgets."""
+    last = len(QUICK_START_STEPS) - 1
+    current = max(0, min(int(index), last))
+    owner.quickStartStack.setCurrentIndex(current)
+    title, description = QUICK_START_STEPS[current]
+    owner.lblQuickStartStep.setText(
+        f"Step {current + 1} of {len(QUICK_START_STEPS)} — {title}\n{description}"
+    )
+    owner.btnQuickStartBack.setVisible(True)
+    owner.btnQuickStartBack.setEnabled(current > 0)
+    owner.btnQuickStartNext.setVisible(current < last)
+    owner.btnQuickStartLoadExisting.setVisible(False)
+    owner.btnQuickStartConnectExisting.setVisible(False)
+    owner.btnQuickStartOpenSettings.setVisible(False)
+    owner.btnQuickStartPreview.setVisible(current == last)
+    owner.btnQuickStartApply.setVisible(current == last)
+
+
+def _show_new_server_wizard(owner) -> None:
+    owner._quick_start_compact_existing = False
+    owner.lblQuickStartStep.setVisible(True)
+    owner.btnQuickStartConnectExisting.setVisible(False)
+    owner.btnQuickStartOpenSettings.setVisible(False)
+    set_quick_start_step(owner, 0)
+
+
+def _show_existing_server_actions(owner) -> None:
+    owner._quick_start_compact_existing = True
+    owner.quickStartStack.setCurrentIndex(0)
+    owner.lblQuickStartStep.setVisible(False)
+    owner.btnQuickStartBack.setVisible(False)
+    owner.btnQuickStartNext.setVisible(False)
+    owner.btnQuickStartPreview.setVisible(False)
+    owner.btnQuickStartApply.setVisible(False)
+    owner.btnQuickStartLoadExisting.setVisible(True)
+    owner.btnQuickStartConnectExisting.setVisible(True)
+    owner.btnQuickStartOpenSettings.setVisible(False)
+
+
+def route_quick_start_workflow(
+    owner,
+    assessment: SetupAssessment,
+    metadata: SetupMetadata | None = None,
+) -> None:
+    """Route Setup to a wizard, compact import, or everyday settings action."""
+    owner._quick_start_setup_workflow = assessment.workflow.value
+    owner._quick_start_setup_source = (metadata.source if metadata else "unconfigured")
+
+    desired_mode = (
+        EXISTING_SERVER_MODE
+        if assessment.workflow == SetupWorkflow.EXISTING_SERVER
+        else NEW_SERVER_MODE
+    )
+    index = owner.cmbQuickSetupMode.findData(desired_mode)
+    if index >= 0:
+        owner.cmbQuickSetupMode.blockSignals(True)
+        owner.cmbQuickSetupMode.setCurrentIndex(index)
+        owner.cmbQuickSetupMode.blockSignals(False)
+    set_quick_start_mode(owner, desired_mode)
+
+    if assessment.state == SetupState.CONFIGURED:
+        owner.btnQuickStartLoadExisting.setVisible(False)
+        owner.btnQuickStartConnectExisting.setVisible(False)
+        owner.btnQuickStartOpenSettings.setVisible(True)
+        owner.lblQuickStartStatus.setText(
+            "This server is already configured. Use Server Settings for quick, guarded edits."
+        )
+        owner.lblQuickStartStatus.set_kind("success")
+    else:
+        owner.lblQuickStartStatus.setText(f"{assessment.primary_action}: {assessment.reason}")
+        owner.lblQuickStartStatus.set_kind(
+            "warning" if assessment.state in {SetupState.REPAIR_MISSING, SetupState.AMBIGUOUS} else "info"
+        )
+
+
+def move_quick_start_step(owner, offset: int) -> None:
+    """Move within the bounded wizard while preserving the existing form state."""
+    set_quick_start_step(owner, owner.quickStartStack.currentIndex() + int(offset))
 
 
 class ExistingServerLoadSignals(QtCore.QObject):
@@ -239,6 +329,8 @@ def _lines(text: str) -> list[str]:
 def collect_quick_start_values(owner) -> dict[str, Any]:
     return {
         "setup_mode": owner.cmbQuickSetupMode.currentData(),
+        "setup_workflow": getattr(owner, "_quick_start_setup_workflow", "new_server"),
+        "setup_source": getattr(owner, "_quick_start_setup_source", "quick_start_new"),
         "server_config_fields": sorted(getattr(owner, "_quick_start_dirty_fields", set())),
         "existing_loaded_root": getattr(owner, "_quick_start_existing_loaded_root", ""),
         "server_name": owner.edQuickServerName.text(),
@@ -376,28 +468,44 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     owner._quick_start_dirty_fields = set()
     owner._quick_start_loading_existing = False
     owner._quick_start_existing_loaded_root = ""
+    owner._quick_start_setup_workflow = SetupWorkflow.NEW_SERVER.value
+    owner._quick_start_setup_source = "quick_start_new"
+    owner._quick_start_compact_existing = False
     owner.lblQuickStartStatus = InlineNotice(
         "Choose whether to configure a new or existing server."
     )
     layout.addWidget(owner.lblQuickStartStatus)
-    layout.addWidget(
-        InlineNotice(
-            "Internet readiness: public servers normally require UDP gameplay port "
-            "7777 and UDP Steam query port 27015 through Windows Firewall and your "
-            "router. Keep the HTTP API private unless you intentionally secure it. "
-            "Quick Start configures Vein, but it does not currently change firewall "
-            "or router settings.",
-        )
+    owner.lblQuickStartStep = QtWidgets.QLabel()
+    owner.lblQuickStartStep.setWordWrap(True)
+    owner.lblQuickStartStep.setProperty("quickStartStep", True)
+    layout.addWidget(owner.lblQuickStartStep)
+
+    owner.quickStartStack = QtWidgets.QStackedWidget()
+    location_page = QtWidgets.QGroupBox("Server Location")
+    location_grid = QtWidgets.QGridLayout(location_page)
+    identity_page = QtWidgets.QGroupBox("Identity & Access")
+    identity_grid = QtWidgets.QGridLayout(identity_page)
+    network_page = QtWidgets.QGroupBox("Network & Integrations")
+    network_grid = QtWidgets.QGridLayout(network_page)
+    review_page = QtWidgets.QWidget()
+    review_layout = QtWidgets.QVBoxLayout(review_page)
+    for page_grid in (location_grid, identity_grid, network_grid):
+        page_grid.setVerticalSpacing(8)
+        page_grid.setColumnStretch(1, 1)
+    for page in (location_page, identity_page, network_page, review_page):
+        owner.quickStartStack.addWidget(page)
+    layout.addWidget(owner.quickStartStack, 1)
+
+    owner.lblQuickNetworkGuidance = InlineNotice(
+        "Public servers normally require the selected UDP gameplay and Steam query "
+        "ports through Windows Firewall and your router. Keep the HTTP API private "
+        "unless you intentionally secure it. Quick Start does not change firewall "
+        "or router settings."
     )
 
-    form = QtWidgets.QGroupBox("Server Quick Start")
-    grid = QtWidgets.QGridLayout(form)
-    grid.setVerticalSpacing(8)
-    grid.setColumnStretch(1, 1)
-
     owner.cmbQuickSetupMode = QtWidgets.QComboBox()
-    owner.cmbQuickSetupMode.addItem("New Server", NEW_SERVER_MODE)
-    owner.cmbQuickSetupMode.addItem("Existing Server", EXISTING_SERVER_MODE)
+    owner.cmbQuickSetupMode.addItem("Set Up a New Server", NEW_SERVER_MODE)
+    owner.cmbQuickSetupMode.addItem("Connect an Existing Server", EXISTING_SERVER_MODE)
 
     owner.edQuickServerName = _line_edit()
     owner.txtQuickServerDescription = _plain_text("Server rules, gameplay style, or MOTD.")
@@ -506,64 +614,91 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     )
 
     row = 0
-    _add_row(grid, row, "Setup mode", owner.cmbQuickSetupMode)
+    _add_row(location_grid, row, "Setup mode", owner.cmbQuickSetupMode)
     row += 1
-    for label, field in [
+    _add_path_row(
+        location_grid,
+        row,
+        "Server root",
+        owner.edQuickServerRoot,
+        owner.btnQuickStartBrowseRoot,
+    )
+    row += 1
+    _add_path_row(
+        location_grid,
+        row,
+        "SteamCMD",
+        owner.edQuickSteamCmd,
+        owner.btnQuickStartBrowseSteamCmd,
+    )
+    row += 1
+    _add_row(location_grid, row, "Vein SaveGames folder", owner.edQuickSaveGamesResolved)
+    row += 1
+    location_grid.addWidget(owner.lblQuickSaveGamesMode, row, 1)
+    row += 1
+    location_grid.addWidget(owner.grpQuickSaveGamesOverride, row, 0, 1, 2)
+    row += 1
+    _add_row(location_grid, row, "Monitored Vein game log", owner.edQuickGameLogResolved)
+    row += 1
+    location_grid.addWidget(owner.lblQuickGameLogMode, row, 1)
+    row += 1
+    location_grid.addWidget(owner.grpQuickGameLogOverride, row, 0, 1, 2)
+    location_grid.setRowStretch(row + 1, 1)
+
+    row = 0
+    for label, field in (
         ("Server name", owner.edQuickServerName),
         ("Description", owner.txtQuickServerDescription),
-    ]:
-        _add_row(grid, row, label, field)
-        row += 1
-    _add_path_row(grid, row, "Server root", owner.edQuickServerRoot, owner.btnQuickStartBrowseRoot)
-    row += 1
-    _add_row(grid, row, "Vein SaveGames folder", owner.edQuickSaveGamesResolved)
-    row += 1
-    grid.addWidget(owner.lblQuickSaveGamesMode, row, 1)
-    row += 1
-    grid.addWidget(owner.grpQuickSaveGamesOverride, row, 0, 1, 2)
-    row += 1
-    _add_row(grid, row, "Monitored Vein game log", owner.edQuickGameLogResolved)
-    row += 1
-    grid.addWidget(owner.lblQuickGameLogMode, row, 1)
-    row += 1
-    grid.addWidget(owner.grpQuickGameLogOverride, row, 0, 1, 2)
-    row += 1
-    _add_path_row(grid, row, "SteamCMD", owner.edQuickSteamCmd, owner.btnQuickStartBrowseSteamCmd)
-    row += 1
-    for label, field in [
         ("Max players", owner.spinQuickMaxPlayers),
+    ):
+        _add_row(identity_grid, row, label, field)
+        row += 1
+    _add_path_row(
+        identity_grid,
+        row,
+        "Password",
+        owner.edQuickPassword,
+        owner.btnQuickPasswordVisibility,
+    )
+    row += 1
+    identity_grid.addWidget(owner.lblQuickPasswordStatus, row, 1)
+    row += 1
+    gameplay_toggles = QtWidgets.QHBoxLayout()
+    for checkbox in (
+        owner.chkQuickPvp,
+        owner.chkQuickVac,
+        owner.chkQuickScoreboardBadges,
+    ):
+        gameplay_toggles.addWidget(checkbox)
+    gameplay_toggles.addStretch(1)
+    identity_grid.addLayout(gameplay_toggles, row, 0, 1, 2)
+    row += 1
+    for label, field in (
+        ("Admin Steam IDs", owner.txtQuickAdmins),
+        ("Super admin Steam IDs", owner.txtQuickSuperAdmins),
+        ("Whitelist Steam IDs", owner.txtQuickWhitelist),
+    ):
+        _add_row(identity_grid, row, label, field)
+        row += 1
+    identity_grid.setRowStretch(row, 1)
+
+    row = 0
+    network_grid.addWidget(owner.lblQuickNetworkGuidance, row, 0, 1, 2)
+    row += 1
+    for label, field in (
         ("Gameplay port", owner.spinQuickGamePort),
         ("Steam query port", owner.spinQuickQueryPort),
         ("HTTP API port", owner.spinQuickHttpPort),
         ("Bind address", owner.edQuickBindAddr),
-    ]:
-        _add_row(grid, row, label, field)
+    ):
+        _add_row(network_grid, row, label, field)
         row += 1
-    _add_path_row(grid, row, "Password", owner.edQuickPassword, owner.btnQuickPasswordVisibility)
+    network_toggles = QtWidgets.QHBoxLayout()
+    network_toggles.addWidget(owner.chkQuickPublic)
+    network_toggles.addWidget(owner.chkQuickHttpApi)
+    network_toggles.addStretch(1)
+    network_grid.addLayout(network_toggles, row, 0, 1, 2)
     row += 1
-    grid.addWidget(owner.lblQuickPasswordStatus, row, 1)
-    row += 1
-
-    toggles = QtWidgets.QGridLayout()
-    for index, checkbox in enumerate([
-        owner.chkQuickPublic,
-        owner.chkQuickHttpApi,
-        owner.chkQuickPvp,
-        owner.chkQuickVac,
-        owner.chkQuickScoreboardBadges,
-    ]):
-        toggles.addWidget(checkbox, index // 3, index % 3)
-    toggles.setColumnStretch(3, 1)
-    grid.addLayout(toggles, row, 0, 1, 2)
-    row += 1
-
-    for label, field in [
-        ("Admin Steam IDs", owner.txtQuickAdmins),
-        ("Super admin Steam IDs", owner.txtQuickSuperAdmins),
-        ("Whitelist Steam IDs", owner.txtQuickWhitelist),
-    ]:
-        _add_row(grid, row, label, field)
-        row += 1
     discord_group = QtWidgets.QGroupBox("Discord Webhooks")
     discord_grid = QtWidgets.QGridLayout(discord_group)
     discord_grid.setVerticalSpacing(6)
@@ -601,31 +736,52 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     )
     discord_grid.addWidget(owner.chkQuickUseManagementForAdmin, 7, 1)
     discord_grid.addWidget(owner.lblQuickDiscordAdminWebhookStatus, 8, 1)
-    grid.addWidget(discord_group, row, 0, 1, 2)
-    row += 1
-
-    layout.addWidget(form)
+    network_grid.addWidget(discord_group, row, 0, 1, 2)
+    network_grid.setRowStretch(row + 1, 1)
 
     actions = QtWidgets.QHBoxLayout()
+    owner.btnQuickStartBack = QtWidgets.QPushButton("Back")
+    owner.btnQuickStartNext = QtWidgets.QPushButton("Next")
     owner.btnQuickStartLoadExisting = QtWidgets.QPushButton("Load Existing Settings")
     owner.btnQuickStartLoadExisting.setEnabled(False)
+    owner.btnQuickStartConnectExisting = QtWidgets.QPushButton("Connect Existing Server")
+    owner.btnQuickStartConnectExisting.setEnabled(False)
+    owner.btnQuickStartConnectExisting.setVisible(False)
+    owner.btnQuickStartOpenSettings = QtWidgets.QPushButton("Open Server Settings")
+    owner.btnQuickStartOpenSettings.setVisible(False)
     owner.btnQuickStartPreview = QtWidgets.QPushButton("Build Preview")
     owner.btnQuickStartApply = QtWidgets.QPushButton("Apply Setup")
     owner.btnQuickStartApply.setEnabled(False)
+    set_button_role(owner.btnQuickStartBack, BUTTON_SECONDARY)
+    set_button_role(owner.btnQuickStartNext, BUTTON_PRIMARY)
     set_button_role(owner.btnQuickStartLoadExisting, BUTTON_SECONDARY)
+    set_button_role(owner.btnQuickStartConnectExisting, BUTTON_PRIMARY)
+    set_button_role(owner.btnQuickStartOpenSettings, BUTTON_PRIMARY)
     set_button_role(owner.btnQuickStartPreview, BUTTON_SECONDARY)
     set_button_role(owner.btnQuickStartApply, BUTTON_PRIMARY)
+    actions.addWidget(owner.btnQuickStartBack)
     actions.addWidget(owner.btnQuickStartLoadExisting)
+    actions.addWidget(owner.btnQuickStartConnectExisting)
+    actions.addWidget(owner.btnQuickStartOpenSettings)
+    actions.addStretch(1)
+    actions.addWidget(owner.btnQuickStartNext)
     actions.addWidget(owner.btnQuickStartPreview)
     actions.addWidget(owner.btnQuickStartApply)
-    actions.addStretch(1)
     layout.addLayout(actions)
 
     owner.txtQuickStartPreview = QtWidgets.QPlainTextEdit()
     owner.txtQuickStartPreview.setReadOnly(True)
     owner.txtQuickStartPreview.setPlaceholderText("Generated setup preview appears here.")
     owner.txtQuickStartPreview.setMinimumHeight(140)
-    layout.addWidget(owner.txtQuickStartPreview, 1)
+    review_layout.addWidget(
+        InlineNotice(
+            "Build Preview validates the complete setup and masks passwords and webhook URLs. "
+            "Apply Setup remains unavailable until that preview can be applied safely."
+        )
+    )
+    review_layout.addWidget(owner.txtQuickStartPreview, 1)
+    owner.btnQuickStartBack.clicked.connect(lambda: move_quick_start_step(owner, -1))
+    owner.btnQuickStartNext.clicked.connect(lambda: move_quick_start_step(owner, 1))
 
     tracked_widgets = {
         "server_name": owner.edQuickServerName,
@@ -720,6 +876,7 @@ def build_quick_start_view(owner) -> QtWidgets.QWidget:
     sync_quick_start_webhook_reuse(owner)
     update_quick_start_save_games_path(owner)
     update_quick_start_game_log_path(owner)
+    set_quick_start_step(owner, 0)
 
     scroll = QtWidgets.QScrollArea()
     scroll.setWidgetResizable(True)
@@ -747,9 +904,19 @@ def set_quick_start_mode(owner, mode: str) -> None:
     owner._quick_start_existing_chat_webhook_configured = None
     owner._quick_start_existing_admin_webhook_configured = None
     owner.btnQuickStartLoadExisting.setEnabled(existing)
+    owner.btnQuickStartConnectExisting.setEnabled(False)
     owner.btnQuickStartApply.setEnabled(False)
+    if existing:
+        owner._quick_start_setup_workflow = SetupWorkflow.EXISTING_SERVER.value
+        owner._quick_start_setup_source = "existing_import"
+        _show_existing_server_actions(owner)
+    else:
+        if owner._quick_start_setup_workflow != SetupWorkflow.FIRST_SETUP.value:
+            owner._quick_start_setup_workflow = SetupWorkflow.NEW_SERVER.value
+            owner._quick_start_setup_source = "quick_start_new"
+        _show_new_server_wizard(owner)
     owner.lblQuickStartStatus.setText(
-        "Select the installed server folder, then load its current settings before editing."
+        "Select the installed server folder, then load its current settings before connecting it."
         if existing
         else "Enter settings for a new server, then build and review the complete preview."
     )
@@ -758,8 +925,16 @@ def set_quick_start_mode(owner, mode: str) -> None:
     update_quick_start_webhook_statuses(owner)
 
 
-def enforce_quick_start_root_mode(owner, inspection: ServerRootInspection) -> bool:
-    """Force detected Vein installations into Existing Server mode."""
+def enforce_quick_start_root_mode(
+    owner,
+    inspection: ServerRootInspection,
+    assessment: SetupAssessment | None = None,
+    metadata: SetupMetadata | None = None,
+) -> bool:
+    """Apply state-aware routing, retaining legacy detection when no assessment is given."""
+    if assessment is not None:
+        route_quick_start_workflow(owner, assessment, metadata)
+        return assessment.workflow == SetupWorkflow.EXISTING_SERVER
     if not inspection.is_existing_server:
         return False
 
@@ -812,6 +987,7 @@ def populate_existing_server_settings(owner, settings: ExistingServerSettings) -
     update_quick_start_webhook_statuses(owner)
     owner.lblQuickStartStatus.set_kind("success")
     owner.btnQuickStartApply.setEnabled(False)
+    owner.btnQuickStartConnectExisting.setEnabled(True)
 
 
 def invalidate_existing_quick_start_load(owner) -> None:

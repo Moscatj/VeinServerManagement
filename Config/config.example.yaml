@@ -3,6 +3,15 @@
 
 version: "2.2"
 
+# Setup state distinguishes installed binaries from a server that has completed
+# its first configuration. The installer and guarded setup flow maintain this.
+setup:
+  schema_version: 1
+  completed: false
+  server_root: ""
+  source: "unconfigured"
+  completed_at: ""
+
 paths:
   server_root: "Server"                           # Folder that contains the Vein dedicated server
   runtime_dir: "Runtime"
