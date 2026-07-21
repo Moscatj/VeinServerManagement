@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.10.0`:
+Released through `v2.11.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.

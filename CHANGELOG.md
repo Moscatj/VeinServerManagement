@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.11.0 - 2026-07-21
+
 - Split Setup into state-aware workflows: new and installer-provisioned servers
   use a four-page Back/Next wizard, existing unregistered servers use a compact
   connection step, and configured servers open everyday Server Settings. Added
