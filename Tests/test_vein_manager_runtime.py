@@ -96,6 +96,32 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
 
         owner._on_view_selected.assert_not_called()
 
+    def test_server_settings_refresh_preserves_unsaved_changes_when_declined(self) -> None:
+        owner = mock.Mock()
+        owner._server_identity_dirty = True
+        with mock.patch.object(
+            vein_manager.QtWidgets.QMessageBox,
+            "question",
+            return_value=vein_manager.QtWidgets.QMessageBox.No,
+        ):
+            vein_manager.Main._request_server_config_preview_refresh(owner)
+
+        self.assertTrue(owner._server_identity_dirty)
+        owner._refresh_server_config_preview.assert_not_called()
+
+    def test_server_settings_refresh_discards_only_after_confirmation(self) -> None:
+        owner = mock.Mock()
+        owner._server_identity_dirty = True
+        with mock.patch.object(
+            vein_manager.QtWidgets.QMessageBox,
+            "question",
+            return_value=vein_manager.QtWidgets.QMessageBox.Yes,
+        ):
+            vein_manager.Main._request_server_config_preview_refresh(owner)
+
+        self.assertFalse(owner._server_identity_dirty)
+        owner._refresh_server_config_preview.assert_called_once_with()
+
     def test_source_python_uses_console_sibling_of_pythonw(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             runtime = Path(tmp)

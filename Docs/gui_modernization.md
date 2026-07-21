@@ -100,9 +100,12 @@ not a claim that each phase is complete.
 
 ### Phase 5 - Settings And Configuration
 
-- Add curated Simple Settings for supported server options.
-- Retain structured/raw Advanced Configuration separately.
-- Add unsaved-change state, discard prompts, restart-required indicators,
+- [x] Add the first curated Simple Settings slice as General & Access.
+- [x] Retain the allowlisted INI table as a separate Advanced Settings tab.
+- [x] Add unsaved-change state, refresh/discard protection, inline validation,
+  batch review, a shared action footer, and restart guidance for General & Access.
+- Add the same curated treatment for networking, gameplay, and integrations.
+- Add broader restart-required indicators,
   validation summaries, and previews for sensitive writes.
 
 ### Phase 6 - Logs, Backups, And Diagnostics

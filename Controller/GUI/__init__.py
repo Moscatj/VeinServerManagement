@@ -50,10 +50,18 @@ from .player_details import handle_player_tree_double_click, show_json_dialog
 from .status import StatusBus, StatusPoller
 from .preflight import PreflightWorker, summarize_preflight
 from .server_config_view import (
+    IdentityAccessEditWorker,
     ServerConfigEditWorker,
     ServerConfigPreviewWorker,
+    build_identity_access_edits,
     build_server_config_preview_view,
+    collect_identity_access_values,
     edit_values_from_text,
+    identity_access_change_summary,
+    identity_access_values_from_preview,
+    mask_sensitive_config_diff,
+    populate_identity_access_form,
+    validate_identity_access_values,
 )
 from .quickstart import (
     ExistingServerLoadWorker,
@@ -114,8 +122,16 @@ __all__ = [
     "summarize_preflight",
     "ServerConfigPreviewWorker",
     "ServerConfigEditWorker",
+    "IdentityAccessEditWorker",
     "build_server_config_preview_view",
+    "build_identity_access_edits",
+    "collect_identity_access_values",
     "edit_values_from_text",
+    "identity_access_change_summary",
+    "identity_access_values_from_preview",
+    "mask_sensitive_config_diff",
+    "populate_identity_access_form",
+    "validate_identity_access_values",
     "build_quick_start_view",
     "build_quick_start_preview",
     "ExistingServerLoadWorker",

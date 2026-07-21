@@ -136,15 +136,18 @@ Watches the selected log file and streams content into the GUI in real time:
 - Home begins with an At a Glance summary of server, log monitor, crash monitor,
   and backup health. Its guidance reflects the current runtime state and links
   directly to Setup and Logs when operator attention is needed.
-- The Server Config navigation view shows a read-only table of important
-  `Game.ini` and `Engine.ini` values from the selected server root. Documented
-  settings are shown even when missing, and any additional keys already present
-  in the actual server config files are included. Passwords, webhook URLs, and
-  token-like values are masked.
-- Game-config write support currently lives only in the tested backend edit
-  engine and the Server Config view. GUI editing requires selecting a setting,
-  previewing the diff, and confirming Apply; writes create backups first and
-  refresh validation afterward.
+- Server Settings opens on a curated General & Access form for server name,
+  description, player limit, public visibility, protected password replacement,
+  admin roles, and whitelist membership. It loads current non-secret values,
+  preserves stored passwords, validates SteamID64 entries inline, tracks
+  unsaved changes, and reviews the complete batch in a collapsible panel before
+  Apply. A shared footer keeps state, Discard, Review, and Apply actions in one
+  consistent location. Successful
+  writes create backups, run validation, and display restart guidance.
+- The original allowlisted `Game.ini` / `Engine.ini` table remains under
+  Advanced Settings for individual technical edits and values not yet covered
+  by a curated form. Passwords, webhook URLs, token-like values, and sensitive
+  unified-diff lines are masked in both views.
 - The Setup navigation view classifies the selected root using both filesystem
   evidence and durable installer/GUI setup metadata. New, missing, and
   installer-provisioned servers use four Back/Next pages for Location, Identity

@@ -38,7 +38,17 @@ from Tools.setup_state import (  # noqa: E402
     SetupState,
     SetupWorkflow,
 )
-from GUI.server_config_view import build_server_config_preview_view, edit_values_from_text  # noqa: E402
+from GUI.server_config_view import (  # noqa: E402
+    build_identity_access_edits,
+    build_server_config_preview_view,
+    collect_identity_access_values,
+    edit_values_from_text,
+    identity_access_change_summary,
+    identity_access_values_from_preview,
+    mask_sensitive_config_diff,
+    populate_identity_access_form,
+    validate_identity_access_values,
+)
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 from GUI.design_system import (  # noqa: E402
@@ -260,6 +270,114 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.btnServerConfigPreviewRefresh.text(), "Refresh")
         self.assertEqual(owner.btnServerConfigEditPreview.text(), "Preview Diff")
         self.assertFalse(owner.btnServerConfigEditApply.isEnabled())
+        self.assertEqual(owner.tabsServerSettings.count(), 2)
+        self.assertEqual(owner.tabsServerSettings.tabText(0), "General & Access")
+        self.assertEqual(owner.tabsServerSettings.tabText(1), "Advanced Settings")
+        self.assertIsInstance(owner.tabsServerSettings.widget(0), QtWidgets.QScrollArea)
+        self.assertFalse(owner.frmServerSettingsActions.isHidden())
+        self.assertFalse(owner.boxServerSettingsReview.toggle.isChecked())
+        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+        self.assertFalse(owner.btnServerIdentityApply.isEnabled())
+
+        owner.tabsServerSettings.setCurrentIndex(1)
+        self.assertTrue(owner.frmServerSettingsActions.isHidden())
+        self.assertTrue(owner.boxServerSettingsReview.isHidden())
+        owner.tabsServerSettings.setCurrentIndex(0)
+        self.assertFalse(owner.frmServerSettingsActions.isHidden())
+
+    def test_identity_access_form_loads_tracks_and_validates_curated_values(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_server_config_preview_view(owner)
+        items = [
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "ServerName", "value": "Local", "present": True},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "ServerDescription", "value": "Friendly", "present": True},
+            {"source": "Game.ini", "section": "/Script/Engine.GameSession", "key": "MaxPlayers", "value": "12", "present": True},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "bPublic", "value": "False", "present": True},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "Password", "value": "<configured, masked>", "present": True},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "AdminSteamIDs", "value": "76561198000000001, 76561198000000002", "present": True},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameSession", "key": "SuperAdminSteamIDs", "value": "(not set)", "present": False},
+            {"source": "Game.ini", "section": "/Script/Vein.VeinGameStateBase", "key": "WhitelistedPlayers", "value": "(not set)", "present": False},
+        ]
+
+        populate_identity_access_form(owner, items)
+        loaded = collect_identity_access_values(owner)
+        self.assertEqual(loaded["server_name"], "Local")
+        self.assertEqual(loaded["max_players"], 12)
+        self.assertFalse(loaded["public"])
+        self.assertEqual(len(loaded["admin_steam_ids"]), 2)
+        self.assertIn("will be preserved", owner.lblServerIdentityPasswordStatus.text())
+        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+
+        owner.edServerIdentityName.clear()
+        self.assertIn("required", owner.lblServerIdentityNameError.text())
+        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+        owner.edServerIdentityName.setText("Updated")
+        self.assertTrue(owner.btnServerIdentityPreview.isEnabled())
+        self.assertTrue(owner.btnServerIdentityReset.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_identity_access_helpers_build_batch_and_mask_secret_diffs(self) -> None:
+        baseline = {
+            "server_name": "Old",
+            "server_description": "",
+            "max_players": 8,
+            "public": True,
+            "password": "",
+            "admin_steam_ids": ("76561198000000001",),
+            "super_admin_steam_ids": (),
+            "whitelisted_players": (),
+        }
+        values = dict(baseline)
+        values.update(
+            {
+                "server_name": "New",
+                "public": False,
+                "password": "replacement-secret",
+                "admin_steam_ids": (),
+            }
+        )
+
+        self.assertEqual(validate_identity_access_values(values), {})
+        edits = build_identity_access_edits(values, baseline)
+        keys = {edit.key for edit in edits}
+        self.assertEqual(keys, {"ServerName", "bPublic", "Password", "AdminSteamIDs"})
+        self.assertEqual(next(edit for edit in edits if edit.key == "AdminSteamIDs").values, ())
+        summary = identity_access_change_summary(values, baseline)
+        self.assertIn("Password", summary)
+        self.assertNotIn("replacement-secret", summary)
+
+        masked = mask_sensitive_config_diff(
+            "--- old\n+++ new\n-Password=old-secret\n+Password=replacement-secret\n+ServerName=New\n"
+        )
+        self.assertNotIn("old-secret", masked)
+        self.assertNotIn("replacement-secret", masked)
+        self.assertIn("+Password=<configured, masked>", masked)
+        self.assertIn("+ServerName=New", masked)
+
+    def test_identity_access_validation_rejects_invalid_steam_ids(self) -> None:
+        values = {
+            "server_name": "Server",
+            "max_players": 8,
+            "admin_steam_ids": ("not-a-steamid",),
+            "super_admin_steam_ids": (),
+            "whitelisted_players": (),
+        }
+
+        errors = validate_identity_access_values(values)
+
+        self.assertIn("admin_steam_ids", errors)
+        self.assertIn("17-digit", errors["admin_steam_ids"])
+
+    def test_identity_access_preview_extraction_uses_safe_defaults(self) -> None:
+        values = identity_access_values_from_preview([])
+
+        self.assertEqual(values["server_name"], "")
+        self.assertEqual(values["max_players"], 8)
+        self.assertTrue(values["public"])
+        self.assertFalse(values["password_configured"])
 
     def test_edit_values_from_text_supports_scalar_and_lists(self) -> None:
         self.assertEqual(edit_values_from_text("One"), "One")

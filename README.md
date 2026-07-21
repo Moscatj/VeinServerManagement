@@ -29,7 +29,8 @@ Python or other developer tools from the
 - Unit test and coverage foundation for hardening future changes.
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
 - GUI server preflight summary for install/config readiness before starting the server.
-- GUI preview and guarded editing for key Vein `Game.ini` / `Engine.ini` server settings.
+- Curated General & Access settings plus an advanced allowlisted INI editor;
+  both use guarded previews, backups, atomic writes, validation, and masked secrets.
 - State-aware Server Setup: a guided new/first setup wizard, compact existing-server connection, and guarded everyday Server Settings.
 - Guided installer flows for fresh installs, side-by-side app instances,
   in-place update/repair, missing-server reinstall, and uninstall.

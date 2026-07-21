@@ -6,6 +6,14 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added curated General & Access controls to Server Settings for server name,
+  description, player limit, visibility, protected password replacement, admin
+  roles, and whitelist membership. The form tracks unsaved changes, validates
+  SteamID64 values inline, previews edits as one guarded batch, recommends a
+  restart after apply, and masks secrets in both curated and advanced diffs.
+  A shared action footer and collapsible change review establish the reusable
+  interaction model for future settings categories.
+
 ## 2.11.0 - 2026-07-21
 
 - Split Setup into state-aware workflows: new and installer-provisioned servers
