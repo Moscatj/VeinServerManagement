@@ -6,13 +6,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
-- Added curated General & Access controls to Server Settings for server name,
-  description, player limit, visibility, protected password replacement, admin
-  roles, and whitelist membership. The form tracks unsaved changes, validates
-  SteamID64 values inline, previews edits as one guarded batch, recommends a
-  restart after apply, and masks secrets in both curated and advanced diffs.
-  A shared action footer and collapsible change review establish the reusable
-  interaction model for future settings categories.
+- Added focused General, Access, Gameplay, Network, and Discord tabs to Server
+  Settings. The forms cover identity, player access, common gameplay rules,
+  bind address and ports, and protected VEIN game-chat/admin webhook
+  replacement while clearly separating the app notifications webhook on
+  Setup. All tabs share unsaved-change tracking, inline validation, one guarded
+  batch review/apply flow, restart guidance, and secret-masked diffs. The
+  original allowlisted INI table remains available under Advanced Settings.
 
 ## 2.11.0 - 2026-07-21
 

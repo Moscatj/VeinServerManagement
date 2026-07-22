@@ -270,16 +270,21 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.btnServerConfigPreviewRefresh.text(), "Refresh")
         self.assertEqual(owner.btnServerConfigEditPreview.text(), "Preview Diff")
         self.assertFalse(owner.btnServerConfigEditApply.isEnabled())
-        self.assertEqual(owner.tabsServerSettings.count(), 2)
-        self.assertEqual(owner.tabsServerSettings.tabText(0), "General & Access")
-        self.assertEqual(owner.tabsServerSettings.tabText(1), "Advanced Settings")
+        self.assertEqual(owner.tabsServerSettings.count(), 6)
+        self.assertEqual(
+            [owner.tabsServerSettings.tabText(index) for index in range(6)],
+            ["General", "Access", "Gameplay", "Network", "Discord", "Advanced Settings"],
+        )
         self.assertIsInstance(owner.tabsServerSettings.widget(0), QtWidgets.QScrollArea)
         self.assertFalse(owner.frmServerSettingsActions.isHidden())
         self.assertFalse(owner.boxServerSettingsReview.toggle.isChecked())
         self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
         self.assertFalse(owner.btnServerIdentityApply.isEnabled())
 
-        owner.tabsServerSettings.setCurrentIndex(1)
+        owner.tabsServerSettings.setCurrentIndex(4)
+        self.assertFalse(owner.frmServerSettingsActions.isHidden())
+        self.assertFalse(owner.boxServerSettingsReview.isHidden())
+        owner.tabsServerSettings.setCurrentIndex(5)
         self.assertTrue(owner.frmServerSettingsActions.isHidden())
         self.assertTrue(owner.boxServerSettingsReview.isHidden())
         owner.tabsServerSettings.setCurrentIndex(0)
@@ -320,6 +325,7 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_identity_access_helpers_build_batch_and_mask_secret_diffs(self) -> None:
+        discord_webhook = "https://discord.com/" + "api/webhooks/1/secret"
         baseline = {
             "server_name": "Old",
             "server_description": "",
@@ -337,23 +343,40 @@ class GuiHelperTests(unittest.TestCase):
                 "public": False,
                 "password": "replacement-secret",
                 "admin_steam_ids": (),
+                "pvp_enabled": False,
+                "game_port": 7788,
+                "discord_chat_webhook_url": discord_webhook,
             }
         )
 
         self.assertEqual(validate_identity_access_values(values), {})
         edits = build_identity_access_edits(values, baseline)
         keys = {edit.key for edit in edits}
-        self.assertEqual(keys, {"ServerName", "bPublic", "Password", "AdminSteamIDs"})
+        self.assertEqual(
+            keys,
+            {
+                "ServerName",
+                "bPublic",
+                "Password",
+                "AdminSteamIDs",
+                "vein.PvP",
+                "Port",
+                "DiscordChatWebhookURL",
+            },
+        )
         self.assertEqual(next(edit for edit in edits if edit.key == "AdminSteamIDs").values, ())
         summary = identity_access_change_summary(values, baseline)
         self.assertIn("Password", summary)
         self.assertNotIn("replacement-secret", summary)
+        self.assertNotIn("/1/secret", summary)
 
         masked = mask_sensitive_config_diff(
-            "--- old\n+++ new\n-Password=old-secret\n+Password=replacement-secret\n+ServerName=New\n"
+            "--- old\n+++ new\n-Password=old-secret\n+Password=replacement-secret\n"
+            f"+DiscordChatWebhookURL={discord_webhook}\n+ServerName=New\n"
         )
         self.assertNotIn("old-secret", masked)
         self.assertNotIn("replacement-secret", masked)
+        self.assertNotIn("/1/secret", masked)
         self.assertIn("+Password=<configured, masked>", masked)
         self.assertIn("+ServerName=New", masked)
 
@@ -378,6 +401,31 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(values["max_players"], 8)
         self.assertTrue(values["public"])
         self.assertFalse(values["password_configured"])
+        self.assertTrue(values["pvp_enabled"])
+        self.assertEqual(values["bind_addr"], "0.0.0.0")
+        self.assertEqual(values["game_port"], 7777)
+        self.assertFalse(values["discord_chat_webhook_configured"])
+
+    def test_curated_validation_rejects_network_and_discord_errors(self) -> None:
+        values = {
+            "server_name": "Server",
+            "max_players": 8,
+            "admin_steam_ids": (),
+            "super_admin_steam_ids": (),
+            "whitelisted_players": (),
+            "bind_addr": "not-an-address",
+            "game_port": 7777,
+            "query_port": 7777,
+            "http_port": 8080,
+            "discord_chat_webhook_url": "https://example.invalid/hook",
+            "discord_chat_admin_webhook_url": "",
+        }
+
+        errors = validate_identity_access_values(values)
+
+        self.assertIn("bind_addr", errors)
+        self.assertIn("ports", errors)
+        self.assertIn("discord_chat_webhook_url", errors)
 
     def test_edit_values_from_text_supports_scalar_and_lists(self) -> None:
         self.assertEqual(edit_values_from_text("One"), "One")

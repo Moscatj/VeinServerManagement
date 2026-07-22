@@ -2813,7 +2813,7 @@ class Main(QtWidgets.QMainWindow):
         if getattr(self, "_server_identity_dirty", False):
             if hasattr(self, "lblServerConfigPreviewStatus"):
                 self.lblServerConfigPreviewStatus.setText(
-                    "Unsaved General & Access changes were preserved. Discard them before refreshing from disk."
+                    "Unsaved Server Settings changes were preserved. Discard them before refreshing from disk."
                 )
             return
         if not getattr(self, "config_path", ""):
@@ -2830,7 +2830,7 @@ class Main(QtWidgets.QMainWindow):
             answer = QtWidgets.QMessageBox.question(
                 self,
                 "Discard Unsaved Server Settings?",
-                "Refreshing will discard the unsaved General & Access changes. Continue?",
+                "Refreshing will discard the unsaved Server Settings changes. Continue?",
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )
@@ -2860,7 +2860,7 @@ class Main(QtWidgets.QMainWindow):
         if hasattr(self, "lblServerIdentityState"):
             if error:
                 self.lblServerIdentityState.setText(
-                    "General & Access settings could not be loaded. Resolve the preview error and refresh."
+                    "Server Settings could not be loaded. Resolve the preview error and refresh."
                 )
                 self.lblServerIdentityState.set_kind("error")
                 self.btnServerIdentityPreview.setEnabled(False)
@@ -2911,7 +2911,7 @@ class Main(QtWidgets.QMainWindow):
     def _confirm_apply_identity_access_changes(self):
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Apply General & Access Changes",
+            "Apply Server Settings Changes",
             "This will back up and modify the allowlisted VEIN server settings shown in the preview. A server restart is recommended afterward. Continue?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
@@ -2923,7 +2923,7 @@ class Main(QtWidgets.QMainWindow):
         self._server_identity_edit_running = False
         action = payload.get("action") or "preview"
         if not payload.get("ok"):
-            message = f"General & Access {action} failed: {payload.get('error') or 'unknown error'}"
+            message = f"Server Settings {action} failed: {payload.get('error') or 'unknown error'}"
             self.txtServerIdentityPreview.setPlainText(message)
             self.lblServerIdentityState.setText(message)
             self.lblServerIdentityState.set_kind("error")
@@ -2952,7 +2952,7 @@ class Main(QtWidgets.QMainWindow):
                 else "The current files already match these settings."
             )
             self.lblServerIdentityState.set_kind("info" if changed else "success")
-            self._status("General & Access review ready.")
+            self._status("Server Settings review ready.")
             return
 
         backups = payload.get("backups") or []
@@ -2960,7 +2960,7 @@ class Main(QtWidgets.QMainWindow):
             "Changes saved and validated. Restart the server to ensure every setting takes effect."
         )
         self.lblServerIdentityState.set_kind("success")
-        self._status(f"General & Access saved. Backup file(s): {len(backups)}")
+        self._status(f"Server Settings saved. Backup file(s): {len(backups)}")
         self._server_identity_dirty = False
         self._refresh_server_config_preview()
         self._kick_preflight_check()

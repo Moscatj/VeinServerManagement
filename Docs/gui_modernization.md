@@ -100,11 +100,11 @@ not a claim that each phase is complete.
 
 ### Phase 5 - Settings And Configuration
 
-- [x] Add the first curated Simple Settings slice as General & Access.
+- [x] Add focused General, Access, Gameplay, Network, and Discord settings tabs.
 - [x] Retain the allowlisted INI table as a separate Advanced Settings tab.
 - [x] Add unsaved-change state, refresh/discard protection, inline validation,
-  batch review, a shared action footer, and restart guidance for General & Access.
-- Add the same curated treatment for networking, gameplay, and integrations.
+  batch review, a shared action footer, and restart guidance across curated tabs.
+- [x] Clearly separate VEIN game-chat/admin webhooks from app notifications.
 - Add broader restart-required indicators,
   validation summaries, and previews for sensitive writes.
 

@@ -40,6 +40,9 @@ Released through `v2.11.0`:
 - The GUI includes a server-config preview and guarded editor for allowlisted
   `Game.ini` and `Engine.ini` values. Secrets are masked, changes require a
   preview and confirmation, and every write is backed up and validated.
+- Everyday Server Settings are organized into focused General, Access,
+  Gameplay, Network, and Discord tabs with one shared review/apply workflow;
+  the allowlisted technical table remains available under Advanced Settings.
 - Server Setup routes new and installer-provisioned servers through guided First
   Setup, connects unregistered existing servers compactly, and sends configured
   servers to guarded everyday Server Settings,
@@ -76,10 +79,10 @@ Released through `v2.11.0`:
 - Add an in-app first-run checklist that connects installer results, Quick
   Start, preflight, firewall/router guidance, and the first successful launch.
 - Complete the remaining phased GUI modernization described in
-  `Docs/gui_modernization.md`, especially the Quick Start wizard, curated
-  settings, responsive layouts, and lifecycle integration hardening.
-- Improve server-config editing with field-specific controls, backup restore
-  guidance, and clearer validation errors.
+  `Docs/gui_modernization.md`, especially responsive layouts, logs/backups
+  usability, diagnostics, and lifecycle integration hardening.
+- Improve server-config editing with richer field descriptions, backup restore
+  guidance, and broader validation summaries.
 - Add a guided network-readiness workflow for Windows Firewall, router port
   forwarding, and external reachability checks without silently changing
   network configuration.
@@ -202,7 +205,7 @@ Implemented safety contract:
 
 Next improvements:
 
-- Add clearer per-setting descriptions and appropriate field widgets.
+- Add richer per-setting descriptions and context where operators need it.
 - Make backup discovery and operator-driven restore easier.
 - Expand the allowlist only when a setting is documented and can be validated.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -24,10 +25,17 @@ from Tools.server_config_editor import (
     make_edit,
     preview_server_config_edits,
 )
-from Tools.server_config_preview import GAME_STATE_SECTION, build_server_config_preview
+from Tools.server_config_preview import (
+    CONSOLE_VARIABLES_SECTION,
+    GAME_STATE_SECTION,
+    SERVER_SETTINGS_SECTION,
+    build_server_config_preview,
+)
 from Tools.server_config_validator import (
     ENGINE_GAME_SESSION_SECTION,
     GAME_INI_SECTION,
+    ONLINE_STEAM_SECTION,
+    URL_SECTION,
 )
 
 
@@ -40,6 +48,38 @@ IDENTITY_ACCESS_TARGETS = {
     "admin_steam_ids": ("Game.ini", GAME_INI_SECTION, "AdminSteamIDs"),
     "super_admin_steam_ids": ("Game.ini", GAME_INI_SECTION, "SuperAdminSteamIDs"),
     "whitelisted_players": ("Game.ini", GAME_STATE_SECTION, "WhitelistedPlayers"),
+    "pvp_enabled": ("Engine.ini", CONSOLE_VARIABLES_SECTION, "vein.PvP"),
+    "vac_enabled": ("Game.ini", ONLINE_STEAM_SECTION, "bVACEnabled"),
+    "ai_spawner_enabled": (
+        "Engine.ini",
+        CONSOLE_VARIABLES_SECTION,
+        "vein.AISpawner.Enabled",
+    ),
+    "time_multiplier": (
+        "Engine.ini",
+        CONSOLE_VARIABLES_SECTION,
+        "vein.TimeMultiplier",
+    ),
+    "show_scoreboard_badges": (
+        "Game.ini",
+        SERVER_SETTINGS_SECTION,
+        "GS_ShowScoreboardBadges",
+    ),
+    "bind_addr": ("Game.ini", GAME_INI_SECTION, "BindAddr"),
+    "game_port": ("Game.ini", URL_SECTION, "Port"),
+    "query_port": ("Game.ini", ONLINE_STEAM_SECTION, "GameServerQueryPort"),
+    "http_port": ("Game.ini", GAME_INI_SECTION, "HTTPPort"),
+    "heartbeat_interval": ("Game.ini", GAME_INI_SECTION, "HeartbeatInterval"),
+    "discord_chat_webhook_url": (
+        "Game.ini",
+        SERVER_SETTINGS_SECTION,
+        "DiscordChatWebhookURL",
+    ),
+    "discord_chat_admin_webhook_url": (
+        "Game.ini",
+        SERVER_SETTINGS_SECTION,
+        "DiscordChatAdminWebhookURL",
+    ),
 }
 
 IDENTITY_ACCESS_LABELS = {
@@ -51,6 +91,38 @@ IDENTITY_ACCESS_LABELS = {
     "admin_steam_ids": "Admin Steam IDs",
     "super_admin_steam_ids": "Super admin Steam IDs",
     "whitelisted_players": "Whitelisted players",
+    "pvp_enabled": "PvP",
+    "vac_enabled": "VAC protection",
+    "ai_spawner_enabled": "AI spawning",
+    "time_multiplier": "Time multiplier",
+    "show_scoreboard_badges": "Admin scoreboard badges",
+    "bind_addr": "Bind address",
+    "game_port": "Gameplay port",
+    "query_port": "Steam query port",
+    "http_port": "HTTP API port",
+    "heartbeat_interval": "Heartbeat interval",
+    "discord_chat_webhook_url": "VEIN game chat webhook",
+    "discord_chat_admin_webhook_url": "VEIN admin reports webhook",
+}
+
+PROTECTED_REPLACEMENT_FIELDS = {
+    "password",
+    "discord_chat_webhook_url",
+    "discord_chat_admin_webhook_url",
+}
+
+LIST_FIELDS = {
+    "admin_steam_ids",
+    "super_admin_steam_ids",
+    "whitelisted_players",
+}
+
+BOOLEAN_FIELDS = {
+    "public",
+    "pvp_enabled",
+    "vac_enabled",
+    "ai_spawner_enabled",
+    "show_scoreboard_badges",
 }
 
 
@@ -83,21 +155,54 @@ def identity_access_values_from_preview(
         value = str(current.get("value") or "")
         return "" if value == "(not set)" else value
 
+    def boolean(field: str, default: bool) -> bool:
+        text = scalar(field, "True" if default else "False").strip().lower()
+        return text in {"1", "true", "yes", "on"}
+
+    def integer(field: str, default: int) -> int:
+        try:
+            return int(scalar(field, str(default)))
+        except ValueError:
+            return default
+
+    def decimal(field: str, default: float) -> float:
+        try:
+            return float(scalar(field, str(default)))
+        except ValueError:
+            return default
+
     try:
         max_players = int(scalar("max_players", "8"))
     except ValueError:
         max_players = 8
-    public_text = scalar("public", "True").strip().lower()
     return {
         "server_name": scalar("server_name"),
         "server_description": scalar("server_description"),
         "max_players": max(1, min(max_players, 200)),
-        "public": public_text in {"1", "true", "yes", "on"},
+        "public": boolean("public", True),
         "password": "",
         "password_configured": bool(item("password").get("present")),
         "admin_steam_ids": _list_from_preview(scalar("admin_steam_ids")),
         "super_admin_steam_ids": _list_from_preview(scalar("super_admin_steam_ids")),
         "whitelisted_players": _list_from_preview(scalar("whitelisted_players")),
+        "pvp_enabled": boolean("pvp_enabled", True),
+        "vac_enabled": boolean("vac_enabled", False),
+        "ai_spawner_enabled": boolean("ai_spawner_enabled", True),
+        "time_multiplier": max(0.1, min(decimal("time_multiplier", 1.0), 100.0)),
+        "show_scoreboard_badges": boolean("show_scoreboard_badges", True),
+        "bind_addr": scalar("bind_addr", "0.0.0.0"),
+        "game_port": max(1, min(integer("game_port", 7777), 65535)),
+        "query_port": max(1, min(integer("query_port", 27015), 65535)),
+        "http_port": max(1, min(integer("http_port", 8080), 65535)),
+        "heartbeat_interval": max(1, min(integer("heartbeat_interval", 5), 3600)),
+        "discord_chat_webhook_url": "",
+        "discord_chat_webhook_configured": bool(
+            item("discord_chat_webhook_url").get("present")
+        ),
+        "discord_chat_admin_webhook_url": "",
+        "discord_chat_admin_webhook_configured": bool(
+            item("discord_chat_admin_webhook_url").get("present")
+        ),
     }
 
 
@@ -116,6 +221,24 @@ def validate_identity_access_values(values: Mapping[str, Any]) -> dict[str, str]
         invalid = [value for value in values.get(field, ()) if not (str(value).isdigit() and len(str(value)) == 17)]
         if invalid:
             errors[field] = "Use one 17-digit SteamID64 per line."
+    bind_addr = str(values.get("bind_addr", "0.0.0.0") or "").strip()
+    try:
+        ipaddress.ip_address(bind_addr)
+    except ValueError:
+        errors["bind_addr"] = "Use a valid IPv4 or IPv6 bind address."
+    ports = {
+        "game_port": int(values.get("game_port", 7777)),
+        "query_port": int(values.get("query_port", 27015)),
+        "http_port": int(values.get("http_port", 8080)),
+    }
+    if len(set(ports.values())) != len(ports):
+        errors["ports"] = "Gameplay, query, and HTTP API ports must be different."
+    for field in ("discord_chat_webhook_url", "discord_chat_admin_webhook_url"):
+        url = str(values.get(field) or "").strip().strip('"')
+        if url and not url.lower().startswith(
+            ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+        ):
+            errors[field] = "Enter a Discord webhook URL or leave blank to preserve it."
     return errors
 
 
@@ -125,21 +248,26 @@ def build_identity_access_edits(
     """Build allowlisted edits only for fields changed in the curated form."""
     errors = validate_identity_access_values(values)
     if errors:
-        raise ValueError("Resolve the highlighted General & Access fields before reviewing.")
+        raise ValueError("Resolve the highlighted Server Settings fields before reviewing.")
     edits: list[ServerConfigEdit] = []
     for field, target in IDENTITY_ACCESS_TARGETS.items():
-        if field == "password":
+        if field in PROTECTED_REPLACEMENT_FIELDS:
             replacement = str(values.get(field) or "")
             if replacement:
+                if field.startswith("discord_"):
+                    replacement = replacement.strip().strip('"')
+                    replacement = f'"{replacement}"'
                 edits.append(make_edit(*target, replacement))
             continue
         value = values.get(field)
         original = baseline.get(field)
         if value == original:
             continue
-        if field == "public":
+        if field in {"public", "pvp_enabled", "ai_spawner_enabled"}:
             value = "True" if bool(value) else "False"
-        elif field in {"admin_steam_ids", "super_admin_steam_ids", "whitelisted_players"}:
+        elif field in {"vac_enabled", "show_scoreboard_badges"}:
+            value = "1" if bool(value) else "0"
+        elif field in LIST_FIELDS:
             value = list(value or ())
         else:
             value = str(value)
@@ -151,12 +279,12 @@ def identity_access_change_summary(
     values: Mapping[str, Any], baseline: Mapping[str, Any]
 ) -> str:
     """Describe proposed curated changes without exposing protected values."""
-    lines = ["Proposed General & Access changes:"]
+    lines = ["Proposed Server Settings changes:"]
     changed = False
     for field in IDENTITY_ACCESS_TARGETS:
-        if field == "password":
-            if values.get("password"):
-                lines.append("- Password: replace the configured password (value hidden)")
+        if field in PROTECTED_REPLACEMENT_FIELDS:
+            if values.get(field):
+                lines.append(f"- {IDENTITY_ACCESS_LABELS[field]}: replace configured value (hidden)")
                 changed = True
             continue
         if values.get(field) != baseline.get(field):
@@ -345,6 +473,18 @@ def collect_identity_access_values(owner) -> dict[str, Any]:
         "admin_steam_ids": _steam_id_lines(owner.txtServerIdentityAdmins.toPlainText()),
         "super_admin_steam_ids": _steam_id_lines(owner.txtServerIdentitySuperAdmins.toPlainText()),
         "whitelisted_players": _steam_id_lines(owner.txtServerIdentityWhitelist.toPlainText()),
+        "pvp_enabled": owner.chkServerGameplayPvp.isChecked(),
+        "vac_enabled": owner.chkServerGameplayVac.isChecked(),
+        "ai_spawner_enabled": owner.chkServerGameplayAiSpawner.isChecked(),
+        "time_multiplier": owner.spinServerGameplayTimeMultiplier.value(),
+        "show_scoreboard_badges": owner.chkServerGameplayScoreboardBadges.isChecked(),
+        "bind_addr": owner.edServerNetworkBindAddress.text().strip(),
+        "game_port": owner.spinServerNetworkGamePort.value(),
+        "query_port": owner.spinServerNetworkQueryPort.value(),
+        "http_port": owner.spinServerNetworkHttpPort.value(),
+        "heartbeat_interval": owner.spinServerNetworkHeartbeat.value(),
+        "discord_chat_webhook_url": owner.edServerDiscordChatWebhook.text(),
+        "discord_chat_admin_webhook_url": owner.edServerDiscordAdminWebhook.text(),
     }
 
 
@@ -365,11 +505,18 @@ def update_identity_access_form_state(owner) -> None:
             "",
         )
     )
+    owner.lblServerNetworkError.setText(
+        errors.get("bind_addr", "") or errors.get("ports", "")
+    )
+    owner.lblServerDiscordError.setText(
+        errors.get("discord_chat_webhook_url", "")
+        or errors.get("discord_chat_admin_webhook_url", "")
+    )
     dirty = any(
         values.get(field) != baseline.get(field)
         for field in IDENTITY_ACCESS_TARGETS
-        if field != "password"
-    ) or bool(values.get("password"))
+        if field not in PROTECTED_REPLACEMENT_FIELDS
+    ) or any(bool(values.get(field)) for field in PROTECTED_REPLACEMENT_FIELDS)
     owner._server_identity_dirty = dirty
     if errors:
         owner.lblServerIdentityState.setText("Resolve the highlighted fields before previewing changes.")
@@ -380,7 +527,7 @@ def update_identity_access_form_state(owner) -> None:
         )
         owner.lblServerIdentityState.set_kind("warning")
     else:
-        owner.lblServerIdentityState.setText("General & Access settings are current.")
+        owner.lblServerIdentityState.setText("Server Settings are current.")
         owner.lblServerIdentityState.set_kind("success")
     owner.btnServerIdentityPreview.setEnabled(dirty and not errors)
     owner.btnServerIdentityApply.setEnabled(False)
@@ -405,14 +552,46 @@ def populate_identity_access_form(owner, items: Sequence[Mapping[str, Any]]) -> 
             "\n".join(values["super_admin_steam_ids"])
         )
         owner.txtServerIdentityWhitelist.setPlainText("\n".join(values["whitelisted_players"]))
+        owner.chkServerGameplayPvp.setChecked(values["pvp_enabled"])
+        owner.chkServerGameplayVac.setChecked(values["vac_enabled"])
+        owner.chkServerGameplayAiSpawner.setChecked(values["ai_spawner_enabled"])
+        owner.spinServerGameplayTimeMultiplier.setValue(values["time_multiplier"])
+        owner.chkServerGameplayScoreboardBadges.setChecked(
+            values["show_scoreboard_badges"]
+        )
+        owner.edServerNetworkBindAddress.setText(values["bind_addr"])
+        owner.spinServerNetworkGamePort.setValue(values["game_port"])
+        owner.spinServerNetworkQueryPort.setValue(values["query_port"])
+        owner.spinServerNetworkHttpPort.setValue(values["http_port"])
+        owner.spinServerNetworkHeartbeat.setValue(values["heartbeat_interval"])
+        owner.edServerDiscordChatWebhook.clear()
+        owner.edServerDiscordAdminWebhook.clear()
         owner.lblServerIdentityPasswordStatus.setText(
             "Password is configured and will be preserved unless a replacement is entered."
             if values["password_configured"]
             else "No password is currently configured. Leave blank to keep the server open."
         )
         owner._server_identity_password_configured = values["password_configured"]
+        owner._server_discord_chat_webhook_configured = values[
+            "discord_chat_webhook_configured"
+        ]
+        owner._server_discord_admin_webhook_configured = values[
+            "discord_chat_admin_webhook_configured"
+        ]
+        owner.lblServerDiscordChatStatus.setText(
+            "Game chat webhook is configured and will be preserved unless replaced."
+            if values["discord_chat_webhook_configured"]
+            else "No game chat webhook is configured."
+        )
+        owner.lblServerDiscordAdminStatus.setText(
+            "Admin reports webhook is configured and will be preserved unless replaced."
+            if values["discord_chat_admin_webhook_configured"]
+            else "No admin reports webhook is configured."
+        )
         owner._server_identity_baseline = {
-            key: value for key, value in values.items() if key != "password_configured"
+            key: value
+            for key, value in values.items()
+            if not key.endswith("_configured")
         }
     finally:
         owner._server_identity_loading = False
@@ -428,21 +607,26 @@ def reset_identity_access_form(owner) -> None:
         return
     items = []
     for field, (source, section, key) in IDENTITY_ACCESS_TARGETS.items():
-        if field == "password":
+        if field in PROTECTED_REPLACEMENT_FIELDS:
+            configured_attr = {
+                "password": "_server_identity_password_configured",
+                "discord_chat_webhook_url": "_server_discord_chat_webhook_configured",
+                "discord_chat_admin_webhook_url": "_server_discord_admin_webhook_configured",
+            }[field]
             items.append(
                 {
                     "source": source,
                     "section": section,
                     "key": key,
                     "value": "<configured, masked>",
-                    "present": bool(getattr(owner, "_server_identity_password_configured", False)),
+                    "present": bool(getattr(owner, configured_attr, False)),
                 }
             )
             continue
         value = baseline.get(field)
         if isinstance(value, tuple):
             display = ", ".join(value)
-        elif field == "public":
+        elif field in BOOLEAN_FIELDS:
             display = "True" if value else "False"
         else:
             display = str(value or "")
@@ -488,28 +672,43 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     layout.addLayout(header)
 
     owner.tabsServerSettings = QtWidgets.QTabWidget()
-    simple_page = QtWidgets.QScrollArea()
-    simple_page.setWidgetResizable(True)
-    simple_page.setFrameShape(QtWidgets.QFrame.NoFrame)
-    simple_content = QtWidgets.QWidget()
-    simple_layout = QtWidgets.QVBoxLayout(simple_content)
-    simple_layout.setContentsMargins(0, 8, 0, 0)
-    simple_layout.setSpacing(SECTION_SPACING)
-    simple_page.setWidget(simple_content)
+
+    def scroll_page() -> tuple[QtWidgets.QScrollArea, QtWidgets.QVBoxLayout]:
+        page = QtWidgets.QScrollArea()
+        page.setWidgetResizable(True)
+        page.setFrameShape(QtWidgets.QFrame.NoFrame)
+        content = QtWidgets.QWidget()
+        page_layout = QtWidgets.QVBoxLayout(content)
+        page_layout.setContentsMargins(0, 8, 0, 0)
+        page_layout.setSpacing(SECTION_SPACING)
+        page.setWidget(content)
+        return page, page_layout
+
+    general_page, general_layout = scroll_page()
+    access_page, access_layout = scroll_page()
+    gameplay_page, gameplay_layout = scroll_page()
+    network_page, network_layout = scroll_page()
+    discord_page, discord_layout = scroll_page()
     advanced_page = QtWidgets.QWidget()
     advanced_layout = QtWidgets.QVBoxLayout(advanced_page)
     advanced_layout.setContentsMargins(0, 8, 0, 0)
     advanced_layout.setSpacing(SECTION_SPACING)
-    owner.tabsServerSettings.addTab(simple_page, "General & Access")
+    owner.tabsServerSettings.addTab(general_page, "General")
+    owner.tabsServerSettings.addTab(access_page, "Access")
+    owner.tabsServerSettings.addTab(gameplay_page, "Gameplay")
+    owner.tabsServerSettings.addTab(network_page, "Network")
+    owner.tabsServerSettings.addTab(discord_page, "Discord")
     owner.tabsServerSettings.addTab(advanced_page, "Advanced Settings")
     layout.addWidget(owner.tabsServerSettings, 1)
 
     owner._server_identity_loading = False
     owner._server_identity_baseline = {}
     owner._server_identity_password_configured = False
+    owner._server_discord_chat_webhook_configured = False
+    owner._server_discord_admin_webhook_configured = False
     owner._server_identity_dirty = False
     owner.lblServerIdentityState = InlineNotice(
-        "Refresh to load the current General & Access settings."
+        "Refresh to load the current Server Settings."
     )
 
     identity_group = QtWidgets.QGroupBox("Server Identity")
@@ -538,7 +737,8 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     identity_grid.addWidget(QtWidgets.QLabel("Maximum players"), 3, 0)
     identity_grid.addWidget(owner.spinServerIdentityMaxPlayers, 3, 1)
     identity_grid.addWidget(owner.chkServerIdentityPublic, 4, 1)
-    simple_layout.addWidget(identity_group)
+    general_layout.addWidget(identity_group)
+    general_layout.addStretch(1)
 
     access_group = QtWidgets.QGroupBox("Access")
     access_grid = QtWidgets.QGridLayout(access_group)
@@ -582,7 +782,129 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     access_grid.addWidget(QtWidgets.QLabel("Whitelisted players"), 4, 0)
     access_grid.addWidget(owner.txtServerIdentityWhitelist, 4, 1)
     access_grid.addWidget(owner.lblServerIdentitySteamIdError, 5, 1)
-    simple_layout.addWidget(access_group)
+    access_layout.addWidget(access_group)
+    access_layout.addStretch(1)
+
+    gameplay_layout.addWidget(
+        InlineNotice(
+            "Gameplay changes affect the next server session. Review them together and "
+            "restart the server after applying."
+        )
+    )
+    gameplay_group = QtWidgets.QGroupBox("Gameplay Rules")
+    gameplay_form = QtWidgets.QFormLayout(gameplay_group)
+    owner.chkServerGameplayPvp = QtWidgets.QCheckBox("Allow player-versus-player damage")
+    owner.chkServerGameplayVac = QtWidgets.QCheckBox("Enable Steam VAC protection")
+    owner.chkServerGameplayAiSpawner = QtWidgets.QCheckBox("Enable AI spawning")
+    owner.chkServerGameplayScoreboardBadges = QtWidgets.QCheckBox(
+        "Show admin badges on the scoreboard"
+    )
+    owner.spinServerGameplayTimeMultiplier = QtWidgets.QDoubleSpinBox()
+    owner.spinServerGameplayTimeMultiplier.setRange(0.1, 100.0)
+    owner.spinServerGameplayTimeMultiplier.setDecimals(2)
+    owner.spinServerGameplayTimeMultiplier.setSingleStep(0.1)
+    gameplay_form.addRow(owner.chkServerGameplayPvp)
+    gameplay_form.addRow(owner.chkServerGameplayVac)
+    gameplay_form.addRow(owner.chkServerGameplayAiSpawner)
+    gameplay_form.addRow("World time multiplier", owner.spinServerGameplayTimeMultiplier)
+    gameplay_form.addRow(owner.chkServerGameplayScoreboardBadges)
+    gameplay_layout.addWidget(gameplay_group)
+    gameplay_layout.addStretch(1)
+
+    network_layout.addWidget(
+        InlineNotice(
+            "These ports must be unique. Router and firewall changes are not made by this "
+            "application. The VEIN HTTP API is unauthenticated, so keep it private unless "
+            "you have added an appropriate security boundary."
+        )
+    )
+    network_group = QtWidgets.QGroupBox("Server Network")
+    network_form = QtWidgets.QFormLayout(network_group)
+    owner.edServerNetworkBindAddress = QtWidgets.QLineEdit()
+    owner.edServerNetworkBindAddress.setPlaceholderText("0.0.0.0")
+    owner.spinServerNetworkGamePort = QtWidgets.QSpinBox()
+    owner.spinServerNetworkQueryPort = QtWidgets.QSpinBox()
+    owner.spinServerNetworkHttpPort = QtWidgets.QSpinBox()
+    for port in (
+        owner.spinServerNetworkGamePort,
+        owner.spinServerNetworkQueryPort,
+        owner.spinServerNetworkHttpPort,
+    ):
+        port.setRange(1, 65535)
+    owner.spinServerNetworkHeartbeat = QtWidgets.QSpinBox()
+    owner.spinServerNetworkHeartbeat.setRange(1, 3600)
+    owner.spinServerNetworkHeartbeat.setSuffix(" seconds")
+    owner.lblServerNetworkError = QtWidgets.QLabel()
+    owner.lblServerNetworkError.setWordWrap(True)
+    owner.lblServerNetworkError.setProperty("fieldError", True)
+    network_form.addRow("Bind address", owner.edServerNetworkBindAddress)
+    network_form.addRow("Gameplay port", owner.spinServerNetworkGamePort)
+    network_form.addRow("Steam query port", owner.spinServerNetworkQueryPort)
+    network_form.addRow("HTTP API port", owner.spinServerNetworkHttpPort)
+    network_form.addRow("Heartbeat interval", owner.spinServerNetworkHeartbeat)
+    network_form.addRow("", owner.lblServerNetworkError)
+    network_layout.addWidget(network_group)
+    network_layout.addStretch(1)
+
+    discord_layout.addWidget(
+        InlineNotice(
+            "These are VEIN Game.ini integrations: game chat and admin reports. App "
+            "startup, shutdown, crash, backup, and player notifications use the separate "
+            "App notifications webhook on the Setup page."
+        )
+    )
+    discord_group = QtWidgets.QGroupBox("In-game Discord Integrations")
+    discord_form = QtWidgets.QFormLayout(discord_group)
+
+    def webhook_row(line_edit: QtWidgets.QLineEdit, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(line_edit, 1)
+        row_layout.addWidget(button)
+        return row
+
+    owner.edServerDiscordChatWebhook = QtWidgets.QLineEdit()
+    owner.edServerDiscordAdminWebhook = QtWidgets.QLineEdit()
+    owner.btnServerDiscordChatVisibility = QtWidgets.QPushButton("Show")
+    owner.btnServerDiscordAdminVisibility = QtWidgets.QPushButton("Show")
+    owner.lblServerDiscordChatStatus = QtWidgets.QLabel(
+        "Game chat webhook status will appear after Refresh."
+    )
+    owner.lblServerDiscordAdminStatus = QtWidgets.QLabel(
+        "Admin reports webhook status will appear after Refresh."
+    )
+    for line_edit, button in (
+        (owner.edServerDiscordChatWebhook, owner.btnServerDiscordChatVisibility),
+        (owner.edServerDiscordAdminWebhook, owner.btnServerDiscordAdminVisibility),
+    ):
+        line_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        line_edit.setPlaceholderText("Leave blank to preserve the current webhook")
+        button.setCheckable(True)
+        button.toggled.connect(
+            lambda visible, field=line_edit, toggle=button: (
+                field.setEchoMode(
+                    QtWidgets.QLineEdit.Normal if visible else QtWidgets.QLineEdit.Password
+                ),
+                toggle.setText("Hide" if visible else "Show"),
+            )
+        )
+    owner.lblServerDiscordError = QtWidgets.QLabel()
+    owner.lblServerDiscordError.setWordWrap(True)
+    owner.lblServerDiscordError.setProperty("fieldError", True)
+    discord_form.addRow(
+        "Game chat webhook",
+        webhook_row(owner.edServerDiscordChatWebhook, owner.btnServerDiscordChatVisibility),
+    )
+    discord_form.addRow("", owner.lblServerDiscordChatStatus)
+    discord_form.addRow(
+        "Admin reports webhook",
+        webhook_row(owner.edServerDiscordAdminWebhook, owner.btnServerDiscordAdminVisibility),
+    )
+    discord_form.addRow("", owner.lblServerDiscordAdminStatus)
+    discord_form.addRow("", owner.lblServerDiscordError)
+    discord_layout.addWidget(discord_group)
+    discord_layout.addStretch(1)
 
     owner.txtServerIdentityPreview = QtWidgets.QPlainTextEdit()
     owner.txtServerIdentityPreview.setReadOnly(True)
@@ -625,6 +947,18 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
         owner.txtServerIdentityAdmins,
         owner.txtServerIdentitySuperAdmins,
         owner.txtServerIdentityWhitelist,
+        owner.chkServerGameplayPvp,
+        owner.chkServerGameplayVac,
+        owner.chkServerGameplayAiSpawner,
+        owner.spinServerGameplayTimeMultiplier,
+        owner.chkServerGameplayScoreboardBadges,
+        owner.edServerNetworkBindAddress,
+        owner.spinServerNetworkGamePort,
+        owner.spinServerNetworkQueryPort,
+        owner.spinServerNetworkHttpPort,
+        owner.spinServerNetworkHeartbeat,
+        owner.edServerDiscordChatWebhook,
+        owner.edServerDiscordAdminWebhook,
     ):
         signal = (
             getattr(field, "textChanged", None)
@@ -643,7 +977,7 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     owner.treeServerConfigPreview.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     advanced_layout.addWidget(
         InlineNotice(
-            "Advanced Settings exposes the allowlisted INI table. Use General & Access "
+            "Advanced Settings exposes the allowlisted INI table. Use the focused tabs "
             "for routine changes and this view for individual technical settings."
         )
     )
@@ -695,7 +1029,7 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     layout.addWidget(owner.frmServerSettingsActions)
 
     def update_shared_action_visibility(index: int) -> None:
-        curated = index == 0
+        curated = index < owner.tabsServerSettings.count() - 1
         owner.frmServerSettingsActions.setVisible(curated)
         owner.boxServerSettingsReview.setVisible(curated)
 
