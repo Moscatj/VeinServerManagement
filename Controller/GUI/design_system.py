@@ -93,13 +93,14 @@ def application_stylesheet() -> str:
         QLabel[pageTitle="true"] { font-size: 20px; font-weight: 700; }
         QLabel[pageSubtitle="true"] { color: palette(text); }
         QLabel[serverState="true"] { font-weight: 700; }
+        QLabel[fieldHelp="true"] { color: palette(text); }
         QLabel[fieldError="true"] { color: #d84a4a; font-weight: 600; }
 
         QLabel[noticeKind] {
             border: 1px solid palette(mid);
             border-radius: 6px;
             padding: 8px 10px;
-            background: palette(alternate-base);
+            background: palette(base);
         }
         QLabel[noticeKind="success"] { border-color: #2e8b57; }
         QLabel[noticeKind="warning"] { border-color: #c58a00; }
@@ -125,7 +126,7 @@ def application_stylesheet() -> str:
 
         QFrame[settingsActionBar="true"] {
             border-top: 1px solid palette(mid);
-            background: palette(alternate-base);
+            background: palette(window);
         }
 
         QPushButton[buttonRole="primary"] {

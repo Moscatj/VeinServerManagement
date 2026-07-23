@@ -121,7 +121,11 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn('noticeKind="error"', css)
         self.assertIn('statusState="healthy"', css)
         self.assertIn('pageSubtitle="true"] { color: palette(text)', css)
+        self.assertIn('fieldHelp="true"] { color: palette(text)', css)
+        self.assertIn("background: palette(base);", css)
+        self.assertIn("background: palette(window);", css)
         self.assertNotIn('pageSubtitle="true"] { color: palette(mid)', css)
+        self.assertNotIn('fieldHelp="true"] { color: palette(mid)', css)
 
         button = QtWidgets.QPushButton("Stop")
         set_button_role(button, BUTTON_DANGER)
@@ -318,10 +322,29 @@ class GuiHelperTests(unittest.TestCase):
 
         owner.edServerIdentityName.clear()
         self.assertIn("required", owner.lblServerIdentityNameError.text())
+        self.assertEqual(owner.tabsServerSettings.tabText(0), "General *")
         self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
         owner.edServerIdentityName.setText("Updated")
         self.assertTrue(owner.btnServerIdentityPreview.isEnabled())
         self.assertTrue(owner.btnServerIdentityReset.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_curated_tabs_mark_changes_and_place_validation_by_field(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_server_config_preview_view(owner)
+        populate_identity_access_form(owner, [])
+
+        owner.spinServerNetworkGamePort.setValue(27015)
+        self.assertEqual(owner.tabsServerSettings.tabText(3), "Network *")
+        self.assertIn("must be different", owner.lblServerNetworkPortsError.text())
+
+        owner.edServerDiscordChatWebhook.setText("https://example.invalid/hook")
+        self.assertEqual(owner.tabsServerSettings.tabText(4), "Discord *")
+        self.assertIn("Discord webhook URL", owner.lblServerDiscordChatError.text())
+        self.assertEqual(owner.lblServerDiscordAdminError.text(), "")
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_identity_access_helpers_build_batch_and_mask_secret_diffs(self) -> None:

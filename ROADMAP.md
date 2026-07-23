@@ -229,6 +229,24 @@ The approved phased GUI plan is documented in `Docs/gui_modernization.md`.
 - Add first-run diagnostics that make installed version, config path, server
   root, and validation status easy to verify.
 
+### Future Theme Customization
+
+Theme customization is a long-term polish goal after the core workflows and
+responsive page layouts are complete. It should build on semantic design tokens
+rather than applying unrelated colors directly to individual controls.
+
+- Provide tested Dark, Light, High Contrast, and System Default presets.
+- Define semantic colors for window and panel surfaces, inputs, primary and
+  secondary text, borders, selections, actions, and status states.
+- Add a safe live preview with Apply, Cancel, and Restore Defaults so an
+  unreadable selection never traps the operator.
+- Validate minimum text contrast and reject unsafe foreground/background
+  combinations.
+- Start with preset and accent customization; consider broader color controls
+  only after the semantic token model is stable.
+- Store appearance preferences separately from VEIN server settings and keep
+  server configuration exports free of GUI-only theme state.
+
 ## Multi-Server Hosting Goals
 
 The current suite manages one configured Vein dedicated server at a time. A

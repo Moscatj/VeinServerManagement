@@ -145,8 +145,10 @@ Watches the selected log file and streams content into the GUI in real time:
   are entered. Inline validation covers required names, SteamID64 values, bind
   addresses, unique ports, and Discord webhook URLs. A shared footer keeps
   state, Discard, Review, and Apply actions in one consistent location, while a
-  collapsible panel reviews the complete batch. Successful writes create
-  backups, run validation, and display restart guidance.
+  collapsible panel reviews the complete batch. Tabs containing edits display
+  an unsaved marker, and field-specific network and Discord errors appear beside
+  the affected controls. Successful writes create backups, run validation, and
+  display restart guidance.
 - The original allowlisted `Game.ini` / `Engine.ini` table remains under
   Advanced Settings for individual technical edits. Passwords, webhook URLs,
   token-like values, and sensitive

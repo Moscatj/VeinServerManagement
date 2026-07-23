@@ -125,6 +125,57 @@ BOOLEAN_FIELDS = {
     "show_scoreboard_badges",
 }
 
+CURATED_TAB_FIELDS = (
+    ("General", ("server_name", "server_description", "max_players", "public")),
+    (
+        "Access",
+        ("password", "admin_steam_ids", "super_admin_steam_ids", "whitelisted_players"),
+    ),
+    (
+        "Gameplay",
+        (
+            "pvp_enabled",
+            "vac_enabled",
+            "ai_spawner_enabled",
+            "time_multiplier",
+            "show_scoreboard_badges",
+        ),
+    ),
+    (
+        "Network",
+        ("bind_addr", "game_port", "query_port", "http_port", "heartbeat_interval"),
+    ),
+    (
+        "Discord",
+        ("discord_chat_webhook_url", "discord_chat_admin_webhook_url"),
+    ),
+)
+
+
+def _field_help(text: str) -> QtWidgets.QLabel:
+    label = QtWidgets.QLabel(text)
+    label.setWordWrap(True)
+    label.setProperty("fieldHelp", True)
+    return label
+
+
+def _field_changed(field: str, values: Mapping[str, Any], baseline: Mapping[str, Any]) -> bool:
+    if field in PROTECTED_REPLACEMENT_FIELDS:
+        return bool(values.get(field))
+    return values.get(field) != baseline.get(field)
+
+
+def update_curated_tab_markers(
+    owner, values: Mapping[str, Any], baseline: Mapping[str, Any]
+) -> None:
+    """Mark curated tabs containing unsaved values without changing navigation."""
+    tabs = getattr(owner, "tabsServerSettings", None)
+    if tabs is None:
+        return
+    for index, (label, fields) in enumerate(CURATED_TAB_FIELDS):
+        changed = any(_field_changed(field, values, baseline) for field in fields)
+        tabs.setTabText(index, f"{label} *" if changed else label)
+
 
 def _item_lookup(items: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, str], Mapping[str, Any]]:
     return {
@@ -505,18 +556,18 @@ def update_identity_access_form_state(owner) -> None:
             "",
         )
     )
-    owner.lblServerNetworkError.setText(
-        errors.get("bind_addr", "") or errors.get("ports", "")
-    )
-    owner.lblServerDiscordError.setText(
+    owner.lblServerNetworkBindError.setText(errors.get("bind_addr", ""))
+    owner.lblServerNetworkPortsError.setText(errors.get("ports", ""))
+    owner.lblServerDiscordChatError.setText(
         errors.get("discord_chat_webhook_url", "")
-        or errors.get("discord_chat_admin_webhook_url", "")
+    )
+    owner.lblServerDiscordAdminError.setText(
+        errors.get("discord_chat_admin_webhook_url", "")
     )
     dirty = any(
-        values.get(field) != baseline.get(field)
-        for field in IDENTITY_ACCESS_TARGETS
-        if field not in PROTECTED_REPLACEMENT_FIELDS
-    ) or any(bool(values.get(field)) for field in PROTECTED_REPLACEMENT_FIELDS)
+        _field_changed(field, values, baseline) for field in IDENTITY_ACCESS_TARGETS
+    )
+    update_curated_tab_markers(owner, values, baseline)
     owner._server_identity_dirty = dirty
     if errors:
         owner.lblServerIdentityState.setText("Resolve the highlighted fields before previewing changes.")
@@ -711,6 +762,12 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
         "Refresh to load the current Server Settings."
     )
 
+    general_layout.addWidget(
+        _field_help(
+            "Set how the server appears to players. Public visibility controls listing; "
+            "it does not open firewall or router ports."
+        )
+    )
     identity_group = QtWidgets.QGroupBox("Server Identity")
     identity_grid = QtWidgets.QGridLayout(identity_group)
     identity_grid.setColumnStretch(1, 1)
@@ -740,6 +797,12 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     general_layout.addWidget(identity_group)
     general_layout.addStretch(1)
 
+    access_layout.addWidget(
+        _field_help(
+            "Admins receive management permissions, super admins receive the highest "
+            "privilege level, and the whitelist limits who may join when used by VEIN."
+        )
+    )
     access_group = QtWidgets.QGroupBox("Access")
     access_grid = QtWidgets.QGridLayout(access_group)
     access_grid.setColumnStretch(1, 1)
@@ -807,6 +870,10 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     gameplay_form.addRow(owner.chkServerGameplayVac)
     gameplay_form.addRow(owner.chkServerGameplayAiSpawner)
     gameplay_form.addRow("World time multiplier", owner.spinServerGameplayTimeMultiplier)
+    gameplay_form.addRow(
+        "",
+        _field_help("1.0 is normal world time; higher values advance world time faster."),
+    )
     gameplay_form.addRow(owner.chkServerGameplayScoreboardBadges)
     gameplay_layout.addWidget(gameplay_group)
     gameplay_layout.addStretch(1)
@@ -834,15 +901,21 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     owner.spinServerNetworkHeartbeat = QtWidgets.QSpinBox()
     owner.spinServerNetworkHeartbeat.setRange(1, 3600)
     owner.spinServerNetworkHeartbeat.setSuffix(" seconds")
-    owner.lblServerNetworkError = QtWidgets.QLabel()
-    owner.lblServerNetworkError.setWordWrap(True)
-    owner.lblServerNetworkError.setProperty("fieldError", True)
+    owner.lblServerNetworkBindError = QtWidgets.QLabel()
+    owner.lblServerNetworkPortsError = QtWidgets.QLabel()
+    for error_label in (
+        owner.lblServerNetworkBindError,
+        owner.lblServerNetworkPortsError,
+    ):
+        error_label.setWordWrap(True)
+        error_label.setProperty("fieldError", True)
     network_form.addRow("Bind address", owner.edServerNetworkBindAddress)
+    network_form.addRow("", owner.lblServerNetworkBindError)
     network_form.addRow("Gameplay port", owner.spinServerNetworkGamePort)
     network_form.addRow("Steam query port", owner.spinServerNetworkQueryPort)
     network_form.addRow("HTTP API port", owner.spinServerNetworkHttpPort)
+    network_form.addRow("", owner.lblServerNetworkPortsError)
     network_form.addRow("Heartbeat interval", owner.spinServerNetworkHeartbeat)
-    network_form.addRow("", owner.lblServerNetworkError)
     network_layout.addWidget(network_group)
     network_layout.addStretch(1)
 
@@ -889,20 +962,26 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
                 toggle.setText("Hide" if visible else "Show"),
             )
         )
-    owner.lblServerDiscordError = QtWidgets.QLabel()
-    owner.lblServerDiscordError.setWordWrap(True)
-    owner.lblServerDiscordError.setProperty("fieldError", True)
+    owner.lblServerDiscordChatError = QtWidgets.QLabel()
+    owner.lblServerDiscordAdminError = QtWidgets.QLabel()
+    for error_label in (
+        owner.lblServerDiscordChatError,
+        owner.lblServerDiscordAdminError,
+    ):
+        error_label.setWordWrap(True)
+        error_label.setProperty("fieldError", True)
     discord_form.addRow(
         "Game chat webhook",
         webhook_row(owner.edServerDiscordChatWebhook, owner.btnServerDiscordChatVisibility),
     )
     discord_form.addRow("", owner.lblServerDiscordChatStatus)
+    discord_form.addRow("", owner.lblServerDiscordChatError)
     discord_form.addRow(
         "Admin reports webhook",
         webhook_row(owner.edServerDiscordAdminWebhook, owner.btnServerDiscordAdminVisibility),
     )
     discord_form.addRow("", owner.lblServerDiscordAdminStatus)
-    discord_form.addRow("", owner.lblServerDiscordError)
+    discord_form.addRow("", owner.lblServerDiscordAdminError)
     discord_layout.addWidget(discord_group)
     discord_layout.addStretch(1)
 
@@ -1020,6 +1099,11 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     shared_actions_layout.setContentsMargins(8, 8, 8, 8)
     shared_actions_layout.setSpacing(8)
     shared_actions_layout.addWidget(owner.lblServerIdentityState)
+    owner.lblServerSettingsApplyHint = _field_help(
+        "Review combines changes from every marked tab. Apply creates a timestamped "
+        "backup and validates the files; restart the server afterward."
+    )
+    shared_actions_layout.addWidget(owner.lblServerSettingsApplyHint)
     identity_actions = QtWidgets.QHBoxLayout()
     identity_actions.addWidget(owner.btnServerIdentityReset)
     identity_actions.addStretch(1)

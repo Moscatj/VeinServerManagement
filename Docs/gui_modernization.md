@@ -105,6 +105,8 @@ not a claim that each phase is complete.
 - [x] Add unsaved-change state, refresh/discard protection, inline validation,
   batch review, a shared action footer, and restart guidance across curated tabs.
 - [x] Clearly separate VEIN game-chat/admin webhooks from app notifications.
+- [x] Mark curated tabs with unsaved changes and place validation feedback next
+  to the affected network and Discord controls.
 - Add broader restart-required indicators,
   validation summaries, and previews for sensitive writes.
 

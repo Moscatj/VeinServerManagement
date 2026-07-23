@@ -13,6 +13,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
   Setup. All tabs share unsaved-change tracking, inline validation, one guarded
   batch review/apply flow, restart guidance, and secret-masked diffs. The
   original allowlisted INI table remains available under Advanced Settings.
+  Edited tabs are marked until changes are discarded or applied, field guidance
+  explains less-obvious behavior, and network/Discord errors appear beside the
+  controls that need attention.
+  Helper text and shared action areas use readable neutral palette colors instead
+  of low-contrast or conflicting theme accent backgrounds.
 
 ## 2.11.0 - 2026-07-21
 
