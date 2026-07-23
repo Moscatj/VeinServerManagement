@@ -16,10 +16,24 @@ Stage only the intended files, then run:
 Scripts\PublishValidated.bat -CommitMessage "Short intentional summary"
 ```
 
+To preserve and publish one or more commits already created locally, require a
+clean worktree and run:
+
+```powershell
+Scripts\PublishValidated.bat -ExistingCommits
+```
+
+Existing-commit mode requires `origin/main` to be an ancestor of local `main`,
+so the push is fast-forward-only. It preserves every local commit and message,
+validates the complete resulting tree, pushes the exact local HEAD, and watches
+CI for that HEAD. It refuses staged, unstaged, untracked, diverged, or empty
+publish states.
+
 The helper:
 
 1. requires an authenticated GitHub CLI session;
-2. requires local `main` to match `origin/main`;
+2. requires local `main` to match `origin/main` before creating a new commit, or
+   a clean fast-forward-only local commit chain in `-ExistingCommits` mode;
 3. refuses unstaged or untracked files so publish scope is explicit;
 4. runs `Scripts\ValidateChange.bat`;
 5. commits and pushes only after local validation passes;
@@ -27,8 +41,9 @@ The helper:
    including Python compatibility and any applicable installer build; and
 7. exits unsuccessfully if CI fails or cannot be confirmed.
 
-The helper never stages files, chooses a commit message, creates a tag, or
-repairs failures automatically. Those decisions remain explicit.
+The helper never stages files, rewrites existing commits, chooses an existing
+commit message, creates a tag, or repairs failures automatically. Those
+decisions remain explicit.
 
 If CI fails after a direct push, `main` is not considered publishable. Fix
 forward immediately and do not create a tag or publish another change until CI

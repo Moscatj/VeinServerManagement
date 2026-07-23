@@ -56,6 +56,16 @@ class ValidationWorkflowTests(unittest.TestCase):
         self.assertIn("$parsedRuns.Count -gt 0", text)
         self.assertNotIn("git add", text)
 
+    def test_publish_supports_clean_fast_forward_existing_commit_chains(self) -> None:
+        text = PUBLISH_PS1.read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$ExistingCommits", text)
+        self.assertIn('git merge-base --is-ancestor "$Remote/$Branch" HEAD', text)
+        self.assertIn('git rev-list --count "$Remote/$Branch..HEAD"', text)
+        self.assertIn('$commit = $localHead', text)
+        self.assertIn('git push $Remote "HEAD:$Branch"', text)
+        self.assertIn("existing commit messages are preserved", text)
+
     def test_publish_wrapper_uses_process_scoped_policy_bypass(self) -> None:
         text = PUBLISH_BAT.read_text(encoding="utf-8")
 

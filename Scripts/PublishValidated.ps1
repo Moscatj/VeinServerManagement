@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$CommitMessage,
+    [string]$CommitMessage = "",
+    [switch]$ExistingCommits,
     [string]$PythonExe = "python",
     [string]$Remote = "origin",
     [string]$Branch = "main",
@@ -33,31 +33,60 @@ try {
     Assert-LastExitCode "Could not fetch $Remote/$Branch"
     $localHead = (& git rev-parse HEAD).Trim()
     $remoteHead = (& git rev-parse "$Remote/$Branch").Trim()
-    if ($localHead -ne $remoteHead) {
-        throw "Local HEAD must equal $Remote/$Branch before publishing. Pull/reconcile changes first."
-    }
 
     & git diff --quiet
     if ($LASTEXITCODE -ne 0) {
-        throw "Unstaged tracked changes exist. Stage the exact intended files before publishing."
+        throw "Unstaged tracked changes exist. Commit them or stage the exact intended files before publishing."
     }
     $untracked = @(& git ls-files --others --exclude-standard)
     if ($untracked.Count -gt 0) {
         throw "Untracked files exist. Stage the intended files or remove them from the publish scope: $($untracked -join ', ')"
     }
-    & git diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
-        throw "No staged changes are available to commit."
+    if ($ExistingCommits) {
+        if (-not [string]::IsNullOrWhiteSpace($CommitMessage)) {
+            throw "CommitMessage cannot be used with ExistingCommits; existing commit messages are preserved."
+        }
+        & git diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+            throw "Staged changes exist. Commit them before publishing with ExistingCommits."
+        }
+        & git merge-base --is-ancestor "$Remote/$Branch" HEAD
+        if ($LASTEXITCODE -ne 0) {
+            throw "Local HEAD is not a fast-forward descendant of $Remote/$Branch. Pull/reconcile changes before publishing."
+        }
+        $ahead = [int]((& git rev-list --count "$Remote/$Branch..HEAD").Trim())
+        Assert-LastExitCode "Could not count unpublished commits"
+        if ($ahead -le 0) {
+            throw "No unpublished commits are available on $Branch."
+        }
+        Write-Host "[PUBLISH] Validating $ahead existing commit(s) ending at $localHead..." -ForegroundColor Cyan
+    }
+    else {
+        if ($localHead -ne $remoteHead) {
+            throw "Local HEAD must equal $Remote/$Branch before creating a publish commit. Use -ExistingCommits for a clean fast-forward commit chain."
+        }
+        if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
+            throw "CommitMessage is required when publishing staged changes."
+        }
+        & git diff --cached --quiet
+        if ($LASTEXITCODE -eq 0) {
+            throw "No staged changes are available to commit."
+        }
     }
 
     & (Join-Path $PSScriptRoot "ValidateChange.ps1") -PythonExe $PythonExe
     Assert-LastExitCode "Local validation failed; nothing was committed or pushed"
 
-    & git commit -m $CommitMessage
-    Assert-LastExitCode "Commit failed"
-    $commit = (& git rev-parse HEAD).Trim()
+    if ($ExistingCommits) {
+        $commit = $localHead
+    }
+    else {
+        & git commit -m $CommitMessage
+        Assert-LastExitCode "Commit failed"
+        $commit = (& git rev-parse HEAD).Trim()
+    }
 
-    & git push $Remote $Branch
+    & git push $Remote "HEAD:$Branch"
     Assert-LastExitCode "Push failed"
 
     Write-Host "[PUBLISH] Waiting for GitHub CI for $commit..." -ForegroundColor Cyan

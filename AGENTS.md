@@ -210,10 +210,13 @@ Coverage is a risk guide, not a 100% target. Follow
 - Do not discard, reset, or overwrite unrelated user changes.
 - Do not commit, push, create a pull request, or tag unless the user requests
   that repository action.
-- For an owner-authorized direct push to `main`, stage only the intended files
-  and use `Scripts\PublishValidated.bat`. Local validation and the GitHub CI run
-  for the exact pushed commit must both pass. If remote CI fails, fix forward
-  immediately and do not tag or publish further changes while `main` is red.
+- For an owner-authorized direct push to `main`, use
+  `Scripts\PublishValidated.bat`: stage only the intended files and provide
+  `-CommitMessage`, or use `-ExistingCommits` to preserve and publish a clean,
+  fast-forward-only chain of local commits. Local validation and the GitHub CI
+  run for the exact pushed commit must both pass. If remote CI fails, fix
+  forward immediately and do not tag or publish further changes while `main`
+  is red.
 - External contributors must use a pull request. Prefer a draft pull request
   for high-risk or experimental owner changes when pre-merge CI or review is
   valuable.

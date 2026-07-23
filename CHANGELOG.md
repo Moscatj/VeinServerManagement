@@ -6,6 +6,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Extended validated owner publishing so a clean, fast-forward-only chain of
+  local commits can be validated and pushed together without squashing or
+  rewriting its commit messages; exact-HEAD GitHub CI remains mandatory.
+
 - Added a dedicated read-only Backups page with background archive discovery,
   newest-first history, category, timestamp, size, selectable full paths, and
   access to the backup folder. Backup Now is available on both Home and Backups
