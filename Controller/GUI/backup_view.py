@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 from Tools.backups import list_backup_archives, make_backup
 from Tools.backup_pins import pin_backup, remove_backup_pin, update_backup_pin
 from Tools.backup_restore_preview import inspect_restore_archive
-from Tools.backup_restore import guarded_restore
+from Tools.backup_restore import guarded_restore, inspect_restore_operation
 from Tools.process import is_server_running
 from Tools.backup_policy import (
     BackupPolicy,
@@ -90,10 +90,17 @@ class BackupHistorySignals(QtCore.QObject):
 class BackupHistoryWorker(QtCore.QRunnable):
     """Scan a configured backup root without blocking the GUI thread."""
 
-    def __init__(self, root: str | Path, *, limit: int | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        limit: int | None = None,
+        operation_dir: str | Path | None = None,
+    ) -> None:
         super().__init__()
         self.root = Path(root)
         self.limit = limit
+        self.operation_dir = Path(operation_dir) if operation_dir else None
         self.signals = BackupHistorySignals()
 
     def run(self) -> None:
@@ -103,6 +110,11 @@ class BackupHistoryWorker(QtCore.QRunnable):
                 "ok": True,
                 "root": str(self.root),
                 "archives": [archive.as_dict() for archive in archives],
+                "restore_status": (
+                    inspect_restore_operation(self.operation_dir).as_dict()
+                    if self.operation_dir
+                    else {}
+                ),
                 "error": "",
             }
         except Exception as exc:
@@ -110,6 +122,7 @@ class BackupHistoryWorker(QtCore.QRunnable):
                 "ok": False,
                 "root": str(self.root),
                 "archives": [],
+                "restore_status": {},
                 "error": str(exc),
             }
         self.signals.ready.emit(payload)
@@ -633,6 +646,31 @@ def apply_backup_history_filter(owner) -> None:
 def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
     """Cache and render a backup history payload without filesystem work."""
     archives: Sequence[Mapping[str, Any]] = payload.get("archives") or []
+    restore_status = payload.get("restore_status") or {}
+    if restore_status.get("visible"):
+        kind = str(restore_status.get("kind") or "warning")
+        details = [
+            str(restore_status.get("summary") or "Restore history needs attention."),
+            str(restore_status.get("guidance") or ""),
+        ]
+        for label, key in (
+            ("Safety backup", "safety_backup"),
+            ("Recovery copy", "rollback_copy"),
+            ("Journal", "journal"),
+        ):
+            value = str(restore_status.get(key) or "")
+            if value:
+                details.append(f"{label}: {value}")
+        owner.lblRestoreRecoveryState.setText(
+            "\n".join(item for item in details if item)
+        )
+        owner.lblRestoreRecoveryState.set_kind(
+            "error" if kind == "error" else "info" if kind == "active" else "warning"
+        )
+        owner.lblRestoreRecoveryState.show()
+    else:
+        owner.lblRestoreRecoveryState.clear()
+        owner.lblRestoreRecoveryState.hide()
     owner._backup_history_archives = list(archives)
     owner._backup_history_error = str(payload.get("error") or "")
     owner._backup_history_root = str(payload.get("root") or "")
@@ -712,6 +750,9 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
             "verified, protected Before Restore safety point."
         )
     )
+    owner.lblRestoreRecoveryState = InlineNotice()
+    owner.lblRestoreRecoveryState.hide()
+    layout.addWidget(owner.lblRestoreRecoveryState)
 
     owner._backup_policy_loading = False
     owner._backup_policy_baseline = None

@@ -133,7 +133,10 @@ not a claim that each phase is complete.
   the server, validating the source, and protecting the current active save.
   [x] Archive validation, destination preview, explicit final confirmation, and
   guarded background activation through the shared safety-backup/staging/rollback
-  engine are implemented. Interrupted-operation recovery guidance remains.
+  engine are implemented.
+- [x] Surface restore-journal attention only when useful, distinguishing active,
+  safely aborted, verified rollback, interrupted, and rollback-failed states with
+  paths to preserved safety/recovery artifacts.
 - Turn diagnostics into actionable repair cards instead of long text output.
 
 ### Phase 7 - GUI Architecture

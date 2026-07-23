@@ -27,7 +27,8 @@ must live in the appropriate Tools module.
   destination, and server-state assessment for the future guarded restore flow.
 - **backup_restore.py** - Guarded manual restore and missing-save startup recovery
   with locking, journaling, mandatory pinned safety backup where a live save
-  exists, verified staging, atomic activation,
+  exists, verified staging, atomic activation, and read-only recovery-state
+  assessment for operator guidance,
   and automatic rollback.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.
 - **health_check.py** - Read-only project, dependency, path, SteamCMD, secret, and server-config diagnostics.

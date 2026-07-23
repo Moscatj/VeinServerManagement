@@ -59,6 +59,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
   must accept a final consequence summary. Restore runs off the GUI thread through
   the guarded backend, disables conflicting lifecycle/policy actions, creates and
   pins a verified Before Restore safety point, and leaves the server stopped.
+  Backup history now surfaces restore-journal attention without cluttering normal
+  operation: safely aborted, verified rollback, interrupted, unreadable, and
+  rollback-failed states receive distinct guidance and identify preserved safety
+  or recovery artifacts. Pre-replacement failures now record an explicit terminal
+  state instead of resembling interrupted staging.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

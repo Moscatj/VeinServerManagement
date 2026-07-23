@@ -84,8 +84,13 @@ automatic replacement.
 - Completion leaves the server stopped and refreshes archive history so the new
   safety point is visible.
 
-Interrupted-operation journal guidance remains a future UX improvement. The
-backend already preserves the journal and recovery artifacts needed for diagnosis.
+The Backups page also reads the operation journal during archive refresh. Normal
+completed history stays hidden to avoid clutter. Active work, safe pre-change
+failure, verified rollback, interrupted phases, unreadable state, and failed
+rollback are distinguished explicitly. Critical guidance identifies the journal,
+protected safety archive, and preserved recovery copy while telling the operator
+to keep the server stopped. The GUI never deletes or silently repairs those
+artifacts.
 
 - The legacy `restore_from_latest()` compatibility entrypoint remains callable,
   but direct extraction is disabled so it cannot bypass guarded restoration.

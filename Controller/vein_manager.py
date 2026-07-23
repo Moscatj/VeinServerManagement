@@ -1737,7 +1737,10 @@ class Main(QtWidgets.QMainWindow):
         self.lblBackupHistoryStatus.setText(f"Scanning backup archives under {root}.")
         self.lblBackupHistoryStatus.set_kind("info")
         self.btnBackupHistoryRefresh.setEnabled(False)
-        worker = BackupHistoryWorker(root)
+        worker = BackupHistoryWorker(
+            root,
+            operation_dir=Path(_runtime_paths(self.config_path)["runtime_dir"]),
+        )
         worker.signals.ready.connect(self._apply_backup_history)
         self._pool.start(worker)
 

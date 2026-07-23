@@ -153,6 +153,9 @@ class GuardedRestoreTests(unittest.TestCase):
 
             self.assertEqual(live.read_bytes(), b"current live save")
             create.assert_not_called()
+            status = backup_restore.inspect_restore_operation(root / "Runtime")
+            self.assertEqual(status.phase, "failed_no_change")
+            self.assertEqual(status.kind, "warning")
 
     def test_server_start_during_staging_aborts_before_replacement(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,6 +260,11 @@ class GuardedRestoreTests(unittest.TestCase):
             runtime = root / "Runtime"
             runtime.mkdir()
             (runtime / "restore.lock").write_text("existing", encoding="utf-8")
+            journal = runtime / "restore.state.json"
+            journal.write_text(
+                json.dumps({"phase": "staging", "operation_id": "first"}),
+                encoding="utf-8",
+            )
 
             with self.assertRaisesRegex(backup_restore.GuardedRestoreError, "active"):
                 backup_restore.guarded_restore(
@@ -268,6 +276,10 @@ class GuardedRestoreTests(unittest.TestCase):
                 )
 
             self.assertEqual(live.read_bytes(), b"current live save")
+            self.assertEqual(
+                json.loads(journal.read_text(encoding="utf-8"))["operation_id"],
+                "first",
+            )
 
     def test_failed_rollback_preserves_recovery_copy_and_pinned_safety(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -310,6 +322,43 @@ class GuardedRestoreTests(unittest.TestCase):
                 (root / "Runtime" / "restore.state.json").read_text(encoding="utf-8")
             )
             self.assertEqual(state["phase"], "rollback_failed")
+            status = backup_restore.inspect_restore_operation(root / "Runtime")
+            self.assertEqual(status.kind, "error")
+            self.assertIn("Do not start", status.guidance)
+            self.assertEqual(status.rollback_copy, str(recovery[0]))
+
+    def test_restore_operation_status_detects_active_and_interrupted_phases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp)
+            journal = runtime / "restore.state.json"
+            journal.write_text(
+                json.dumps({"phase": "staging", "safety_backup": "safety.zip"}),
+                encoding="utf-8",
+            )
+
+            interrupted = backup_restore.inspect_restore_operation(runtime)
+            self.assertEqual(interrupted.kind, "error")
+            self.assertIn("interrupted", interrupted.summary)
+
+            (runtime / "restore.lock").write_text("active", encoding="utf-8")
+            active = backup_restore.inspect_restore_operation(runtime)
+            self.assertEqual(active.kind, "active")
+            self.assertTrue(active.visible)
+
+    def test_restore_operation_status_hides_completed_and_reports_bad_journal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp)
+            journal = runtime / "restore.state.json"
+            journal.write_text(json.dumps({"phase": "complete"}), encoding="utf-8")
+
+            complete = backup_restore.inspect_restore_operation(runtime)
+            self.assertEqual(complete.kind, "complete")
+            self.assertFalse(complete.visible)
+
+            journal.write_text("not json", encoding="utf-8")
+            unreadable = backup_restore.inspect_restore_operation(runtime)
+            self.assertEqual(unreadable.phase, "unreadable")
+            self.assertEqual(unreadable.kind, "error")
 
     def test_startup_recovery_uses_newest_valid_archive_without_overwriting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

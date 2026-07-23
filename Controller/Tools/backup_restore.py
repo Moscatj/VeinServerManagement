@@ -44,6 +44,26 @@ class StartupRecoveryResult:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class RestoreOperationStatus:
+    phase: str
+    kind: str
+    summary: str
+    guidance: str
+    journal: str
+    safety_backup: str = ""
+    rollback_copy: str = ""
+
+    @property
+    def visible(self) -> bool:
+        return self.kind in {"active", "warning", "error"}
+
+    def as_dict(self) -> dict:
+        payload = asdict(self)
+        payload["visible"] = self.visible
+        return payload
+
+
 def _hash_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -64,6 +84,111 @@ def _write_json(path: Path, payload: dict) -> None:
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     temporary.replace(path)
+
+
+def inspect_restore_operation(operation_dir: Path) -> RestoreOperationStatus:
+    """Read the manual-restore journal and describe any operator action needed."""
+    operation_dir = Path(operation_dir)
+    journal = operation_dir / "restore.state.json"
+    lock = operation_dir / "restore.lock"
+    if not journal.is_file():
+        return RestoreOperationStatus(
+            phase="none",
+            kind="none",
+            summary="No restore operation has been recorded.",
+            guidance="",
+            journal=str(journal),
+        )
+    try:
+        payload = json.loads(journal.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("journal root is not an object")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return RestoreOperationStatus(
+            phase="unreadable",
+            kind="error",
+            summary="Restore history needs attention because its journal is unreadable.",
+            guidance=(
+                "Keep the server stopped and inspect the runtime folder before another "
+                f"restore. Journal error: {exc}"
+            ),
+            journal=str(journal),
+        )
+
+    phase = str(payload.get("phase") or "unknown")
+    safety = str(payload.get("safety_backup") or "")
+    rollback = str(payload.get("rollback_copy") or "")
+    if phase == "complete":
+        return RestoreOperationStatus(
+            phase=phase,
+            kind="complete",
+            summary="The last restore completed and passed verification.",
+            guidance="",
+            journal=str(journal),
+            safety_backup=safety,
+        )
+    if phase == "failed_no_change":
+        return RestoreOperationStatus(
+            phase=phase,
+            kind="warning",
+            summary="The last restore stopped safely before changing the live save.",
+            guidance="Review the reported error, then run Review & Restore again if desired.",
+            journal=str(journal),
+            safety_backup=safety,
+        )
+    if phase == "failed_rolled_back":
+        return RestoreOperationStatus(
+            phase=phase,
+            kind="warning",
+            summary="The last restore failed, but the previous live save was restored and verified.",
+            guidance=(
+                "Keep the protected Before Restore point until the live server state has "
+                "been checked. Review the restore error before retrying."
+            ),
+            journal=str(journal),
+            safety_backup=safety,
+        )
+    if phase == "rollback_failed":
+        return RestoreOperationStatus(
+            phase=phase,
+            kind="error",
+            summary="A restore failed and automatic rollback could not be verified.",
+            guidance=(
+                "Do not start the server. Preserve the runtime recovery copy and use the "
+                "protected Before Restore backup to recover the prior save."
+            ),
+            journal=str(journal),
+            safety_backup=safety,
+            rollback_copy=rollback,
+        )
+    if phase in {"validating_current_save", "staging", "replacing"}:
+        active = lock.is_file()
+        return RestoreOperationStatus(
+            phase=phase,
+            kind="active" if active else "error",
+            summary=(
+                "A guarded restore is currently running."
+                if active
+                else f"A restore appears to have been interrupted during {phase.replace('_', ' ')}."
+            ),
+            guidance=(
+                "Wait for the active restore to finish."
+                if active
+                else "Keep the server stopped and inspect the journal and any recovery copy before retrying."
+            ),
+            journal=str(journal),
+            safety_backup=safety,
+            rollback_copy=rollback,
+        )
+    return RestoreOperationStatus(
+        phase=phase,
+        kind="error",
+        summary=f"Restore history contains an unknown phase: {phase}.",
+        guidance="Keep the server stopped and inspect the restore journal before retrying.",
+        journal=str(journal),
+        safety_backup=safety,
+        rollback_copy=rollback,
+    )
 
 
 def _stage_archive_save(
@@ -271,6 +396,21 @@ def guarded_restore(
                         "phase": "failed_rolled_back",
                         "archive": str(archive),
                         "destination": str(destination),
+                        "safety_backup": str(safety_backup or ""),
+                        "error": str(failure),
+                    },
+                )
+            except OSError:
+                pass
+        elif not replaced and lock_fd is not None:
+            try:
+                _write_json(
+                    journal_path,
+                    {
+                        "schema": 1,
+                        "phase": "failed_no_change",
+                        "archive": str(archive),
+                        "destination": str(destination or ""),
                         "safety_backup": str(safety_backup or ""),
                         "error": str(failure),
                     },

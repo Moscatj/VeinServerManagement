@@ -84,6 +84,10 @@ Released through `v2.11.0`:
   pinned safety backup, staged/hash-verified replacement, atomic activation, and
   automatic rollback. The Backups GUI delegates execution to this shared engine
   on a background worker and leaves the server stopped afterward.
+- Restore-journal status is evaluated during backup-history refresh. Routine
+  completed state stays out of the way, while active, safely aborted, rolled-back,
+  interrupted, unreadable, and rollback-failed operations receive distinct
+  guidance with preserved safety and recovery artifact paths.
 - Missing-save startup recovery is restored for normal and crash-monitor starts.
   It is independently configurable in Backup Policy, uses validated staged
   activation, never replaces an existing save, and blocks an established-server

@@ -359,6 +359,51 @@ class GuiHelperTests(unittest.TestCase):
         self.assertTrue(owner.btnBackupHistoryPreview.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
+    def test_backup_history_surfaces_restore_recovery_guidance_only_when_needed(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_history(
+            owner,
+            {
+                "ok": True,
+                "root": "C:/Backups",
+                "archives": [],
+                "error": "",
+                "restore_status": {
+                    "visible": True,
+                    "kind": "error",
+                    "summary": "Automatic rollback could not be verified.",
+                    "guidance": "Do not start the server.",
+                    "safety_backup": "C:/Backups/BeforeRestore/safety.zip",
+                    "rollback_copy": "C:/Save/.recovery.tmp",
+                    "journal": "C:/Runtime/restore.state.json",
+                },
+            },
+        )
+
+        self.assertFalse(owner.lblRestoreRecoveryState.isHidden())
+        self.assertEqual(
+            owner.lblRestoreRecoveryState.property("noticeKind"), "error"
+        )
+        self.assertIn("Do not start", owner.lblRestoreRecoveryState.text())
+        self.assertIn("safety.zip", owner.lblRestoreRecoveryState.text())
+
+        populate_backup_history(
+            owner,
+            {
+                "ok": True,
+                "root": "C:/Backups",
+                "archives": [],
+                "error": "",
+                "restore_status": {"visible": False},
+            },
+        )
+        self.assertTrue(owner.lblRestoreRecoveryState.isHidden())
+        widget.close()
+
     def test_restore_preview_dialog_is_read_only_and_explains_safety_plan(self) -> None:
         dialog = build_restore_preview_dialog(
             None,
