@@ -113,7 +113,15 @@ not a claim that each phase is complete.
 ### Phase 6 - Logs, Backups, And Diagnostics
 
 - Consolidate log tools into one Logs page with consistent filtering.
-- Give backups a history-oriented page with safe restore guidance.
+- [x] Give backups a history-oriented read-only page with safe restore guidance;
+  keep restore unavailable until preview and current-save protection exist.
+- [x] Run one shared Backup Now action off the GUI thread from Home and Backups.
+- [x] Keep Home backup controls compact and route history, folder access, and
+  detailed management to the dedicated Backups page.
+- Add an intuitive backup-policy editor for global enablement, individual event
+  triggers, schedules, per-category count/age retention, and storage guidance.
+- Design a guarded Save Library that can load a selected save only after stopping
+  the server, validating the source, and protecting the current active save.
 - Turn diagnostics into actionable repair cards instead of long text output.
 
 ### Phase 7 - GUI Architecture

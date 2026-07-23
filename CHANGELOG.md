@@ -6,6 +6,16 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Added a dedicated read-only Backups page with background archive discovery,
+  newest-first history, category, timestamp, size, selectable full paths, and
+  access to the backup folder. Backup Now is available on both Home and Backups
+  through one non-blocking source/packaged helper with shared progress and
+  results. Save loading remains unavailable until it has destination preview,
+  current-save protection, and post-load validation.
+  Manual creation now honors the primary `backups.enabled` feature gate while
+  retaining compatibility with legacy `backups.enable` configurations.
+  Home now keeps only backup health, the last successful time, Backup Now, and
+  View Backups; archive details and folder access live on the dedicated page.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

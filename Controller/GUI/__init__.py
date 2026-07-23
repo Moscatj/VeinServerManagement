@@ -81,6 +81,12 @@ from .quickstart import (
     update_quick_start_save_games_path,
 )
 from .about import about_text, show_about_dialog
+from .backup_view import (
+    BackupHistoryWorker,
+    build_backup_history_view,
+    format_archive_size,
+    populate_backup_history,
+)
 
 __all__ = [
     "NavigationItem",
@@ -150,4 +156,8 @@ __all__ = [
     "update_quick_start_save_games_path",
     "about_text",
     "show_about_dialog",
+    "BackupHistoryWorker",
+    "build_backup_history_view",
+    "format_archive_size",
+    "populate_backup_history",
 ]

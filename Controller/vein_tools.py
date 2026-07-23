@@ -112,6 +112,9 @@ COMMANDS: dict[str, CommandSpec] = {
     "nightly-backup": CommandSpec(
         "nightly_backup", "main", "Run the nightly backup routine once"
     ),
+    "manual-backup": CommandSpec(
+        "Tools.backups", "manual_backup_main", "Create one manual save backup"
+    ),
 }
 
 SPECIAL_COMMANDS = {"restart-server", "steamcmd-run"}

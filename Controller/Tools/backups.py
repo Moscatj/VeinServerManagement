@@ -1,11 +1,11 @@
 # Controller/Tools/backups.py
 from __future__ import annotations
 
-import os, json, time, shutil, zipfile, hashlib
+import os, json, time, shutil, zipfile, hashlib, sys
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
-from dataclasses import is_dataclass, asdict
+from dataclasses import asdict, dataclass, is_dataclass
 
 from Tools.config_io import load_and_validate_config
 from .state_io import write_state, now_iso
@@ -18,6 +18,20 @@ class BackupError(Exception):
 
 class BackupSkip(BackupError):
     """A soft skip (feature disabled, no save found, etc.)."""
+
+
+@dataclass(frozen=True)
+class BackupArchive:
+    """Read-only archive metadata used by backup history surfaces."""
+
+    path: str
+    filename: str
+    category: str
+    modified: str
+    size_bytes: int
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
 
 def _active_cfg_path() -> Path:
@@ -34,9 +48,6 @@ def _active_cfg_path() -> Path:
     raise BackupError(
         "No configuration found. Set VEIN_CONFIG or place YAML/JSON under Config/."
     )
-
-
-from dataclasses import is_dataclass, asdict
 
 
 def _cfg_to_dict(v):
@@ -195,9 +206,12 @@ def _save_filenames() -> list[str]:
 
 def _feature_enabled() -> bool:
     cfg = _cfg()
-    return bool(
-        _b("enable", (cfg.get("features", {}) or {}).get("enable_backups", True))
-    )
+    backup_cfg = cfg.get("backups") or {}
+    if "enabled" in backup_cfg:
+        return bool(backup_cfg["enabled"])
+    if "enable" in backup_cfg:
+        return bool(backup_cfg["enable"])
+    return bool((cfg.get("features", {}) or {}).get("enable_backups", True))
 
 
 def _root() -> Path:
@@ -384,6 +398,57 @@ def _prune_log_snapshots() -> dict:
 # -----------------------------
 # Public API
 # -----------------------------
+def list_backup_archives(root: Path, *, limit: int = 200) -> list[BackupArchive]:
+    """Return newest ZIP archives below ``root`` without opening or modifying them."""
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    entries: list[tuple[float, BackupArchive]] = []
+    for path in root.rglob("*.zip"):
+        try:
+            if not path.is_file():
+                continue
+            stat = path.stat()
+            relative_parent = path.parent.relative_to(root)
+            category = "Root" if not relative_parent.parts else " / ".join(relative_parent.parts)
+            modified = datetime.fromtimestamp(stat.st_mtime).astimezone().strftime(
+                "%Y-%m-%d %H:%M:%S %Z"
+            )
+            entries.append(
+                (
+                    stat.st_mtime,
+                    BackupArchive(
+                        path=str(path),
+                        filename=path.name,
+                        category=category,
+                        modified=modified,
+                        size_bytes=stat.st_size,
+                    ),
+                )
+            )
+        except (OSError, ValueError):
+            continue
+    entries.sort(key=lambda item: item[0], reverse=True)
+    return [entry for _, entry in entries[: max(1, int(limit))]]
+
+
+def manual_backup_main() -> int:
+    """Create one manual backup for the active CLI configuration."""
+    try:
+        path = make_backup("Manual")
+        print(f"Backup created: {path}")
+        return 0
+    except BackupSkip as exc:
+        print(f"Backup skipped: {exc}")
+        return 2
+    except BackupError as exc:
+        print(f"Backup failed: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Backup failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def make_backup(
     reason: str, files: list[Path] | None = None, *, dst: Path | None = None
 ) -> Optional[Path]:

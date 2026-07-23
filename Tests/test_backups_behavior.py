@@ -19,6 +19,29 @@ from Tools import backups  # noqa: E402
 
 
 class BackupsBehaviorTests(unittest.TestCase):
+    def test_manual_backup_main_reports_success_skip_and_failure(self) -> None:
+        created = Path("Backups/Manual/example.zip")
+        with mock.patch.object(backups, "make_backup", return_value=created), mock.patch(
+            "builtins.print"
+        ) as printer:
+            success = backups.manual_backup_main()
+        self.assertEqual(success, 0)
+        self.assertIn("Backup created", printer.call_args.args[0])
+
+        with mock.patch.object(
+            backups, "make_backup", side_effect=backups.BackupSkip("disabled")
+        ), mock.patch("builtins.print") as printer:
+            skipped = backups.manual_backup_main()
+        self.assertEqual(skipped, 2)
+        self.assertIn("Backup skipped", printer.call_args.args[0])
+
+        with mock.patch.object(
+            backups, "make_backup", side_effect=backups.BackupError("disk full")
+        ), mock.patch("builtins.print") as printer:
+            failed = backups.manual_backup_main()
+        self.assertEqual(failed, 1)
+        self.assertIn("Backup failed", printer.call_args.args[0])
+
     def _cfg(self, base: Path, *, enabled: bool = True) -> dict:
         return {
             "backups": {
@@ -76,6 +99,22 @@ class BackupsBehaviorTests(unittest.TestCase):
             ), mock.patch("builtins.print"):
                 with self.assertRaises(backups.BackupSkip):
                     backups.make_backup("Manual")
+
+    def test_feature_gate_honors_primary_enabled_key_and_legacy_enable_key(self) -> None:
+        with mock.patch.object(
+            backups, "_cfg", return_value={"backups": {"enabled": False}}
+        ):
+            self.assertFalse(backups._feature_enabled())
+        with mock.patch.object(
+            backups, "_cfg", return_value={"backups": {"enable": False}}
+        ):
+            self.assertFalse(backups._feature_enabled())
+        with mock.patch.object(
+            backups,
+            "_cfg",
+            return_value={"backups": {"enabled": True, "enable": False}},
+        ):
+            self.assertTrue(backups._feature_enabled())
 
     def test_make_backup_raises_skip_when_save_is_missing(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

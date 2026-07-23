@@ -62,6 +62,8 @@ Released through `v2.11.0`:
 - Quick Start now distinguishes app notifications from VEIN game-chat and
   admin-report webhooks, while lifecycle state remains accurate through
   joinable readiness and controlled monitor shutdown.
+- The GUI provides read-only backup history across save, log, and configuration
+  archives without exposing an insufficiently guarded restore action.
 
 ## Near-Term Priorities
 
@@ -209,7 +211,7 @@ Next improvements:
 - Make backup discovery and operator-driven restore easier.
 - Expand the allowlist only when a setting is documented and can be validated.
 
-Out of scope:
+Out of scope for the guarded configuration editor:
 
 - Editing saves, logs, binaries, content files, or arbitrary Steam/game files.
 - Silent automatic rewrites during startup.
@@ -228,6 +230,37 @@ The approved phased GUI plan is documented in `Docs/gui_modernization.md`.
   artifacts.
 - Add first-run diagnostics that make installed version, config path, server
   root, and validation status easy to verify.
+
+### Backup Policy And Save Management
+
+The long-term backup experience should let operators balance rollback safety
+against storage use without hand-editing YAML.
+
+- Provide a global backup enable switch plus individual controls for manual,
+  startup, shutdown, player login/logout, autosave, crash, and scheduled backup
+  triggers where the underlying event is supported reliably.
+- Let each category use count-only, age-only, or combined retention. Explain
+  that combined retention prunes when either limit is reached.
+- Show estimated/current storage use, archive counts, oldest/newest dates, and a
+  preview of what the selected retention policy would prune.
+- Support pinned milestone archives that automatic retention cannot prune, keep
+  at least the newest successful archive per enabled category, and never prune
+  a source save because backup creation failed.
+- Keep profile backup roots and retention policies isolated when multi-server
+  profiles are introduced.
+
+A future Save Library should make rollback and switching worlds simple while
+remaining non-destructive:
+
+- Treat “Load Save” as a separate guarded workflow, not ordinary archive
+  browsing or automatic retention.
+- Require the server to be stopped and validate the selected archive/save before
+  activation.
+- Always create and verify a pre-load safety backup of the current active save.
+- Stage the selected save, verify it, then replace the active file atomically;
+  preserve the prior active save in history rather than deleting it.
+- Show source, destination, timestamps, and consequences before confirmation,
+  then validate the active save after loading and provide a clear rollback path.
 
 ### Future Theme Customization
 

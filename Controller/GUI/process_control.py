@@ -146,6 +146,105 @@ class ProcessController:
         suffix = " ".join(script_args)
         return f'{self._pyexe()} "{script}"{f" {suffix}" if suffix else ""}'
 
+    def _management_command(self, action: str) -> str:
+        """Build a one-shot VeinTools command for source or packaged runtimes."""
+        if self._packaged:
+            tool = self._tools_executable
+            if tool is None or not tool.is_file():
+                expected = tool or (self._ctrl_dir.parent / "VeinTools.exe")
+                raise FileNotFoundError(
+                    f"Packaged helper is missing: {expected}. Reinstall Vein Server Management."
+                )
+            executable = str(tool)
+            args = [executable, action, "--config", self.owner.config_path]
+        else:
+            script = self._ctrl_dir / "vein_tools.py"
+            if not script.is_file():
+                raise FileNotFoundError(f"Management helper was not found: {script}")
+            arguments = subprocess.list2cmdline(
+                [str(script), action, "--config", self.owner.config_path]
+            )
+            return f"{self._pyexe()} {arguments}"
+        return subprocess.list2cmdline(args)
+
+    def create_manual_backup(self) -> None:
+        """Create a manual backup off the GUI thread and report one shared result."""
+        if getattr(self.owner, "_backup_action_busy", False):
+            return
+        try:
+            command = self._management_command("manual-backup")
+        except Exception as exc:
+            self.owner._status(f"Backup failed: {exc}")
+            return
+
+        buttons = [
+            button
+            for name in ("btnBkNow", "btnBackupHistoryCreate")
+            if (button := getattr(self.owner, name, None)) is not None
+        ]
+        self.owner._backup_action_busy = True
+        for button in buttons:
+            button.setEnabled(False)
+            button.setText("Creating Backup...")
+        history_status = getattr(self.owner, "lblBackupHistoryStatus", None)
+        if history_status is not None:
+            history_status.setText("Creating a manual backup. The archive history will refresh when complete.")
+            history_status.set_kind("info")
+        self.owner._status("Creating manual backup...")
+
+        worker = RunOnceWorker(
+            self._run_once,
+            command,
+            cwd=self._ctrl_dir.parent,
+            timeout=600,
+        )
+        self._workers.append(worker)
+
+        def reset() -> None:
+            self.owner._backup_action_busy = False
+            for button in buttons:
+                button.setEnabled(True)
+                button.setText("Backup Now")
+            if worker in self._workers:
+                self._workers.remove(worker)
+
+        def finished(code: int, out: str, err: str) -> None:
+            reset()
+            detail_lines = (err or out or "").strip().splitlines()
+            detail = detail_lines[-1] if detail_lines else "No diagnostic output was returned."
+            if code == 0:
+                self.owner._status(detail)
+                if history_status is not None:
+                    history_status.setText(detail)
+                    history_status.set_kind("success")
+                refresh = getattr(self.owner, "_refresh_backup_history", None)
+                if callable(refresh):
+                    refresh()
+            elif code == 2:
+                message = detail if detail.lower().startswith("backup skipped") else f"Backup skipped: {detail}"
+                self.owner._status(message)
+                if history_status is not None:
+                    history_status.setText(message)
+                    history_status.set_kind("warning")
+            else:
+                message = detail if detail.lower().startswith("backup failed") else f"Backup failed: {detail}"
+                self.owner._status(message)
+                if history_status is not None:
+                    history_status.setText(message)
+                    history_status.set_kind("error")
+
+        def failed(message: str) -> None:
+            reset()
+            detail = f"Backup failed before the helper completed: {message}"
+            self.owner._status(detail)
+            if history_status is not None:
+                history_status.setText(detail)
+                history_status.set_kind("error")
+
+        worker.signals.finished.connect(finished)
+        worker.signals.failed.connect(failed)
+        self._pool.start(worker)
+
     def _report_error(self, title: str, message: str, log_path: Path | None = None) -> None:
         self.owner._status(message)
         notify = getattr(self.owner, "_notify_action_error", None)

@@ -34,10 +34,11 @@ Core goals:
 Central application controller handling layout, config selection, button wiring, JSON I/O, and background polling. The window is organized around three persistent elements:
 
 1. **Server Control Bar** – persistent `Running`, `Stopped`, or `Setup required` state with one primary action that becomes Set Up, Start, or Stop. Restart remains secondary; log/crash monitor commands live in a compact menu beside a readable monitor summary and selectable result label.
-2. **Navigation Column** – task-oriented links for Home, Logs, Setup, Server Settings, and Advanced Config.
+2. **Navigation Column** – task-oriented links for Home, Logs, Backups, Setup,
+   Server Settings, and Advanced Config.
 3. **Content Stack** – one authoritative workspace that shows the selected page. Logs and Advanced Config are full pages rather than duplicate side-panel tabs, and unfinished destinations are not exposed in normal navigation.
 
-The monitoring dashboard replaces the old “Monitors” tab. It still surfaces log/Crash monitor health, HTTP API world details, the player/character browser (fed by `Runtime/player_characters.json`), and backup status/controls—just with more breathing room for the growing data set. Double-clicking players still opens the detail dialog. Backup buttons live in the dashboard card but the logic (`_on_backup_now_clicked`, `_on_open_backups_clicked`) is unchanged.
+The monitoring dashboard replaces the old “Monitors” tab. It still surfaces log/Crash monitor health, HTTP API world details, the player/character browser (fed by `Runtime/player_characters.json`), and a compact backup card—just with more breathing room for the growing data set. Double-clicking players still opens the detail dialog. Home limits backup information to health, last success, Backup Now, and View Backups. Home and the dedicated Backups page share one non-blocking Backup Now helper and consistent progress/results. The Backups page owns folder access and scans the configured backup root off the GUI thread to show read-only, newest-first save, log, and configuration archive history with category, timestamp, size, and full path. Save loading remains unavailable until it can protect the current save and validate the result.
 
 The configuration editor itself still relies on the generated tabs listed above; selecting a nav entry simply focuses the matching tab so muscle memory continues to work for long-time operators.
 

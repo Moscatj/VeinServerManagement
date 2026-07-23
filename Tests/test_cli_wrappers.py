@@ -195,6 +195,12 @@ class CliWrapperTests(unittest.TestCase):
             self.assertEqual(command.run(), 0)
         check_main.assert_called_once()
 
+    def test_vein_tools_manual_backup_command_dispatches(self) -> None:
+        command = vein_tools.COMMANDS["manual-backup"]
+        with mock.patch("Tools.backups.manual_backup_main", return_value=0) as backup_main:
+            self.assertEqual(command.run(), 0)
+        backup_main.assert_called_once()
+
     def test_vein_tools_dispatches_installer_owned_steamcmd_runner(self) -> None:
         with mock.patch("Tools.steamcmd_runner.run_steamcmd", return_value=20) as run:
             code = vein_tools.main(

@@ -71,6 +71,7 @@ try:
     from GUI import (
         NavigationItem,
         NavigationPanel,
+        BackupHistoryWorker,
         ExistingServerLoadWorker,
         apply_design_system,
         apply_quick_start,
@@ -84,6 +85,7 @@ try:
         should_autostart_log_monitor,
         startup_runtime_feedback,
         build_command_bar,
+        build_backup_history_view,
         build_left_panel,
         build_log_panel,
         CollapsibleBox,
@@ -105,6 +107,7 @@ try:
         ProcessController,
         populate_existing_server_settings,
         populate_identity_access_form,
+        populate_backup_history,
         summarize_server_config_validation,
         NavigationController,
         ConfigController,
@@ -1250,6 +1253,11 @@ class Main(QtWidgets.QMainWindow):
                 "Logs",
                 "Live server output, management logs, and errors",
             ),
+            NavigationItem(
+                "monitor.backups",
+                "Backups",
+                "Review archive history and open the configured backup folder",
+            ),
         ]
         config_items = [
             NavigationItem(
@@ -1307,6 +1315,12 @@ class Main(QtWidgets.QMainWindow):
         dashboard = build_dashboard(self, _dot)
         self._register_view("monitor.dashboard", dashboard)
         self._register_view("monitor.logs", log_panel)
+        backup_history_view = build_backup_history_view(self)
+        self._register_view(
+            "monitor.backups",
+            backup_history_view,
+            self._refresh_backup_history,
+        )
         self._register_view("monitor.config", config_view)
         server_config_view = build_server_config_preview_view(self)
         self._register_view(
@@ -1502,7 +1516,6 @@ class Main(QtWidgets.QMainWindow):
         self.b_clearfilter.clicked.connect(self.config_ctl.clear_filter)
 
         self.btnBkNow.clicked.connect(self._on_backup_now_clicked)
-        self.btnBkOpen.clicked.connect(self._on_open_backups_clicked)
         self.btnPreflightRefresh.clicked.connect(self._kick_preflight_check)
         if hasattr(self, "btnServerConfigPreviewRefresh"):
             self.btnServerConfigPreviewRefresh.clicked.connect(
@@ -1621,21 +1634,33 @@ class Main(QtWidgets.QMainWindow):
         self.tabs.setTabText(idx, base if count <= 0 else f"{base} ({count})")
 
     # --- backup Button helpers -------------------------------------------------
-    def _on_backup_now_clicked(self):
+    def _refresh_backup_history(self):
+        if getattr(self, "_backup_history_running", False):
+            return
         try:
-            # make the active config path visible to Tools.backups
-            os.environ["VEIN_CONFIG"] = self.config_path
+            root = Path(_runtime_paths(self.config_path)["backup_root"])
+        except Exception as exc:
+            populate_backup_history(
+                self,
+                {"ok": False, "root": "", "archives": [], "error": str(exc)},
+            )
+            return
+        self._backup_history_running = True
+        self._bk_root = str(root)
+        self.lblBackupHistoryStatus.setText(f"Scanning backup archives under {root}.")
+        self.lblBackupHistoryStatus.set_kind("info")
+        self.btnBackupHistoryRefresh.setEnabled(False)
+        worker = BackupHistoryWorker(root)
+        worker.signals.ready.connect(self._apply_backup_history)
+        self._pool.start(worker)
 
-            from Tools.backups import make_backup, BackupError, BackupSkip
+    def _apply_backup_history(self, payload: dict):
+        self._backup_history_running = False
+        self.btnBackupHistoryRefresh.setEnabled(True)
+        populate_backup_history(self, payload)
 
-            path = make_backup("Manual")
-            self._status(f"Backup created: {getattr(path, 'name', str(path))}")
-        except BackupSkip as e:
-            self._status(f"Backup skipped: {e}")
-        except BackupError as e:
-            self._status(f"Backup failed: {e}")
-        except Exception as e:
-            self._status(f"Backup failed: {e}")
+    def _on_backup_now_clicked(self):
+        self.process_ctl.create_manual_backup()
 
     def _on_open_backups_clicked(self):
         root = getattr(self, "_bk_root", None)
@@ -2225,12 +2250,9 @@ class Main(QtWidgets.QMainWindow):
 
         bk = snap.get("backup", {}) or {}
         bk_last = bk.get("last_utc") or "-"
-        bk_file = bk.get("last_zip") or "-"
-        bk_total = (bk.get("counts") or {}).get("TOTAL", 0)
 
         # --- Backups card update ---
         bk_enabled = bool((snap.get("backup") or {}).get("enabled", True))
-        bk_counts = (snap.get("backup") or {}).get("counts") or {}
         age = _age_str(bk_last) if bk_last and bk_last != "-" else "-"
 
         home_health = home_health_state(
@@ -2259,22 +2281,13 @@ class Main(QtWidgets.QMainWindow):
         if self.noticeHomeGuidance.property("noticeKind") != guidance["kind"]:
             self.noticeHomeGuidance.set_kind(guidance["kind"])
 
-        def _fmt_counts(d: dict) -> str:
-            if not d:
-                return "-"
-            keys = [k for k in d.keys() if k != "TOTAL"]
-            keys.sort()
-            return "  ".join(
-                [*(f"{k}={d.get(k,0)}" for k in keys), f"TOTAL={d.get('TOTAL',0)}"]
-            )
-
-        self.lblBkEnabled.setText("ON" if bk_enabled else "OFF")
-        self.lblBkLast.setText(bk_last)
-        self.lblBkFile.setText(bk_file)
-        self.lblBkTotal.setText(str(bk_total))
-        self.lblBkCounts.setText(_fmt_counts(bk_counts))
+        self.lblBkEnabled.setText("Enabled" if bk_enabled else "Disabled")
         self.btnBkNow.setEnabled(bk_enabled)
-        self.lblBkLast.setText(f"{bk_last}  ({age})")
+        self.lblBkLast.setText(
+            f"{bk_last} ({age})"
+            if bk_last and bk_last != "-"
+            else "No successful backup recorded yet."
+        )
 
         # Save root for the open handler
         self._bk_root = (snap.get("backup") or {}).get("root")
@@ -2283,16 +2296,8 @@ class Main(QtWidgets.QMainWindow):
         self.state_box.setText(
             f"Server flag: {'present' if _file_exists(rp['state_flag']) else 'absent'}   |   "
             f"Shutdown flag: {'present' if _file_exists(rp['shutdown_flag']) else 'absent'}   |   "
-            f"Backup: Last={bk_last} - File={bk_file} - Total={bk_total}"
+            f"Backup: Last={bk_last} ({age})"
         )
-
-        # Nice UX touch: show details on the "Open Backups" button
-        try:
-            self.btn_bak.setToolTip(
-                f"Last backup: {bk_last}\nFile: {bk_file}\nTotal archives: {bk_total}"
-            )
-        except Exception:
-            pass
 
         # Auto-(re)start log monitor if:
         #   - server is running,

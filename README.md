@@ -22,6 +22,8 @@ Python or other developer tools from the
 - Crash monitoring with restart throttling and intentional-shutdown guards.
 - Log monitoring for server health and player events.
 - Manual, event-driven, and scheduled backups.
+- Read-only backup history for save, log, and configuration archives, with safe
+  folder access, non-blocking manual creation, and save-loading guidance.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
   chat, and VEIN admin reports, with protected environment references supported
   for app notifications.

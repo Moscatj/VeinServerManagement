@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
 import sys
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,6 +19,40 @@ from Tools import backups  # noqa: E402
 
 
 class BackupsHelperTests(unittest.TestCase):
+    def test_list_backup_archives_returns_newest_with_category_and_size(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            manual = root / "Manual"
+            manual.mkdir()
+            older = root / "loose.zip"
+            newer = manual / "newer.zip"
+            older.write_bytes(b"old")
+            newer.write_bytes(b"newer")
+            older.touch()
+            newer.touch()
+            now = time.time()
+            os.utime(older, (now - 20, now - 20))
+            os.utime(newer, (now - 10, now - 10))
+
+            archives = backups.list_backup_archives(root)
+
+        self.assertEqual([item.filename for item in archives], ["newer.zip", "loose.zip"])
+        self.assertEqual(archives[0].category, "Manual")
+        self.assertEqual(archives[1].category, "Root")
+        self.assertEqual(archives[0].size_bytes, 5)
+
+    def test_list_backup_archives_handles_missing_root_and_limit(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            for index in range(3):
+                (root / f"backup-{index}.zip").write_bytes(str(index).encode())
+
+            archives = backups.list_backup_archives(root, limit=2)
+            missing = backups.list_backup_archives(root / "missing")
+
+        self.assertEqual(len(archives), 2)
+        self.assertEqual(missing, [])
+
     def test_cfg_to_dict_handles_dict_dataclass_like_attrs(self) -> None:
         class Obj:
             backups = {"root": "Backups"}

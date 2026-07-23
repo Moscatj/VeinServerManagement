@@ -52,6 +52,11 @@ from GUI.server_config_view import (  # noqa: E402
 )
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
+from GUI.backup_view import (  # noqa: E402
+    build_backup_history_view,
+    format_archive_size,
+    populate_backup_history,
+)
 from GUI.design_system import (  # noqa: E402
     BUTTON_DANGER,
     BUTTON_PRIMARY,
@@ -70,6 +75,39 @@ def app() -> QtWidgets.QApplication:
 
 
 class GuiHelperTests(unittest.TestCase):
+    def test_backup_history_view_renders_read_only_archive_metadata(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_history(
+            owner,
+            {
+                "ok": True,
+                "root": "C:/Backups",
+                "error": "",
+                "archives": [
+                    {
+                        "modified": "2026-07-23T12:00:00-04:00",
+                        "category": "Manual",
+                        "filename": "Server_Manual.zip",
+                        "size_bytes": 1536,
+                        "path": "C:/Backups/Manual/Server_Manual.zip",
+                    }
+                ],
+            },
+        )
+
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+        self.assertEqual(owner.treeBackupHistory.columnCount(), 4)
+        self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
+        self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(3), "1.5 KB")
+        self.assertIn("Showing 1 newest", owner.lblBackupHistoryStatus.text())
+        self.assertEqual(owner.btnBackupHistoryCreate.text(), "Backup Now")
+        self.assertEqual(format_archive_size(0), "0 B")
+        self.assertEqual(format_archive_size(1024 * 1024), "1.0 MB")
+
     @classmethod
     def setUpClass(cls) -> None:
         cls._app = app()
@@ -151,6 +189,10 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.badgeHomeBackups.text(), "Checking")
         self.assertEqual(owner.btnHomeSetup.text(), "Open Setup")
         self.assertEqual(owner.btnHomeLogs.text(), "View Logs")
+        self.assertEqual(owner.btnBkNow.text(), "Backup Now")
+        self.assertEqual(owner.btnBkView.text(), "View Backups")
+        self.assertFalse(hasattr(owner, "lblBkFile"))
+        self.assertFalse(hasattr(owner, "lblBkCounts"))
         self.assertTrue(owner.noticeHomeGuidance.wordWrap())
 
         class Navigation:
@@ -164,6 +206,8 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.nav_panel.selected, "monitor.quick_start")
         owner.btnHomeLogs.click()
         self.assertEqual(owner.nav_panel.selected, "monitor.logs")
+        owner.btnBkView.click()
+        self.assertEqual(owner.nav_panel.selected, "monitor.backups")
 
     def test_command_bar_reserves_readable_status_width(self) -> None:
         class Owner:

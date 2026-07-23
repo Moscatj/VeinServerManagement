@@ -19,6 +19,7 @@ from PySide6 import QtWidgets  # noqa: E402
 from GUI.config_controller import ConfigController  # noqa: E402
 from GUI.nav_control import NavigationController  # noqa: E402
 from GUI.process_control import ProcessController  # noqa: E402
+from GUI.design_system import InlineNotice  # noqa: E402
 
 
 def app() -> QtWidgets.QApplication:
@@ -170,6 +171,57 @@ class GuiControllerTests(unittest.TestCase):
                 self.assertIn(action, command)
                 self.assertIn("--config", command)
                 self.assertNotIn("py -3", command)
+
+            backup_command = controller._management_command("manual-backup")
+            self.assertIn(str(tools), backup_command)
+            self.assertIn("manual-backup", backup_command)
+            self.assertIn("--config", backup_command)
+
+    def test_process_controller_manual_backup_is_non_blocking_and_shared(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            ctrl = base / "Controller"
+            ctrl.mkdir()
+            (ctrl / "vein_tools.py").write_text("# fixture", encoding="utf-8")
+            owner = mock.Mock()
+            owner.config_path = str(base / "Config" / "config.yaml")
+            owner._backup_action_busy = False
+            owner._status = mock.Mock()
+            owner._refresh_backup_history = mock.Mock()
+            owner.btnBkNow = QtWidgets.QPushButton("Backup Now")
+            owner.btnBackupHistoryCreate = QtWidgets.QPushButton("Backup Now")
+            owner.lblBackupHistoryStatus = InlineNotice()
+            run_once = mock.Mock(
+                return_value=(0, "Backup created: C:/Backups/Manual/example.zip\n", "")
+            )
+            controller = ProcessController(
+                owner,
+                pyexe=lambda: "py -3.12",
+                resolved_paths=lambda: {},
+                rt_paths=lambda _: {},
+                runtime_paths=lambda _: {},
+                spawn_logged=mock.Mock(),
+                run_once=run_once,
+                mkflag=mock.Mock(),
+                rm=mock.Mock(),
+                wait_for_monitor_exit=mock.Mock(return_value=True),
+                ctrl_dir=ctrl,
+            )
+
+            with mock.patch.object(
+                controller._pool, "start", side_effect=lambda worker: worker.run()
+            ):
+                controller.create_manual_backup()
+
+        command = run_once.call_args.args[0]
+        self.assertIn("vein_tools.py", command)
+        self.assertIn("manual-backup", command)
+        self.assertTrue(command.startswith("py -3.12 "))
+        self.assertFalse(owner._backup_action_busy)
+        self.assertTrue(owner.btnBkNow.isEnabled())
+        self.assertEqual(owner.btnBackupHistoryCreate.text(), "Backup Now")
+        self.assertEqual(owner.lblBackupHistoryStatus.property("noticeKind"), "success")
+        owner._refresh_backup_history.assert_called_once_with()
 
     def test_packaged_stop_surfaces_helper_failure(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
