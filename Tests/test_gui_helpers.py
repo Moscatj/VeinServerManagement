@@ -53,10 +53,15 @@ from GUI.server_config_view import (  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 from GUI.backup_view import (  # noqa: E402
+    backup_retention_explanation,
     build_backup_history_view,
+    collect_backup_policy,
     format_archive_size,
+    populate_backup_policy,
     populate_backup_history,
+    review_backup_policy,
 )
+from Tools.backup_policy import BackupPolicy  # noqa: E402
 from GUI.design_system import (  # noqa: E402
     BUTTON_DANGER,
     BUTTON_PRIMARY,
@@ -75,6 +80,85 @@ def app() -> QtWidgets.QApplication:
 
 
 class GuiHelperTests(unittest.TestCase):
+    def test_backup_policy_form_tracks_reviews_and_discards_changes(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        baseline = BackupPolicy(
+            enabled=True,
+            on_autosave=False,
+            on_crash_detect=True,
+            on_shutdown=True,
+            max_backups=10,
+            max_age_days=7,
+        )
+        populate_backup_policy(owner, baseline)
+
+        self.assertEqual(collect_backup_policy(owner), baseline)
+        self.assertEqual(owner.grpBackupPolicyTriggers.title(), "Automatic backups")
+        self.assertIn("more than 7 full days old", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("does not immediately delete", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertTrue(owner.wdgBackupPolicyOptions.isEnabled())
+        self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
+        owner.chkBackupPolicyAutosave.setChecked(True)
+        owner.spinBackupPolicyCount.setValue(25)
+        self.assertIn("keep at most 25", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertTrue(owner.btnBackupPolicyReview.isEnabled())
+        self.assertFalse(owner.btnBackupPolicyApply.isEnabled())
+
+        review_backup_policy(owner)
+        self.assertTrue(owner.btnBackupPolicyApply.isEnabled())
+        self.assertIn("Autosave", owner.lblBackupPolicyReview.text())
+        self.assertIn("25 archive(s)", owner.lblBackupPolicyReview.text())
+
+        owner.btnBackupPolicyDiscard.click()
+        self.assertEqual(collect_backup_policy(owner), baseline)
+        self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_policy_master_switch_disables_subordinate_controls(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_policy(owner, BackupPolicy(enabled=True))
+
+        owner.chkBackupPolicyEnabled.setChecked(False)
+
+        self.assertFalse(owner.wdgBackupPolicyOptions.isEnabled())
+        self.assertFalse(owner.chkBackupPolicyAutosave.isEnabled())
+        self.assertFalse(owner.btnBackupHistoryCreate.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_cleanup_switches_control_each_limit(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_policy(owner, BackupPolicy())
+
+        owner.chkBackupPolicyCleanupCount.setChecked(False)
+        self.assertFalse(owner.spinBackupPolicyCount.isEnabled())
+        self.assertTrue(owner.spinBackupPolicyAge.isEnabled())
+        self.assertNotIn("keep at most", owner.lblBackupPolicyRetentionHelp.text())
+        owner.chkBackupPolicyCleanupEnabled.setChecked(False)
+        self.assertFalse(owner.wdgBackupPolicyCleanupOptions.isEnabled())
+        self.assertIn("cleanup is off", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_retention_explanation_uses_plain_language(self) -> None:
+        text = backup_retention_explanation(
+            BackupPolicy(max_backups=12, max_age_days=30)
+        )
+
+        self.assertIn("keep at most 12 archives per backup type", text)
+        self.assertIn("more than 30 full days old", text)
+        self.assertIn("does not immediately delete", text)
+
     def test_backup_history_view_renders_read_only_archive_metadata(self) -> None:
         class Owner:
             pass

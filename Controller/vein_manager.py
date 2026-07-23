@@ -63,6 +63,7 @@ try:
         assess_server_setup,
         inspect_server_root,
     )
+    from Tools.backup_policy import BackupPolicy
 except Exception as e:
     print(f"[FATAL] Could not import Tools components from {CTRL_DIR}: {e}")
     sys.exit(1)
@@ -72,6 +73,7 @@ try:
         NavigationItem,
         NavigationPanel,
         BackupHistoryWorker,
+        BackupPolicyWorker,
         ExistingServerLoadWorker,
         apply_design_system,
         apply_quick_start,
@@ -101,6 +103,7 @@ try:
         build_quick_start_view,
         build_server_config_preview_view,
         collect_identity_access_values,
+        collect_backup_policy,
         ConfigRenderer,
         enforce_quick_start_root_mode,
         LogPanelController,
@@ -108,6 +111,7 @@ try:
         populate_existing_server_settings,
         populate_identity_access_form,
         populate_backup_history,
+        populate_backup_policy,
         summarize_server_config_validation,
         NavigationController,
         ConfigController,
@@ -926,7 +930,7 @@ def _age_str(iso_ts: str | None) -> str:
             # Load config object once; very cheap and we already do it elsewhere
             cfg_obj, _, _ = _load_any_config(self.cfg_path)
             b = (cfg_obj.get("backups", {}) or {}) if isinstance(cfg_obj, dict) else {}
-            enabled = bool(b.get("enable", True))
+            enabled = bool(b.get("enabled", b.get("enable", True)))
 
             # --- Backup state (optional if file missing) ---
             backup_state_path = rp["runtime_dir"] / "backup.state.json"
@@ -1319,7 +1323,7 @@ class Main(QtWidgets.QMainWindow):
         self._register_view(
             "monitor.backups",
             backup_history_view,
-            self._refresh_backup_history,
+            self._refresh_backups_page,
         )
         self._register_view("monitor.config", config_view)
         server_config_view = build_server_config_preview_view(self)
@@ -1634,6 +1638,83 @@ class Main(QtWidgets.QMainWindow):
         self.tabs.setTabText(idx, base if count <= 0 else f"{base} ({count})")
 
     # --- backup Button helpers -------------------------------------------------
+    def _refresh_backups_page(self):
+        self._refresh_backup_history()
+        if getattr(self, "_backup_policy_dirty", False):
+            self.lblBackupPolicyState.setText(
+                "Unsaved backup-policy changes were preserved. Discard them before refreshing."
+            )
+            self.lblBackupPolicyState.set_kind("warning")
+            return
+        self._refresh_backup_policy()
+
+    def _refresh_backup_policy(self):
+        if getattr(self, "_backup_policy_running", False):
+            return
+        self._backup_policy_running = True
+        self.lblBackupPolicyState.setText("Loading backup policy.")
+        self.lblBackupPolicyState.set_kind("info")
+        worker = BackupPolicyWorker(self.config_path, action="load")
+        worker.signals.ready.connect(self._apply_backup_policy_result)
+        self._pool.start(worker)
+
+    def _confirm_apply_backup_policy(self):
+        policy = collect_backup_policy(self)
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Apply Backup Policy",
+            "This will back up and atomically update config.yaml. Cleanup changes "
+            "take effect after future backups; existing archives are not deleted by "
+            "this Apply action. Continue?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        self._backup_policy_running = True
+        self.btnBackupPolicyApply.setEnabled(False)
+        self.btnBackupPolicyReview.setEnabled(False)
+        self.btnBackupPolicyDiscard.setEnabled(False)
+        self.lblBackupPolicyState.setText("Applying guarded backup-policy changes.")
+        self.lblBackupPolicyState.set_kind("info")
+        worker = BackupPolicyWorker(self.config_path, action="apply", policy=policy)
+        worker.signals.ready.connect(self._apply_backup_policy_result)
+        self._pool.start(worker)
+
+    def _apply_backup_policy_result(self, payload: dict):
+        self._backup_policy_running = False
+        action = payload.get("action") or "load"
+        if not payload.get("ok"):
+            message = f"Backup policy {action} failed: {payload.get('error') or 'unknown error'}"
+            self.lblBackupPolicyState.setText(message)
+            self.lblBackupPolicyState.set_kind("error")
+            self._status(message)
+            self.btnBackupPolicyReview.setEnabled(
+                bool(getattr(self, "_backup_policy_dirty", False))
+            )
+            self.btnBackupPolicyDiscard.setEnabled(
+                bool(getattr(self, "_backup_policy_dirty", False))
+            )
+            return
+        policy = BackupPolicy(**(payload.get("policy") or {}))
+        populate_backup_policy(self, policy)
+        if action == "apply":
+            backup = str(payload.get("backup") or "")
+            message = (
+                "Backup policy saved and validated. Existing archives were not deleted. "
+                "Restart the log monitor for Autosave or Crash trigger changes."
+                if payload.get("changed")
+                else "Backup policy already matched the saved configuration."
+            )
+            self.lblBackupPolicyState.setText(message)
+            self.lblBackupPolicyState.set_kind("success")
+            self._status(
+                f"{message}{f' Config backup: {backup}' if backup else ''}"
+            )
+            self.load_config_text()
+            self._refresh_backup_history()
+            self._kick_preflight_check()
+
     def _refresh_backup_history(self):
         if getattr(self, "_backup_history_running", False):
             return

@@ -64,6 +64,10 @@ Released through `v2.11.0`:
   joinable readiness and controlled monitor shutdown.
 - The GUI provides read-only backup history across save, log, and configuration
   archives without exposing an insufficiently guarded restore action.
+- The Backups page provides guarded global, Autosave, Crash, Shutdown, and
+  default count/age cleanup controls. Cleanup can be disabled or use either
+  rule independently; Apply backs up and validates config and does not
+  immediately delete existing archives.
 
 ## Near-Term Priorities
 
@@ -239,8 +243,8 @@ against storage use without hand-editing YAML.
 - Provide a global backup enable switch plus individual controls for manual,
   startup, shutdown, player login/logout, autosave, crash, and scheduled backup
   triggers where the underlying event is supported reliably.
-- Let each category use count-only, age-only, or combined retention. Explain
-  that combined retention prunes when either limit is reached.
+- Expand the implemented default count/age cleanup rules into optional
+  per-category policies.
 - Show estimated/current storage use, archive counts, oldest/newest dates, and a
   preview of what the selected retention policy would prune.
 - Support pinned milestone archives that automatic retention cannot prune, keep

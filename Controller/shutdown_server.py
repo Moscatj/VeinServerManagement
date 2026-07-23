@@ -37,7 +37,6 @@ from Tools.process import (
     list_all_servers as list_all_vein_server_procs,
 )
 from Tools.backups_api import make_backup as backup_save_file
-from Tools.features import is_feature_enabled
 from Tools.monitors import (
     mark_monitor_stopped,
     request_monitor_stop_flags,
@@ -53,7 +52,7 @@ from Tools.runtime import (
     RUNTIME_DIR,
 )
 
-from config_helper import config
+from config_helper import backup_trigger_enabled, backups_enabled, config
 
 try:
     PRE_SHUTDOWN_WARN = int(config.get("pre_shutdown_warning_seconds", 0))
@@ -231,13 +230,13 @@ def _normal_shutdown() -> None:
     zip_path = None
     backup_disabled = False
     try:
-        backup_disabled = not is_feature_enabled("enable_backups")
+        backup_disabled = not backups_enabled() or not backup_trigger_enabled("shutdown")
     except Exception:
         backup_disabled = False
 
     try:
         if backup_disabled:
-            print("[Shutdown] Backups disabled via config; skipping shutdown backup.")
+            print("[Shutdown] Backup disabled by policy; skipping shutdown backup.")
         else:
             zip_path = backup_save_file(reason="Shutdown")
     except Exception as e:
@@ -247,7 +246,7 @@ def _normal_shutdown() -> None:
     try:
         if backup_disabled:
             send_discord_message(
-                "🛑 Server shutdown complete. (No backup: backups disabled in config.)",
+                "🛑 Server shutdown complete. (No backup: disabled by backup policy.)",
                 channel="shutdown",
             )
         elif zip_path:

@@ -238,6 +238,83 @@ class BackupsBehaviorTests(unittest.TestCase):
         self.assertEqual(result, {"deleted": 1})
         discord.assert_called_once()
 
+    def test_prune_backups_can_be_disabled_without_deleting_archives(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["retention"]["Manual"] = {
+                "enabled": False,
+                "by_count": True,
+                "by_age": True,
+                "max_backups": 1,
+                "max_age_days": 1,
+            }
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            for name in ("old-a.zip", "old-b.zip"):
+                archive = folder / name
+                archive.write_text(name, encoding="utf-8")
+                old_ts = time.time() - 86400 * 10
+                os.utime(archive, (old_ts, old_ts))
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups, "is_discord_channel_enabled", return_value=False
+            ):
+                result = backups.prune_backups("Manual")
+
+            self.assertEqual(result, {"deleted": 0})
+            self.assertEqual(len(list(folder.glob("*.zip"))), 2)
+
+    def test_prune_backups_applies_only_selected_cleanup_rule(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["retention"]["Manual"] = {
+                "enabled": True,
+                "by_count": False,
+                "by_age": True,
+                "max_backups": 1,
+                "max_age_days": 30,
+            }
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            for name in ("new-a.zip", "new-b.zip"):
+                (folder / name).write_text(name, encoding="utf-8")
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups, "is_discord_channel_enabled", return_value=False
+            ):
+                result = backups.prune_backups("Manual")
+
+            self.assertEqual(result, {"deleted": 0})
+            self.assertEqual(len(list(folder.glob("*.zip"))), 2)
+
+    def test_prune_backups_can_disable_age_rule_independently(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["retention"]["Manual"] = {
+                "enabled": True,
+                "by_count": True,
+                "by_age": False,
+                "max_backups": 10,
+                "max_age_days": 1,
+            }
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            archive = folder / "old.zip"
+            archive.write_text("old", encoding="utf-8")
+            old_ts = time.time() - 86400 * 10
+            os.utime(archive, (old_ts, old_ts))
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups, "is_discord_channel_enabled", return_value=False
+            ):
+                result = backups.prune_backups("Manual")
+
+            self.assertEqual(result, {"deleted": 0})
+            self.assertTrue(archive.exists())
+
     def test_latest_backup_searches_folders_and_restore_extracts_target(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)

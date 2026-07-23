@@ -105,7 +105,16 @@ class BackupsHelperTests(unittest.TestCase):
             with mock.patch.object(backups, "_cfg", return_value=cfg):
                 self.assertEqual(backups._root(), base / "Backups")
                 self.assertEqual(backups._dest_for("Manual"), base / "Backups" / "ManualFolder")
-                self.assertEqual(backups._retention_for("Manual"), {"max_backups": 5, "max_age_days": 3})
+                self.assertEqual(
+                    backups._retention_for("Manual"),
+                    {
+                        "enabled": True,
+                        "by_count": True,
+                        "by_age": True,
+                        "max_backups": 5,
+                        "max_age_days": 3,
+                    },
+                )
                 self.assertEqual(backups._save_candidates(), [base / "Saved" / "A.sav", base / "Saved" / "B.sav"])
                 self.assertEqual(backups._discord_flags(), {"on_create": False, "on_prune": True})
 

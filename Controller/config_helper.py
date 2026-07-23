@@ -168,7 +168,13 @@ def _migrate_backups_view() -> None:
 
     default_max = int(config.get("max_backups", 10))
     default_age = int(config.get("backup_max_age_days", 7))
-    ret.setdefault("default", {"max_backups": default_max, "max_age_days": default_age})
+    default_retention = ret.setdefault(
+        "default", {"max_backups": default_max, "max_age_days": default_age}
+    )
+    if isinstance(default_retention, dict):
+        default_retention.setdefault("enabled", True)
+        default_retention.setdefault("by_count", True)
+        default_retention.setdefault("by_age", True)
 
     nightly = config.get("nightly_backup", {}) or {}
     if nightly:
@@ -277,19 +283,58 @@ def backups_enabled(default: bool = True) -> bool:
     return bool(default)
 
 
+def backup_trigger_enabled(name: str, default: bool = True) -> bool:
+    """Return one canonical backup-trigger gate with legacy event fallback."""
+    backups = backups_cfg()
+    triggers = backups.get("triggers") or {}
+    raw = triggers.get(name) if isinstance(triggers, dict) else None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, dict):
+        if "enabled" in raw:
+            return bool(raw["enabled"])
+        if "save_backup" in raw:
+            return bool(raw["save_backup"])
+    events = backups.get("events") or {}
+    legacy_name = {
+        "on_autosave": "autosave",
+        "on_crash_detect": "crash",
+        "shutdown": "shutdown",
+    }.get(name, name)
+    legacy = events.get(legacy_name) if isinstance(events, dict) else None
+    if isinstance(legacy, bool):
+        return legacy
+    if isinstance(legacy, dict):
+        if "enabled" in legacy:
+            return bool(legacy["enabled"])
+        if "save_backup" in legacy:
+            return bool(legacy["save_backup"])
+    return bool(default)
+
+
 def backup_folders() -> Dict[str, str]:
     return backups_cfg().get("folders", {}) or {}
 
 
-def backup_retention_for(reason: str) -> Dict[str, int]:
+def backup_retention_for(reason: str) -> Dict[str, Any]:
     """
-    Returns {'max_backups': int, 'max_age_days': int} for a reason (e.g., Nightly/Crash/AutoSave),
-    falling back to 'default' or sane defaults.
+    Return cleanup gates and limits for a backup reason, falling back to the
+    default retention policy.
     """
     b = backups_cfg()
     ret = b.get("retention", {}) or {}
-    r = ret.get(reason) or ret.get("default") or {"max_backups": 10, "max_age_days": 7}
+    default = ret.get("default") or {}
+    if not isinstance(default, dict):
+        default = {}
+    r = ret.get(reason) or {}
+    if not isinstance(r, dict):
+        r = {}
     return {
-        "max_backups": int(r.get("max_backups", 10)),
-        "max_age_days": int(r.get("max_age_days", 7)),
+        "enabled": bool(r.get("enabled", default.get("enabled", True))),
+        "by_count": bool(r.get("by_count", default.get("by_count", True))),
+        "by_age": bool(r.get("by_age", default.get("by_age", True))),
+        "max_backups": int(r.get("max_backups", default.get("max_backups", 10))),
+        "max_age_days": int(
+            r.get("max_age_days", default.get("max_age_days", 7))
+        ),
     }

@@ -58,7 +58,9 @@ class StatusPoller(QtCore.QRunnable):
             }
             self.selected_exe = getattr(vcfg, "selected_exe", "")
             backups = getattr(vcfg, "backups", {}) or {}
-            self.backups_enabled = bool(backups.get("enable", True))
+            self.backups_enabled = bool(
+                backups.get("enabled", backups.get("enable", True))
+            )
         else:
             obj, kind, _ = self._load_any_config(cfg_path)
             obj = obj if isinstance(obj, dict) else {}
@@ -96,7 +98,9 @@ class StatusPoller(QtCore.QRunnable):
             srv = obj.get("server", {}) or {}
             self.selected_exe = srv.get("preferred_exe", "")
             backups = obj.get("backups", {}) or {}
-            self.backups_enabled = bool(backups.get("enable", True))
+            self.backups_enabled = bool(
+                backups.get("enabled", backups.get("enable", True))
+            )
 
         for k, v in list(self.paths.items()):
             self.paths[k] = str(v or "").strip()

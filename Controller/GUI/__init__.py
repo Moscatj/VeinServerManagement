@@ -83,8 +83,11 @@ from .quickstart import (
 from .about import about_text, show_about_dialog
 from .backup_view import (
     BackupHistoryWorker,
+    BackupPolicyWorker,
     build_backup_history_view,
+    collect_backup_policy,
     format_archive_size,
+    populate_backup_policy,
     populate_backup_history,
 )
 
@@ -157,7 +160,10 @@ __all__ = [
     "about_text",
     "show_about_dialog",
     "BackupHistoryWorker",
+    "BackupPolicyWorker",
     "build_backup_history_view",
+    "collect_backup_policy",
     "format_archive_size",
+    "populate_backup_policy",
     "populate_backup_history",
 ]

@@ -117,13 +117,16 @@ subsystems:
       - Controller/nightly_backup.py
       - Controller/Tools/backups.py
       - Controller/Tools/backups_api.py
+      - Controller/Tools/backup_policy.py
     tests:
       - Tests/test_backups_api.py
       - Tests/test_backups_behavior.py
       - Tests/test_backups_helpers.py
+      - Tests/test_backup_policy.py
     docs:
       - Docs/nightly_backup_summary.md
       - Docs/tools_summary.md
+      - Docs/config_reference.md
     invariants:
       - Copy source saves; never modify or delete them.
       - Respect configured backup gates and retention boundaries.

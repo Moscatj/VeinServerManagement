@@ -226,7 +226,7 @@ def _folders() -> Dict[str, str]:
     return dict(f or {})
 
 
-def _retention_for(reason: str) -> Dict[str, int]:
+def _retention_for(reason: str) -> dict[str, int | bool]:
     cfg = _cfg()
     ret = _b("retention", {}) or {}
     rc = ret.get(reason) or {}
@@ -235,7 +235,13 @@ def _retention_for(reason: str) -> Dict[str, int]:
     max_age = rc.get(
         "max_age_days", dc.get("max_age_days", cfg.get("backup_max_age_days", 7))
     )
-    return {"max_backups": int(max_count), "max_age_days": int(max_age)}
+    return {
+        "enabled": bool(rc.get("enabled", dc.get("enabled", True))),
+        "by_count": bool(rc.get("by_count", dc.get("by_count", True))),
+        "by_age": bool(rc.get("by_age", dc.get("by_age", True))),
+        "max_backups": int(max_count),
+        "max_age_days": int(max_age),
+    }
 
 
 def _discord_flags() -> Dict[str, bool]:
@@ -549,6 +555,9 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
     folder = path or (_dest_for(reason) if reason else _root())
     folder.mkdir(parents=True, exist_ok=True)
     policy = _retention_for(reason or "default")
+    cleanup_enabled = bool(policy["enabled"])
+    by_count = bool(policy["by_count"])
+    by_age = bool(policy["by_age"])
     max_count = int(policy["max_backups"])
     max_age = int(policy["max_age_days"])
 
@@ -560,8 +569,8 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
     now = datetime.now()
     for p in list(zips):
         age_days = (now - datetime.fromtimestamp(p.stat().st_mtime)).days
-        over_age = age_days > max_age
-        over_count = len(zips) > max_count
+        over_age = cleanup_enabled and by_age and age_days > max_age
+        over_count = cleanup_enabled and by_count and len(zips) > max_count
         if over_age or over_count:
             try:
                 p.unlink(missing_ok=True)

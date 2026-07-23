@@ -198,7 +198,9 @@ class LifecycleIntegrationTests(unittest.TestCase):
                     shutdown_server, "list_all_vein_server_procs", return_value=[SimpleNamespace(pid=server.pid)]
                 ), mock.patch.object(
                     shutdown_server, "stop_all_vein_processes_aggressive", side_effect=stop_fake_server
-                ), mock.patch.object(shutdown_server, "is_feature_enabled", return_value=False), mock.patch.object(
+                ), mock.patch.object(shutdown_server, "backups_enabled", return_value=False), mock.patch.object(
+                    shutdown_server, "backup_trigger_enabled", return_value=True
+                ), mock.patch.object(
                     shutdown_server, "send_discord_message"
                 ), mock.patch.object(shutdown_server, "_stop_py_process") as fallback_stop, mock.patch.object(
                     shutdown_server, "_clear_locks"

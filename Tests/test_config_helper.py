@@ -51,6 +51,11 @@ class ConfigHelperTests(unittest.TestCase):
                     "root": "Backups",
                     "folders": {"Manual": "Manual"},
                     "save_dir": "Saved",
+                    "triggers": {
+                        "on_autosave": False,
+                        "on_crash_detect": {"enabled": True},
+                        "shutdown": {"save_backup": False},
+                    },
                     "retention": {
                         "default": {"max_backups": "3", "max_age_days": "4"},
                         "Manual": {"max_backups": "5", "max_age_days": "6"},
@@ -61,15 +66,31 @@ class ConfigHelperTests(unittest.TestCase):
         ):
             view = config_helper.backups_cfg()
             self.assertFalse(config_helper.backups_enabled())
+            self.assertFalse(config_helper.backup_trigger_enabled("on_autosave"))
+            self.assertTrue(config_helper.backup_trigger_enabled("on_crash_detect"))
+            self.assertFalse(config_helper.backup_trigger_enabled("shutdown"))
+            self.assertTrue(config_helper.backup_trigger_enabled("unknown"))
             self.assertTrue(Path(view["root"]).is_absolute())
             self.assertEqual(config_helper.backup_folders(), {"Manual": str(Path("Manual").resolve())})
             self.assertEqual(
                 config_helper.backup_retention_for("Manual"),
-                {"max_backups": 5, "max_age_days": 6},
+                {
+                    "enabled": True,
+                    "by_count": True,
+                    "by_age": True,
+                    "max_backups": 5,
+                    "max_age_days": 6,
+                },
             )
             self.assertEqual(
                 config_helper.backup_retention_for("Other"),
-                {"max_backups": 3, "max_age_days": 4},
+                {
+                    "enabled": True,
+                    "by_count": True,
+                    "by_age": True,
+                    "max_backups": 3,
+                    "max_age_days": 4,
+                },
             )
 
     def test_path_helpers_use_structured_and_legacy_fallbacks(self) -> None:
@@ -153,7 +174,13 @@ class ConfigHelperTests(unittest.TestCase):
             self.assertEqual(backups["save_dir"], "Saved")
             self.assertEqual(
                 backups["retention"]["default"],
-                {"max_backups": 4, "max_age_days": 8},
+                {
+                    "max_backups": 4,
+                    "max_age_days": 8,
+                    "enabled": True,
+                    "by_count": True,
+                    "by_age": True,
+                },
             )
             self.assertEqual(
                 backups["retention"]["Nightly"],

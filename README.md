@@ -24,6 +24,8 @@ Python or other developer tools from the
 - Manual, event-driven, and scheduled backups.
 - Read-only backup history for save, log, and configuration archives, with safe
   folder access, non-blocking manual creation, and save-loading guidance.
+- Guarded GUI backup policy for global enablement, supported automatic triggers,
+  and independently enabled count/age cleanup.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
   chat, and VEIN admin reports, with protected environment references supported
   for app notifications.

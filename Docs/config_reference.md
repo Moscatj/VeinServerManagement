@@ -188,6 +188,49 @@ See [management_logs.md](management_logs.md) for the full layout, archive behavi
 
 ## Backup Policy
 
+The Backups page safely edits the primary structured settings below. It exposes
+only triggers with implemented runtime detection. Startup and player
+login/logout controls remain roadmap items.
+
+- backups.enabled
+  • Global gate for save backup creation.
+  • Legacy `backups.enable` remains compatible.
+
+- backups.triggers.on_autosave
+  • Back up when the monitored game log reports an autosave.
+
+- backups.triggers.on_crash_detect
+  • Back up when the log monitor detects a configured crash signature.
+
+- backups.triggers.shutdown
+  • Back up during controlled shutdown. Boolean and `enabled`/`save_backup`
+    object forms remain compatible.
+
+- backups.retention.default.max_backups
+  • Default maximum archive count per category.
+
+- backups.retention.default.max_age_days
+  • Default maximum archive age per category.
+
+- backups.retention.default.enabled
+  • Master gate for automatic archive cleanup. When false, no count- or
+    age-based cleanup occurs.
+
+- backups.retention.default.by_count
+  • Enables the maximum archive count rule independently.
+
+- backups.retention.default.by_age
+  • Enables the maximum archive age rule independently.
+
+Count and age cleanup can both be enabled, either can be used alone, or both
+can be disabled. After a new backup is created, enabled rules are evaluated for
+that backup category. Count cleanup removes the oldest archives until the
+category is within its limit. Age cleanup removes archives more than the
+configured number of full days old. Applying policy in the GUI does not
+immediately delete existing archives; cleanup occurs when that category next
+creates a backup.
+Autosave and Crash trigger changes take effect when the log monitor next starts.
+
 - max_backups  
   • Max total backups to retain per category.  
   • Current: 10

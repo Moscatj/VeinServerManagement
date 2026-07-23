@@ -118,8 +118,11 @@ not a claim that each phase is complete.
 - [x] Run one shared Backup Now action off the GUI thread from Home and Backups.
 - [x] Keep Home backup controls compact and route history, folder access, and
   detailed management to the dedicated Backups page.
-- Add an intuitive backup-policy editor for global enablement, individual event
-  triggers, schedules, per-category count/age retention, and storage guidance.
+- [x] Add guarded backup-policy controls for global enablement, implemented
+  Autosave/Crash/Shutdown triggers, and independently enabled default count/age
+  cleanup.
+- Expand backup policy with schedules, per-category retention, pinned archives,
+  prune previews, and storage guidance.
 - Design a guarded Save Library that can load a selected save only after stopping
   the server, validating the source, and protecting the current active save.
 - Turn diagnostics into actionable repair cards instead of long text output.

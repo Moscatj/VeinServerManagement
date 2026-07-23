@@ -35,7 +35,7 @@ class StatusPollerTests(unittest.TestCase):
         cfg = {
             "paths": {"runtime_dir": str(runtime_dir)},
             "monitor": {"heartbeat_seconds": 10, "fresh_window_multiplier": 2.0},
-            "backups": {"enable": False},
+            "backups": {"enabled": False, "enable": True},
         }
         with mock.patch.object(status, "load_and_validate_config", side_effect=RuntimeError("fallback")):
             return status.StatusPoller("config.yaml", lambda _: (cfg, "yaml", None))

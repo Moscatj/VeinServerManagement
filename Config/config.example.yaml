@@ -110,6 +110,13 @@ backups:
   root: "Backups"
   max_backups: 10
   backup_max_age_days: 7
+  retention:
+    default:
+      enabled: true
+      by_count: true
+      max_backups: 10
+      by_age: true
+      max_age_days: 7
   rotation_days: 30
   include_log_tail_in_zip: false
   log_tail_kb: 256
