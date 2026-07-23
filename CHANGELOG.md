@@ -27,7 +27,12 @@ This project uses a lightweight versioning approach suitable for a personal sour
   disk usage, categories, and oldest/newest dates, with read-only category
   filtering. Automatic cleanup now has a configurable minimum-backup safety
   floor (three per type by default), so age/count rules cannot remove every
-  rollback point after a long period of server inactivity.
+  rollback point after a long period of server inactivity. Operators can also
+  make an existing archive a restore point or create a new labeled restore
+  point with an optional note. Restore-point ZIPs remain immutable, are shown and filterable in backup
+  history, and are excluded from automatic age/count cleanup; unreadable pin
+  metadata fails safe by retaining cleanup protection. Restore/loading is not
+  enabled by this change.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

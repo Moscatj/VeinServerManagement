@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, is_dataclass
 from Tools.config_io import load_and_validate_config
 from .state_io import write_state, now_iso
 from Tools.discord import send_discord_message, is_discord_channel_enabled
+from Tools.backup_pins import is_archive_pinned, read_backup_pin
 
 
 class BackupError(Exception):
@@ -29,6 +30,10 @@ class BackupArchive:
     category: str
     modified: str
     size_bytes: int
+    pinned: bool = False
+    pin_label: str = ""
+    pin_note: str = ""
+    pin_status: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -434,6 +439,10 @@ def list_backup_archives(
                         category=category,
                         modified=modified,
                         size_bytes=stat.st_size,
+                        pinned=(pin := read_backup_pin(path)) is not None,
+                        pin_label=pin.label if pin else "",
+                        pin_note=pin.note if pin else "",
+                        pin_status=pin.status if pin else "",
                     ),
                 )
             )
@@ -576,14 +585,17 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
         [p for p in folder.glob("*.zip") if p.is_file()],
         key=lambda p: p.stat().st_mtime,
     )
-    protected = set(zips[-minimum_backups:])
+    pinned = {archive for archive in zips if is_archive_pinned(archive)}
+    unpinned = [archive for archive in zips if archive not in pinned]
+    protected = set(unpinned[-minimum_backups:]) | pinned
     now = datetime.now()
     for p in list(zips):
         if p in protected:
             continue
         age_days = (now - datetime.fromtimestamp(p.stat().st_mtime)).days
         over_age = cleanup_enabled and by_age and age_days > max_age
-        over_count = cleanup_enabled and by_count and len(zips) > max_count
+        unpinned_count = sum(1 for archive in zips if archive not in pinned)
+        over_count = cleanup_enabled and by_count and unpinned_count > max_count
         if over_age or over_count:
             try:
                 p.unlink(missing_ok=True)

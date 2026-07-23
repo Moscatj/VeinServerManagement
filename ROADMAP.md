@@ -71,6 +71,9 @@ Released through `v2.11.0`:
 - Automatic cleanup protects a configurable minimum of the newest archives in
   every backup category (three by default), preserving rollback points after
   long server inactivity or a newly corrupted save.
+- Operators can make existing archives into restore points or create new
+  labeled restore points with optional notes. Restore points are filterable and excluded from automatic
+  age/count cleanup; this does not yet expose save loading.
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
@@ -252,8 +255,8 @@ against storage use without hand-editing YAML.
   per-category policies.
 - Show estimated/current storage use, archive counts, oldest/newest dates, and a
   preview of what the selected retention policy would prune.
-- Support pinned milestone archives that automatic cleanup cannot delete,
-  building on the current configurable minimum-backup safety floor.
+- Expand the implemented restore points with rename/edit and guarded removal of
+  restore-point protection, then include them in cleanup previews and storage guidance.
 - Keep profile backup roots and retention policies isolated when multi-server
   profiles are introduced.
 

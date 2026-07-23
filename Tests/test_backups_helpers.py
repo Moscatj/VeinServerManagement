@@ -16,6 +16,7 @@ if str(CTRL) not in sys.path:
     sys.path.insert(0, str(CTRL))
 
 from Tools import backups  # noqa: E402
+from Tools.backup_pins import pin_backup  # noqa: E402
 
 
 class BackupsHelperTests(unittest.TestCase):
@@ -54,6 +55,22 @@ class BackupsHelperTests(unittest.TestCase):
         self.assertEqual(len(archives), 2)
         self.assertEqual(len(all_archives), 3)
         self.assertEqual(missing, [])
+
+    def test_list_backup_archives_includes_restore_point_metadata(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            root = Path(tmp)
+            folder = root / "Manual"
+            folder.mkdir()
+            archive = folder / "backup.zip"
+            archive.write_bytes(b"archive")
+            pin_backup(archive, label="Before migration", note="Known-good branch")
+
+            listed = backups.list_backup_archives(root)
+
+        self.assertEqual(len(listed), 1)
+        self.assertTrue(listed[0].pinned)
+        self.assertEqual(listed[0].pin_label, "Before migration")
+        self.assertEqual(listed[0].pin_note, "Known-good branch")
 
     def test_cfg_to_dict_handles_dict_dataclass_like_attrs(self) -> None:
         class Obj:

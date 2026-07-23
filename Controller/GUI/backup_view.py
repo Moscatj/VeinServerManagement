@@ -1,4 +1,4 @@
-"""Read-only backup history view and background archive discovery."""
+"""Backup history, policy controls, and protected restore-point metadata."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from typing import Any, Mapping, Sequence
 
 from PySide6 import QtCore, QtWidgets
 
-from Tools.backups import list_backup_archives
+from Tools.backups import list_backup_archives, make_backup
+from Tools.backup_pins import pin_backup
 from Tools.backup_policy import (
     BackupPolicy,
     apply_backup_policy,
@@ -17,6 +18,7 @@ from Tools.backup_policy import (
 from .design_system import (
     BUTTON_PRIMARY,
     BUTTON_SECONDARY,
+    CONTROL_SPACING,
     InlineNotice,
     PAGE_MARGIN,
     SECTION_SPACING,
@@ -65,13 +67,15 @@ def filter_backup_archives(
     archives: Sequence[Mapping[str, Any]],
     category: str = "",
     *,
+    pinned_only: bool = False,
     limit: int = BACKUP_HISTORY_DISPLAY_LIMIT,
 ) -> list[Mapping[str, Any]]:
     """Return the newest archives matching one category for table display."""
     matches = [
         archive
         for archive in archives
-        if not category or str(archive.get("category") or "Root") == category
+        if (not category or str(archive.get("category") or "Root") == category)
+        and (not pinned_only or bool(archive.get("pinned")))
     ]
     return matches[: max(1, int(limit))]
 
@@ -106,6 +110,89 @@ class BackupHistoryWorker(QtCore.QRunnable):
                 "error": str(exc),
             }
         self.signals.ready.emit(payload)
+
+
+class RestorePointWorker(QtCore.QRunnable):
+    """Protect an existing or freshly created backup as a restore point."""
+
+    def __init__(
+        self,
+        *,
+        action: str,
+        label: str,
+        note: str = "",
+        archive: str | Path | None = None,
+    ) -> None:
+        super().__init__()
+        self.action = action
+        self.label = label
+        self.note = note
+        self.archive = Path(archive) if archive else None
+        self.signals = BackupHistorySignals()
+
+    def run(self) -> None:
+        try:
+            archive = self.archive
+            if self.action == "create":
+                archive = make_backup("RestorePoint")
+            if archive is None:
+                raise ValueError("No backup archive was selected.")
+            pin = pin_backup(archive, label=self.label, note=self.note)
+            payload = {
+                "ok": True,
+                "action": self.action,
+                "archive": str(archive),
+                "pin": pin.as_dict(),
+                "error": "",
+            }
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "action": self.action,
+                "archive": str(self.archive or ""),
+                "pin": {},
+                "error": str(exc),
+            }
+        self.signals.ready.emit(payload)
+
+
+def prompt_restore_point_details(
+    parent: QtWidgets.QWidget, *, title: str
+) -> tuple[str, str] | None:
+    """Collect a required short label and optional note in one compact dialog."""
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setMinimumWidth(480)
+    layout = QtWidgets.QVBoxLayout(dialog)
+    message = QtWidgets.QLabel(
+        "Give this protected backup a name you will recognize later. "
+        "Restore points are excluded from automatic cleanup."
+    )
+    message.setWordWrap(True)
+    layout.addWidget(message)
+    form = QtWidgets.QFormLayout()
+    label = QtWidgets.QLineEdit()
+    label.setMaxLength(80)
+    label.setPlaceholderText("Example: Before server migration")
+    note = QtWidgets.QPlainTextEdit()
+    note.setMaximumHeight(90)
+    note.setPlaceholderText("Optional context about this rollback point")
+    form.addRow("Label", label)
+    form.addRow("Note", note)
+    layout.addLayout(form)
+    buttons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel
+    )
+    save = buttons.button(QtWidgets.QDialogButtonBox.Save)
+    save.setEnabled(False)
+    label.textChanged.connect(lambda text: save.setEnabled(bool(text.strip())))
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    label.setFocus()
+    if dialog.exec() != QtWidgets.QDialog.Accepted:
+        return None
+    return label.text().strip(), note.toPlainText().strip()
 
 
 class BackupPolicyWorker(QtCore.QRunnable):
@@ -182,6 +269,7 @@ def update_backup_policy_controls(owner) -> None:
     backups_enabled = owner.chkBackupPolicyEnabled.isChecked()
     owner.wdgBackupPolicyOptions.setEnabled(backups_enabled)
     owner.btnBackupHistoryCreate.setEnabled(backups_enabled)
+    owner.btnBackupHistoryRestorePoint.setEnabled(backups_enabled)
     cleanup_enabled = backups_enabled and owner.chkBackupPolicyCleanupEnabled.isChecked()
     owner.wdgBackupPolicyCleanupOptions.setEnabled(cleanup_enabled)
     rules_enabled = cleanup_enabled and (
@@ -244,6 +332,7 @@ def populate_backup_policy(owner, policy: BackupPolicy) -> None:
     owner.lblBackupPolicyReview.clear()
     owner.lblBackupPolicyReview.hide()
     owner.btnBackupHistoryCreate.setEnabled(policy.enabled)
+    owner.btnBackupHistoryRestorePoint.setEnabled(policy.enabled)
     update_backup_policy_state(owner)
 
 
@@ -265,12 +354,16 @@ def apply_backup_history_filter(owner) -> None:
     error = str(getattr(owner, "_backup_history_error", "") or "")
     root = str(getattr(owner, "_backup_history_root", "") or "")
     category = str(owner.cmbBackupHistoryCategory.currentData() or "")
+    pinned_only = owner.chkBackupHistoryPinnedOnly.isChecked()
     matches = [
         archive
         for archive in archives
-        if not category or str(archive.get("category") or "Root") == category
+        if (not category or str(archive.get("category") or "Root") == category)
+        and (not pinned_only or bool(archive.get("pinned")))
     ]
-    displayed = filter_backup_archives(archives, category)
+    displayed = filter_backup_archives(
+        archives, category, pinned_only=pinned_only
+    )
     owner.lblBackupHistoryStatus.setToolTip(
         f"Backup root: {root}" if root else ""
     )
@@ -299,12 +392,18 @@ def apply_backup_history_filter(owner) -> None:
             [
                 str(archive.get("modified") or ""),
                 str(archive.get("category") or ""),
+                str(
+                    archive.get("pin_label")
+                    or ("Restore Point" if archive.get("pinned") else "")
+                ),
                 str(archive.get("filename") or ""),
                 format_archive_size(int(archive.get("size_bytes") or 0)),
             ]
         )
         item.setData(0, QtCore.Qt.UserRole, path)
-        item.setToolTip(2, path)
+        item.setData(0, QtCore.Qt.UserRole + 1, dict(archive))
+        item.setToolTip(2, str(archive.get("pin_note") or ""))
+        item.setToolTip(3, path)
         tree.addTopLevelItem(item)
     for column in range(tree.columnCount()):
         tree.resizeColumnToContents(column)
@@ -312,6 +411,8 @@ def apply_backup_history_filter(owner) -> None:
         owner.lblBackupHistoryFilterStatus.setText("")
     elif matches:
         scope = category or "all categories"
+        if pinned_only:
+            scope = f"restore points in {scope}"
         limited = len(matches) > len(displayed)
         message = (
             f"Showing the newest {len(displayed)} of {len(matches)} archive(s)"
@@ -323,6 +424,8 @@ def apply_backup_history_filter(owner) -> None:
         )
     else:
         scope = category or "all categories"
+        if pinned_only:
+            scope = f"restore points in {scope}"
         owner.lblBackupHistoryFilterStatus.setText(
             f"No archives match {scope}."
         )
@@ -353,10 +456,37 @@ def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
     apply_backup_history_filter(owner)
 
 
+def update_backup_history_selection(owner, current) -> None:
+    """Show selected archive context and enable only applicable actions."""
+    if current is None:
+        owner.lblBackupHistoryPath.setText("Select an archive to inspect its details.")
+        owner.btnBackupHistoryPin.setEnabled(False)
+        return
+    archive = current.data(0, QtCore.Qt.UserRole + 1) or {}
+    path = str(current.data(0, QtCore.Qt.UserRole) or "")
+    note = str(archive.get("pin_note") or "").strip()
+    status = str(archive.get("pin_status") or "")
+    details = path
+    if note:
+        details = f"{note}\n{path}"
+    if status == "invalid":
+        details = (
+            "Restore-point metadata needs attention; cleanup protection remains active.\n"
+            f"{details}"
+        )
+    owner.lblBackupHistoryPath.setText(details)
+    owner.btnBackupHistoryPin.setEnabled(not bool(archive.get("pinned")))
+
+
 def build_backup_history_view(owner) -> QtWidgets.QWidget:
     """Build the dedicated read-only Backups page."""
+    scroll = QtWidgets.QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
     widget = QtWidgets.QWidget()
     layout = QtWidgets.QVBoxLayout(widget)
+    layout.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
     layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
     layout.setSpacing(SECTION_SPACING)
     layout.addWidget(
@@ -367,9 +497,11 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     )
     layout.addWidget(
         InlineNotice(
-            "Archive browsing is read-only. Backup Now uses the same safe manual-backup "
-            "workflow as Home. Loading a save is not offered until it can preview the "
-            "destination, protect the current save, and validate the result."
+            "Browsing never changes backup ZIPs. Protect Selected marks an existing "
+            "backup as a restore point without copying it. Create from Current Save "
+            "captures a new protected backup from the active save. Loading a save is not offered "
+            "until it can preview the destination, protect the current save, and "
+            "validate the result."
         )
     )
 
@@ -551,53 +683,90 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     policy_layout.addLayout(policy_footer)
     layout.addWidget(owner.boxBackupPolicy)
 
+    owner.grpBackupArchives = QtWidgets.QGroupBox("Backup Archives")
+    archive_layout = QtWidgets.QVBoxLayout(owner.grpBackupArchives)
+    archive_layout.setSpacing(CONTROL_SPACING)
+    archive_intro = QtWidgets.QLabel(
+        "Browse existing archives, create a regular backup, or protect a rollback point."
+    )
+    archive_intro.setProperty("fieldHelp", True)
+    archive_layout.addWidget(archive_intro)
+
     controls = QtWidgets.QHBoxLayout()
     owner.btnBackupHistoryRefresh = QtWidgets.QPushButton("Refresh")
     owner.btnBackupHistoryOpen = QtWidgets.QPushButton("Open Backups Folder")
     owner.btnBackupHistoryCreate = QtWidgets.QPushButton("Backup Now")
+    owner.btnBackupHistoryRestorePoint = QtWidgets.QPushButton(
+        "Create from Current Save"
+    )
+    owner.btnBackupHistoryRestorePoint.setToolTip(
+        "Create a new backup ZIP from the current server save and protect it as a restore point."
+    )
+    owner.btnBackupHistoryPin = QtWidgets.QPushButton("Protect Selected")
+    owner.btnBackupHistoryPin.setToolTip(
+        "Make the selected existing backup a restore point without creating another ZIP."
+    )
+    owner.btnBackupHistoryPin.setEnabled(False)
     owner.cmbBackupHistoryCategory = QtWidgets.QComboBox()
     owner.cmbBackupHistoryCategory.addItem("All categories", "")
     owner.cmbBackupHistoryCategory.setMinimumWidth(180)
     set_button_role(owner.btnBackupHistoryRefresh, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryOpen, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryCreate, BUTTON_PRIMARY)
+    set_button_role(owner.btnBackupHistoryRestorePoint, BUTTON_PRIMARY)
+    set_button_role(owner.btnBackupHistoryPin, BUTTON_SECONDARY)
     controls.addWidget(owner.btnBackupHistoryRefresh)
     controls.addWidget(owner.btnBackupHistoryOpen)
     controls.addSpacing(SECTION_SPACING)
     controls.addWidget(QtWidgets.QLabel("Show"))
     controls.addWidget(owner.cmbBackupHistoryCategory)
+    owner.chkBackupHistoryPinnedOnly = QtWidgets.QCheckBox("Restore points only")
+    controls.addWidget(owner.chkBackupHistoryPinnedOnly)
     controls.addStretch(1)
     controls.addWidget(owner.btnBackupHistoryCreate)
-    layout.addLayout(controls)
+    archive_layout.addLayout(controls)
+
+    restore_controls = QtWidgets.QHBoxLayout()
+    restore_controls.addStretch(1)
+    restore_actions_label = QtWidgets.QLabel("Restore points:")
+    restore_actions_label.setProperty("fieldHelp", True)
+    restore_controls.addWidget(restore_actions_label)
+    restore_controls.addWidget(owner.btnBackupHistoryPin)
+    restore_controls.addWidget(owner.btnBackupHistoryRestorePoint)
+    archive_layout.addLayout(restore_controls)
 
     owner.lblBackupHistoryStatus = InlineNotice("Loading backup history.")
-    layout.addWidget(owner.lblBackupHistoryStatus)
+    archive_layout.addWidget(owner.lblBackupHistoryStatus)
     owner.lblBackupHistoryFilterStatus = QtWidgets.QLabel()
     owner.lblBackupHistoryFilterStatus.setProperty("fieldHelp", True)
-    layout.addWidget(owner.lblBackupHistoryFilterStatus)
+    archive_layout.addWidget(owner.lblBackupHistoryFilterStatus)
 
     owner.treeBackupHistory = QtWidgets.QTreeWidget()
-    owner.treeBackupHistory.setColumnCount(4)
-    owner.treeBackupHistory.setHeaderLabels(["Created", "Category", "Archive", "Size"])
+    owner.treeBackupHistory.setColumnCount(5)
+    owner.treeBackupHistory.setHeaderLabels(
+        ["Created", "Category", "Restore Point", "Archive", "Size"]
+    )
     owner.treeBackupHistory.setRootIsDecorated(False)
     owner.treeBackupHistory.setAlternatingRowColors(True)
     owner.treeBackupHistory.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     owner.treeBackupHistory.setSortingEnabled(False)
     owner.treeBackupHistory.setMinimumHeight(200)
-    layout.addWidget(owner.treeBackupHistory, 1)
+    archive_layout.addWidget(owner.treeBackupHistory, 1)
 
     owner.lblBackupHistoryPath = QtWidgets.QLabel()
     owner.lblBackupHistoryPath.setWordWrap(True)
     owner.lblBackupHistoryPath.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-    layout.addWidget(owner.lblBackupHistoryPath)
+    archive_layout.addWidget(owner.lblBackupHistoryPath)
+    layout.addWidget(owner.grpBackupArchives, 1)
 
     owner.treeBackupHistory.currentItemChanged.connect(
-        lambda current, _previous: owner.lblBackupHistoryPath.setText(
-            str(current.data(0, QtCore.Qt.UserRole)) if current else ""
-        )
+        lambda current, _previous: update_backup_history_selection(owner, current)
     )
     owner.cmbBackupHistoryCategory.currentIndexChanged.connect(
         lambda _index: apply_backup_history_filter(owner)
+    )
+    owner.chkBackupHistoryPinnedOnly.toggled.connect(
+        lambda _checked: apply_backup_history_filter(owner)
     )
     owner.btnBackupHistoryRefresh.clicked.connect(
         getattr(owner, "_refresh_backup_history", lambda: None)
@@ -607,6 +776,12 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     )
     owner.btnBackupHistoryCreate.clicked.connect(
         getattr(owner, "_on_backup_now_clicked", lambda: None)
+    )
+    owner.btnBackupHistoryRestorePoint.clicked.connect(
+        getattr(owner, "_on_create_restore_point_clicked", lambda: None)
+    )
+    owner.btnBackupHistoryPin.clicked.connect(
+        getattr(owner, "_on_pin_backup_clicked", lambda: None)
     )
     owner.btnBackupPolicyDiscard.clicked.connect(
         lambda: populate_backup_policy(owner, owner._backup_policy_baseline)
@@ -629,4 +804,5 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     ):
         signal = getattr(field, "valueChanged", None) or field.toggled
         signal.connect(lambda *_: update_backup_policy_state(owner))
-    return widget
+    scroll.setWidget(widget)
+    return scroll

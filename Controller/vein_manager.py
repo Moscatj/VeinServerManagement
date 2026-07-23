@@ -74,6 +74,7 @@ try:
         NavigationPanel,
         BackupHistoryWorker,
         BackupPolicyWorker,
+        RestorePointWorker,
         ExistingServerLoadWorker,
         apply_design_system,
         apply_quick_start,
@@ -112,6 +113,7 @@ try:
         populate_identity_access_form,
         populate_backup_history,
         populate_backup_policy,
+        prompt_restore_point_details,
         summarize_server_config_validation,
         NavigationController,
         ConfigController,
@@ -1742,6 +1744,68 @@ class Main(QtWidgets.QMainWindow):
 
     def _on_backup_now_clicked(self):
         self.process_ctl.create_manual_backup()
+
+    def _start_restore_point_action(
+        self, *, action: str, archive: str | None = None
+    ) -> None:
+        if getattr(self, "_restore_point_running", False):
+            return
+        details = prompt_restore_point_details(
+            self,
+            title=(
+                "Create Restore Point"
+                if action == "create"
+                else "Protect Selected Backup as Restore Point"
+            ),
+        )
+        if details is None:
+            return
+        label, note = details
+        self._restore_point_running = True
+        self.btnBackupHistoryPin.setEnabled(False)
+        self.btnBackupHistoryRestorePoint.setEnabled(False)
+        message = (
+            "Creating and protecting a new restore point."
+            if action == "create"
+            else "Making the selected backup a protected restore point."
+        )
+        self.lblBackupHistoryStatus.setText(message)
+        self.lblBackupHistoryStatus.set_kind("info")
+        worker = RestorePointWorker(
+            action=action, label=label, note=note, archive=archive
+        )
+        worker.signals.ready.connect(self._apply_restore_point_result)
+        self._pool.start(worker)
+
+    def _on_create_restore_point_clicked(self):
+        self._start_restore_point_action(action="create")
+
+    def _on_pin_backup_clicked(self):
+        item = self.treeBackupHistory.currentItem()
+        archive = str(item.data(0, QtCore.Qt.UserRole) or "") if item else ""
+        if not archive:
+            self._status("Select a backup archive to pin.")
+            return
+        self._start_restore_point_action(action="pin", archive=archive)
+
+    def _apply_restore_point_result(self, payload: dict):
+        self._restore_point_running = False
+        self.btnBackupHistoryRestorePoint.setEnabled(
+            self.chkBackupPolicyEnabled.isChecked()
+        )
+        if not payload.get("ok"):
+            message = (
+                "Restore point was not created: "
+                f"{payload.get('error') or 'unknown error'}"
+            )
+            self.lblBackupHistoryStatus.setText(message)
+            self.lblBackupHistoryStatus.set_kind("error")
+            self._status(message)
+            return
+        label = str((payload.get("pin") or {}).get("label") or "Restore point")
+        message = f'Restore point "{label}" is protected from automatic cleanup.'
+        self._status(message)
+        self._refresh_backup_history()
 
     def _on_open_backups_clicked(self):
         root = getattr(self, "_bk_root", None)

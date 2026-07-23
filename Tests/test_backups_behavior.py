@@ -16,6 +16,7 @@ if str(CTRL) not in sys.path:
     sys.path.insert(0, str(CTRL))
 
 from Tools import backups  # noqa: E402
+from Tools.backup_pins import pin_backup, pin_sidecar_path  # noqa: E402
 
 
 class BackupsBehaviorTests(unittest.TestCase):
@@ -225,6 +226,41 @@ class BackupsBehaviorTests(unittest.TestCase):
             self.assertEqual(result, {"deleted": 1})
             self.assertFalse(old_zip.exists())
             self.assertTrue(new_zip.exists())
+
+    def test_prune_backups_excludes_pins_from_cleanup_and_unpinned_quota(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["retention"]["Manual"] = {
+                "enabled": True,
+                "by_count": True,
+                "by_age": True,
+                "minimum_backups": 1,
+                "max_backups": 2,
+                "max_age_days": 1,
+            }
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            archives = []
+            for index in range(4):
+                archive = folder / f"backup-{index}.zip"
+                archive.write_bytes(str(index).encode())
+                old = time.time() - ((10 - index) * 86400)
+                os.utime(archive, (old, old))
+                archives.append(archive)
+            pin_backup(archives[0], label="Known good")
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups, "is_discord_channel_enabled", return_value=False
+            ):
+                result = backups.prune_backups("Manual")
+
+            self.assertEqual(result["deleted"], 2)
+            self.assertTrue(archives[0].exists())
+            self.assertTrue(pin_sidecar_path(archives[0]).exists())
+            self.assertFalse(archives[1].exists())
+            self.assertFalse(archives[2].exists())
+            self.assertTrue(archives[3].exists())
 
     def test_prune_backups_deletes_by_age_and_notifies_when_enabled(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

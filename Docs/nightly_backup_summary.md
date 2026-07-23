@@ -45,7 +45,7 @@ than being reimplemented by the scheduler entrypoint.
 - Ensures the configured Nightly destination exists.
 - Writes a `*.zip` backup with timestamped name into the Nightly folder.
 - Deletes old Nightly backups per Nightly retention policy without crossing the
-  configured minimum-backup safety floor.
+  configured minimum-backup safety floor or deleting protected restore points.
 
 ---
 

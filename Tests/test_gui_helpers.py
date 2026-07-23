@@ -206,15 +206,23 @@ class GuiHelperTests(unittest.TestCase):
         )
 
         self.assertIsInstance(widget, QtWidgets.QWidget)
-        self.assertEqual(owner.treeBackupHistory.columnCount(), 4)
+        self.assertEqual(owner.treeBackupHistory.columnCount(), 5)
         self.assertEqual(owner.treeBackupHistory.minimumHeight(), 200)
+        self.assertEqual(owner.grpBackupArchives.title(), "Backup Archives")
         self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
-        self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(3), "1.5 KB")
+        self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(4), "1.5 KB")
         self.assertIn("1 archive(s)", owner.lblBackupHistoryStatus.text())
         self.assertIn("1.5 KB total", owner.lblBackupHistoryStatus.text())
         self.assertEqual(owner.cmbBackupHistoryCategory.count(), 2)
         self.assertIn("Showing all 1", owner.lblBackupHistoryFilterStatus.text())
         self.assertEqual(owner.btnBackupHistoryCreate.text(), "Backup Now")
+        self.assertEqual(
+            owner.btnBackupHistoryRestorePoint.text(), "Create from Current Save"
+        )
+        self.assertEqual(owner.btnBackupHistoryPin.text(), "Protect Selected")
+        self.assertEqual(
+            owner.chkBackupHistoryPinnedOnly.text(), "Restore points only"
+        )
         self.assertEqual(format_archive_size(0), "0 B")
         self.assertEqual(format_archive_size(1024 * 1024), "1.0 MB")
 
@@ -274,6 +282,50 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("in Crash", owner.lblBackupHistoryFilterStatus.text())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
+    def test_backup_history_can_filter_and_select_pinned_restore_points(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_history(
+            owner,
+            {
+                "root": "C:/Backups",
+                "error": "",
+                "archives": [
+                    {
+                        "modified": "newest",
+                        "category": "Manual",
+                        "filename": "pinned.zip",
+                        "size_bytes": 10,
+                        "path": "C:/Backups/Manual/pinned.zip",
+                        "pinned": True,
+                        "pin_label": "Before migration",
+                        "pin_note": "Known-good state",
+                        "pin_status": "valid",
+                    },
+                    {
+                        "modified": "oldest",
+                        "category": "Manual",
+                        "filename": "normal.zip",
+                        "size_bytes": 10,
+                        "path": "C:/Backups/Manual/normal.zip",
+                        "pinned": False,
+                    },
+                ],
+            },
+        )
+
+        owner.chkBackupHistoryPinnedOnly.setChecked(True)
+        self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
+        item = owner.treeBackupHistory.topLevelItem(0)
+        self.assertEqual(item.text(2), "Before migration")
+        owner.treeBackupHistory.setCurrentItem(item)
+        self.assertIn("Known-good state", owner.lblBackupHistoryPath.text())
+        self.assertFalse(owner.btnBackupHistoryPin.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
     def test_backup_page_preserves_cleanup_cards_and_archive_height(self) -> None:
         class Owner:
             pass
@@ -282,6 +334,9 @@ class GuiHelperTests(unittest.TestCase):
         widget = build_backup_history_view(owner)
         populate_backup_policy(owner, BackupPolicy())
         widget.resize(1600, 800)
+        owner.lblBackupHistoryPath.setText(
+            "Selected restore-point note.\nC:/Backups/Manual/example.zip"
+        )
         widget.show()
         app().processEvents()
         cards = [
@@ -296,6 +351,14 @@ class GuiHelperTests(unittest.TestCase):
             all(card.height() >= card.minimumSizeHint().height() for card in cards)
         )
         self.assertGreaterEqual(owner.treeBackupHistory.height(), 200)
+        tree_bottom = owner.treeBackupHistory.mapToGlobal(
+            owner.treeBackupHistory.rect().bottomLeft()
+        ).y()
+        details_top = owner.lblBackupHistoryPath.mapToGlobal(
+            owner.lblBackupHistoryPath.rect().topLeft()
+        ).y()
+        self.assertGreater(details_top, tree_bottom)
+        self.assertIsInstance(widget, QtWidgets.QScrollArea)
         widget.close()
 
     @classmethod

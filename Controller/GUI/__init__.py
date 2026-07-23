@@ -84,6 +84,7 @@ from .about import about_text, show_about_dialog
 from .backup_view import (
     BackupHistoryWorker,
     BackupPolicyWorker,
+    RestorePointWorker,
     apply_backup_history_filter,
     backup_history_summary,
     build_backup_history_view,
@@ -92,6 +93,7 @@ from .backup_view import (
     format_archive_size,
     populate_backup_policy,
     populate_backup_history,
+    prompt_restore_point_details,
 )
 
 __all__ = [
@@ -164,6 +166,7 @@ __all__ = [
     "show_about_dialog",
     "BackupHistoryWorker",
     "BackupPolicyWorker",
+    "RestorePointWorker",
     "apply_backup_history_filter",
     "backup_history_summary",
     "build_backup_history_view",
@@ -172,4 +175,5 @@ __all__ = [
     "format_archive_size",
     "populate_backup_policy",
     "populate_backup_history",
+    "prompt_restore_point_details",
 ]

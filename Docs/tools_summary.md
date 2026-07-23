@@ -20,6 +20,8 @@ must live in the appropriate Tools module.
 - **backups.py / backups_api.py** - Backup plumbing plus a safe API for controllers/GUI.
 - **backup_policy.py** - Guarded backup-policy loading, summary, config backup,
   atomic write, and post-write validation for the Backups page.
+- **backup_pins.py** - Atomic sidecar metadata for labeled restore points and
+  fail-safe cleanup protection without modifying backup ZIPs.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.
 - **health_check.py** - Read-only project, dependency, path, SteamCMD, secret, and server-config diagnostics.
 - **server_config_validator.py** - Read-only Vein dedicated server layout and `Game.ini` / `Engine.ini` validation.

@@ -27,7 +27,8 @@ Python or other developer tools from the
   and save-loading guidance.
 - Guarded GUI backup policy for global enablement, supported automatic triggers,
   independently enabled count/age cleanup, and a minimum rollback-point safety
-  floor.
+  floor. Labeled restore points are separately protected from automatic
+  cleanup without modifying their backup ZIPs.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
   chat, and VEIN admin reports, with protected environment references supported
   for app notifications.

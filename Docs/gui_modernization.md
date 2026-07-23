@@ -123,8 +123,9 @@ not a claim that each phase is complete.
   cleanup with a configurable minimum-backup safety floor.
 - [x] Add read-only backup storage totals, oldest/newest context, and category
   filtering to archive history.
-- Expand backup policy with schedules, per-category retention, pinned archives,
-  prune previews, and storage guidance.
+- Expand backup policy with schedules, per-category retention, restore-point
+  editing/protection removal, prune previews, and storage guidance. Creating and
+  filtering labeled restore points is implemented.
 - Design a guarded Save Library that can load a selected save only after stopping
   the server, validating the source, and protecting the current active save.
 - Turn diagnostics into actionable repair cards instead of long text output.
