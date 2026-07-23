@@ -55,7 +55,10 @@ This project uses a lightweight versioning approach suitable for a personal sour
   preserves non-default legacy values and `config.yaml` remains the sole policy
   store. Home backup health and its compact backup card now refresh from that
   same live policy after GUI or event-driven direct YAML edits, without periodic
-  config-file parsing. Policy Apply also removes
+  config-file parsing. Backup Policy no longer requires a separate Review
+  action: Apply now presents only the changed old-to-new values for final
+  confirmation, and its disabled state is visibly subdued until changes are
+  available. Policy Apply also removes
   superseded enable and shutdown-trigger aliases while retaining read support.
   Added Review and Restore to backup history. A selected archive must pass preview,
   the server must be stopped, backup creation must be enabled, and the operator
@@ -71,8 +74,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook
   replacement while clearly separating the app notifications webhook on
-  Setup. All tabs share unsaved-change tracking, inline validation, one guarded
-  batch review/apply flow, restart guidance, and secret-masked diffs. The
+  Setup. All tabs share unsaved-change tracking, inline validation, and one
+  guarded Apply action that presents a concise old-to-new review with optional
+  secret-masked technical details before confirmation. The
   original allowlisted INI table remains available under Advanced Settings.
   Edited tabs are marked until changes are discarded or applied, field guidance
   explains less-obvious behavior, and network/Discord errors appear beside the

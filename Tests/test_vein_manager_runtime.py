@@ -148,6 +148,27 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
         self.assertEqual(owner._server_settings_apply_notice_kind, "warning")
         owner._refresh_server_config_preview.assert_called_once_with()
 
+    def test_server_settings_apply_opens_review_then_uses_reviewed_values(self) -> None:
+        owner = mock.Mock()
+        owner._server_identity_pending_values = {"server_name": "Reviewed"}
+        payload = {
+            "ok": True,
+            "action": "preview",
+            "summary": "Changed Server Settings:\n- Server name: Old -> Reviewed",
+            "diffs": {"Game.ini": "+ServerName=Reviewed\n"},
+            "changed_files": ["Game.ini"],
+        }
+
+        with mock.patch.object(
+            vein_manager, "confirm_identity_access_changes", return_value=True
+        ) as confirm:
+            vein_manager.Main._apply_identity_access_edit_result(owner, payload)
+
+        confirm.assert_called_once_with(owner, payload["summary"], payload["diffs"])
+        owner._start_identity_access_edit_worker.assert_called_once_with(
+            "apply", values={"server_name": "Reviewed"}
+        )
+
     def test_source_python_uses_console_sibling_of_pythonw(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             runtime = Path(tmp)

@@ -108,7 +108,9 @@ try:
         build_quick_start_view,
         build_server_config_preview_view,
         collect_identity_access_values,
+        confirm_identity_access_changes,
         collect_backup_policy,
+        confirm_backup_policy_changes,
         ConfigRenderer,
         enforce_quick_start_root_mode,
         LogPanelController,
@@ -1544,13 +1546,9 @@ class Main(QtWidgets.QMainWindow):
                 if hasattr(self, "btnServerConfigEditApply")
                 else None
             )
-        if hasattr(self, "btnServerIdentityPreview"):
-            self.btnServerIdentityPreview.clicked.connect(
-                self._preview_identity_access_changes
-            )
         if hasattr(self, "btnServerIdentityApply"):
             self.btnServerIdentityApply.clicked.connect(
-                self._confirm_apply_identity_access_changes
+                self._preview_identity_access_changes
             )
         if hasattr(self, "btnQuickStartPreview"):
             self.btnQuickStartPreview.clicked.connect(self._build_quick_start_preview)
@@ -1667,20 +1665,14 @@ class Main(QtWidgets.QMainWindow):
 
     def _confirm_apply_backup_policy(self):
         policy = collect_backup_policy(self)
-        answer = QtWidgets.QMessageBox.question(
-            self,
-            "Apply Backup Policy",
-            "This will back up and atomically update config.yaml. Cleanup changes "
-            "take effect after future backups; existing archives are not deleted by "
-            "this Apply action. Continue?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No,
-        )
-        if answer != QtWidgets.QMessageBox.Yes:
+        baseline = getattr(self, "_backup_policy_baseline", None)
+        if baseline is None or not confirm_backup_policy_changes(
+            self, baseline, policy
+        ):
             return
         self._backup_policy_running = True
+        self.boxBackupPolicy.setEnabled(False)
         self.btnBackupPolicyApply.setEnabled(False)
-        self.btnBackupPolicyReview.setEnabled(False)
         self.btnBackupPolicyDiscard.setEnabled(False)
         self.lblBackupPolicyState.setText("Applying guarded backup-policy changes.")
         self.lblBackupPolicyState.set_kind("info")
@@ -1690,13 +1682,14 @@ class Main(QtWidgets.QMainWindow):
 
     def _apply_backup_policy_result(self, payload: dict):
         self._backup_policy_running = False
+        self.boxBackupPolicy.setEnabled(True)
         action = payload.get("action") or "load"
         if not payload.get("ok"):
             message = f"Backup policy {action} failed: {payload.get('error') or 'unknown error'}"
             self.lblBackupPolicyState.setText(message)
             self.lblBackupPolicyState.set_kind("error")
             self._status(message)
-            self.btnBackupPolicyReview.setEnabled(
+            self.btnBackupPolicyApply.setEnabled(
                 bool(getattr(self, "_backup_policy_dirty", False))
             )
             self.btnBackupPolicyDiscard.setEnabled(
@@ -3270,7 +3263,6 @@ class Main(QtWidgets.QMainWindow):
                     "Server Settings could not be loaded. Resolve the preview error and refresh."
                 )
                 self.lblServerIdentityState.set_kind("error")
-                self.btnServerIdentityPreview.setEnabled(False)
                 self.btnServerIdentityApply.setEnabled(False)
             else:
                 populate_identity_access_form(self, items)
@@ -3291,22 +3283,28 @@ class Main(QtWidgets.QMainWindow):
             tree.resizeColumnToContents(idx)
         self._server_config_selection_changed()
 
-    def _start_identity_access_edit_worker(self, action: str):
+    def _start_identity_access_edit_worker(
+        self, action: str, *, values: dict | None = None
+    ):
         if getattr(self, "_server_identity_edit_running", False):
             return
         self._server_identity_edit_running = True
-        self.btnServerIdentityPreview.setEnabled(False)
         self.btnServerIdentityApply.setEnabled(False)
-        self.txtServerIdentityPreview.setPlainText(
+        self.btnServerIdentityReset.setEnabled(False)
+        self.tabsServerSettings.setEnabled(False)
+        proposed = dict(values or collect_identity_access_values(self))
+        if action == "preview":
+            self._server_identity_pending_values = proposed
+        self.lblServerIdentityState.setText(
             "Applying guarded changes."
             if action == "apply"
-            else "Building a guarded preview."
+            else "Preparing the final change review."
         )
-        self.boxServerSettingsReview.toggle.setChecked(True)
+        self.lblServerIdentityState.set_kind("info")
         worker = IdentityAccessEditWorker(
             self.config_path,
             action=action,
-            values=collect_identity_access_values(self),
+            values=proposed,
             baseline=getattr(self, "_server_identity_baseline", {}),
         )
         worker.signals.ready.connect(self._apply_identity_access_edit_result)
@@ -3315,51 +3313,49 @@ class Main(QtWidgets.QMainWindow):
     def _preview_identity_access_changes(self):
         self._start_identity_access_edit_worker("preview")
 
-    def _confirm_apply_identity_access_changes(self):
-        answer = QtWidgets.QMessageBox.question(
-            self,
-            "Apply Server Settings Changes",
-            "This will back up and modify the allowlisted VEIN server settings shown in the preview. A server restart is recommended afterward. Continue?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No,
-        )
-        if answer == QtWidgets.QMessageBox.Yes:
-            self._start_identity_access_edit_worker("apply")
-
     def _apply_identity_access_edit_result(self, payload: dict):
         self._server_identity_edit_running = False
+        self.tabsServerSettings.setEnabled(True)
         action = payload.get("action") or "preview"
         if not payload.get("ok"):
             message = f"Server Settings {action} failed: {payload.get('error') or 'unknown error'}"
-            self.txtServerIdentityPreview.setPlainText(message)
             self.lblServerIdentityState.setText(message)
             self.lblServerIdentityState.set_kind("error")
-            self.btnServerIdentityPreview.setEnabled(True)
+            self.btnServerIdentityApply.setEnabled(
+                bool(getattr(self, "_server_identity_dirty", False))
+            )
+            self.btnServerIdentityReset.setEnabled(
+                bool(getattr(self, "_server_identity_dirty", False))
+            )
             self._status(message)
             return
 
         summary = str(payload.get("summary") or "").strip()
         diffs = payload.get("diffs") or {}
-        raw_diff = "\n".join(str(value) for value in diffs.values()).strip()
-        display = summary
-        if raw_diff:
-            display += "\n\nTechnical INI diff (secrets masked):\n" + raw_diff
-        elif not payload.get("changed_files"):
-            display += "\n\nNo file changes are required."
-        self.txtServerIdentityPreview.setPlainText(display.strip())
-        self.boxServerSettingsReview.toggle.setChecked(True)
 
         if action == "preview":
             changed = bool(payload.get("changed_files"))
-            self.btnServerIdentityApply.setEnabled(changed)
-            self.btnServerIdentityPreview.setEnabled(True)
-            self.lblServerIdentityState.setText(
-                "Preview ready. Review the complete summary before applying."
-                if changed
-                else "The current files already match these settings."
-            )
-            self.lblServerIdentityState.set_kind("info" if changed else "success")
-            self._status("Server Settings review ready.")
+            if changed and confirm_identity_access_changes(self, summary, diffs):
+                self._start_identity_access_edit_worker(
+                    "apply",
+                    values=getattr(self, "_server_identity_pending_values", {}),
+                )
+                return
+            if changed:
+                self.lblServerIdentityState.setText(
+                    "Changes were not applied. Apply Changes will reopen the review."
+                )
+                self.lblServerIdentityState.set_kind("warning")
+                self.btnServerIdentityApply.setEnabled(True)
+                self.btnServerIdentityReset.setEnabled(True)
+            else:
+                self.lblServerIdentityState.setText(
+                    "The current files already match these settings."
+                )
+                self.lblServerIdentityState.set_kind("success")
+                self._server_identity_dirty = False
+                self.btnServerIdentityApply.setEnabled(False)
+                self.btnServerIdentityReset.setEnabled(False)
             return
 
         backups = payload.get("backups") or []
@@ -3377,7 +3373,6 @@ class Main(QtWidgets.QMainWindow):
         self._server_settings_apply_notice_kind = "warning" if has_warnings else "success"
         self.lblServerIdentityState.setText(notice)
         self.lblServerIdentityState.set_kind(self._server_settings_apply_notice_kind)
-        self.txtServerIdentityPreview.appendPlainText(f"\n\n{validation_summary}.")
         self._status(
             f"Server Settings saved. Backup file(s): {len(backups)}. {validation_summary}."
         )

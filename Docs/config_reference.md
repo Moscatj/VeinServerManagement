@@ -196,7 +196,8 @@ login/logout controls remain roadmap items.
 authority. The GUI reads and atomically updates these fields directly after
 creating a timestamped config backup; it does not maintain a second policy
 store. Home, Backup Policy, and Backup Archives all read this same file. Policy
-Apply updates both Home summaries immediately. External edits are reloaded by
+Apply opens a concise old-to-new review of only changed values; confirmation
+then saves and updates both Home summaries immediately. External edits are reloaded by
 the operating system's event-driven file watcher; the GUI does not repeatedly
 parse the YAML while it is idle.
 

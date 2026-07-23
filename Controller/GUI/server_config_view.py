@@ -342,22 +342,58 @@ def build_identity_access_edits(
 def identity_access_change_summary(
     values: Mapping[str, Any], baseline: Mapping[str, Any]
 ) -> str:
-    """Describe proposed curated changes without exposing protected values."""
-    lines = ["Proposed Server Settings changes:"]
+    """Describe changed curated values without exposing protected values."""
+    def display(value: Any) -> str:
+        if isinstance(value, bool):
+            return "On" if value else "Off"
+        if isinstance(value, (tuple, list)):
+            return ", ".join(str(item) for item in value) or "None"
+        text = str(value or "(blank)").replace("\n", " ")
+        return text if len(text) <= 100 else text[:97] + "..."
+
+    lines = ["Changed Server Settings:"]
     changed = False
     for field in IDENTITY_ACCESS_TARGETS:
         if field in PROTECTED_REPLACEMENT_FIELDS:
             if values.get(field):
-                lines.append(f"- {IDENTITY_ACCESS_LABELS[field]}: replace configured value (hidden)")
+                lines.append(
+                    f"- {IDENTITY_ACCESS_LABELS[field]}: replacement entered (hidden)"
+                )
                 changed = True
             continue
         if values.get(field) != baseline.get(field):
-            lines.append(f"- {IDENTITY_ACCESS_LABELS[field]}")
+            lines.append(
+                f"- {IDENTITY_ACCESS_LABELS[field]}: "
+                f"{display(baseline.get(field))} -> {display(values.get(field))}"
+            )
             changed = True
     if not changed:
         lines.append("- No changes")
     lines.extend(("", "A server restart is recommended after applying these settings."))
     return "\n".join(lines)
+
+
+def confirm_identity_access_changes(
+    parent, summary: str, diffs: Mapping[str, Any]
+) -> bool:
+    """Confirm a generated Server Settings preview as part of Apply."""
+    dialog = QtWidgets.QMessageBox(parent)
+    dialog.setIcon(QtWidgets.QMessageBox.Question)
+    dialog.setWindowTitle("Review Server Settings Changes")
+    dialog.setText("Apply these Server Settings changes?")
+    dialog.setInformativeText(summary)
+    technical = "\n".join(str(value) for value in diffs.values()).strip()
+    if technical:
+        dialog.setDetailedText(
+            "Technical INI diff (protected values are masked):\n\n" + technical
+        )
+    apply_button = dialog.addButton(
+        "Apply Changes", QtWidgets.QMessageBox.AcceptRole
+    )
+    dialog.addButton(QtWidgets.QMessageBox.Cancel)
+    dialog.setDefaultButton(apply_button)
+    dialog.exec()
+    return dialog.clickedButton() is apply_button
 
 
 def mask_sensitive_config_diff(text: str) -> str:
@@ -583,13 +619,13 @@ def update_identity_access_form_state(owner) -> None:
     update_curated_tab_markers(owner, values, baseline)
     owner._server_identity_dirty = dirty
     if errors:
-        owner.lblServerIdentityState.setText("Resolve the highlighted fields before previewing changes.")
+        owner.lblServerIdentityState.setText("Resolve the highlighted fields before applying changes.")
         owner.lblServerIdentityState.set_kind("error")
     elif dirty:
         owner._server_settings_apply_notice = ""
         owner._server_settings_apply_notice_kind = "success"
         owner.lblServerIdentityState.setText(
-            "Unsaved changes. Preview the complete change set before applying it."
+            "Unsaved changes. Apply Changes will show a final review before saving."
         )
         owner.lblServerIdentityState.set_kind("warning")
     elif getattr(owner, "_server_settings_apply_notice", ""):
@@ -600,13 +636,8 @@ def update_identity_access_form_state(owner) -> None:
     else:
         owner.lblServerIdentityState.setText("Server Settings are current.")
         owner.lblServerIdentityState.set_kind("success")
-    owner.btnServerIdentityPreview.setEnabled(dirty and not errors)
-    owner.btnServerIdentityApply.setEnabled(False)
+    owner.btnServerIdentityApply.setEnabled(dirty and not errors)
     owner.btnServerIdentityReset.setEnabled(dirty)
-    if dirty:
-        owner.txtServerIdentityPreview.clear()
-        if hasattr(owner, "boxServerSettingsReview"):
-            owner.boxServerSettingsReview.toggle.setChecked(False)
 
 
 def populate_identity_access_form(owner, items: Sequence[Mapping[str, Any]]) -> None:
@@ -666,9 +697,6 @@ def populate_identity_access_form(owner, items: Sequence[Mapping[str, Any]]) -> 
         }
     finally:
         owner._server_identity_loading = False
-    owner.txtServerIdentityPreview.clear()
-    if hasattr(owner, "boxServerSettingsReview"):
-        owner.boxServerSettingsReview.toggle.setChecked(False)
     update_identity_access_form_state(owner)
 
 
@@ -998,23 +1026,14 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     discord_layout.addWidget(discord_group)
     discord_layout.addStretch(1)
 
-    owner.txtServerIdentityPreview = QtWidgets.QPlainTextEdit()
-    owner.txtServerIdentityPreview.setReadOnly(True)
-    owner.txtServerIdentityPreview.setMinimumHeight(120)
-    owner.txtServerIdentityPreview.setPlaceholderText(
-        "A human-readable summary and masked INI diff will appear here."
-    )
     owner.btnServerIdentityReset = QtWidgets.QPushButton("Discard Changes")
-    owner.btnServerIdentityPreview = QtWidgets.QPushButton("Review Changes")
     owner.btnServerIdentityApply = QtWidgets.QPushButton("Apply Changes")
     for button in (
         owner.btnServerIdentityReset,
-        owner.btnServerIdentityPreview,
         owner.btnServerIdentityApply,
     ):
         button.setEnabled(False)
     set_button_role(owner.btnServerIdentityReset, BUTTON_SECONDARY)
-    set_button_role(owner.btnServerIdentityPreview, BUTTON_SECONDARY)
     set_button_role(owner.btnServerIdentityApply, BUTTON_PRIMARY)
 
     owner.btnServerIdentityReset.clicked.connect(
@@ -1099,13 +1118,6 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     edit_layout.addWidget(owner.txtServerConfigEditDiff)
     advanced_layout.addWidget(edit_group)
 
-    owner.boxServerSettingsReview = CollapsibleBox("Change Review")
-    owner.boxServerSettingsReview.layout_for_rows().addWidget(
-        owner.txtServerIdentityPreview
-    )
-    owner.boxServerSettingsReview.toggle.setChecked(False)
-    layout.addWidget(owner.boxServerSettingsReview)
-
     owner.frmServerSettingsActions = QtWidgets.QFrame()
     owner.frmServerSettingsActions.setProperty("settingsActionBar", True)
     shared_actions_layout = QtWidgets.QVBoxLayout(owner.frmServerSettingsActions)
@@ -1113,14 +1125,13 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     shared_actions_layout.setSpacing(8)
     shared_actions_layout.addWidget(owner.lblServerIdentityState)
     owner.lblServerSettingsApplyHint = _field_help(
-        "Review combines changes from every marked tab. Apply creates a timestamped "
-        "backup and validates the files; restart the server afterward."
+        "Apply reviews changes from every marked tab, then creates a timestamped "
+        "backup and validates the files after confirmation; restart the server afterward."
     )
     shared_actions_layout.addWidget(owner.lblServerSettingsApplyHint)
     identity_actions = QtWidgets.QHBoxLayout()
     identity_actions.addWidget(owner.btnServerIdentityReset)
     identity_actions.addStretch(1)
-    identity_actions.addWidget(owner.btnServerIdentityPreview)
     identity_actions.addWidget(owner.btnServerIdentityApply)
     shared_actions_layout.addLayout(identity_actions)
     layout.addWidget(owner.frmServerSettingsActions)
@@ -1128,7 +1139,6 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     def update_shared_action_visibility(index: int) -> None:
         curated = index < owner.tabsServerSettings.count() - 1
         owner.frmServerSettingsActions.setVisible(curated)
-        owner.boxServerSettingsReview.setVisible(curated)
 
     owner.tabsServerSettings.currentChanged.connect(
         update_shared_action_visibility

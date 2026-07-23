@@ -57,6 +57,7 @@ from GUI.widgets import CollapsibleBox  # noqa: E402
 from GUI.backup_view import (  # noqa: E402
     GuardedRestoreWorker,
     backup_history_summary,
+    backup_policy_change_lines,
     backup_retention_explanation,
     build_backup_history_view,
     build_restore_preview_dialog,
@@ -65,7 +66,6 @@ from GUI.backup_view import (  # noqa: E402
     format_archive_size,
     populate_backup_policy,
     populate_backup_history,
-    review_backup_policy,
 )
 from Tools.backup_policy import BackupPolicy  # noqa: E402
 from GUI.design_system import (  # noqa: E402
@@ -110,7 +110,7 @@ class GuiHelperTests(unittest.TestCase):
             )
         self.assertTrue(callable(kwargs["server_running_check"]))
 
-    def test_backup_policy_form_tracks_reviews_and_discards_changes(self) -> None:
+    def test_backup_policy_form_applies_and_discards_changes_naturally(self) -> None:
         class Owner:
             pass
 
@@ -135,23 +135,33 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.wdgBackupPolicyCleanupOptions.minimumHeight(), 100)
         self.assertEqual(owner.spinBackupPolicyMinimum.value(), 3)
         self.assertTrue(owner.wdgBackupPolicyOptions.isEnabled())
-        self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
+        self.assertFalse(hasattr(owner, "btnBackupPolicyReview"))
+        self.assertFalse(owner.btnBackupPolicyApply.isEnabled())
         owner.chkBackupPolicyAutosave.setChecked(True)
         owner.spinBackupPolicyCount.setValue(25)
         self.assertIn("maximum 25", owner.lblBackupPolicyRetentionHelp.text())
         self.assertIn("Unsaved changes", owner.lblBackupPolicyRetentionHelp.text())
-        self.assertTrue(owner.btnBackupPolicyReview.isEnabled())
-        self.assertFalse(owner.btnBackupPolicyApply.isEnabled())
-
-        review_backup_policy(owner)
         self.assertTrue(owner.btnBackupPolicyApply.isEnabled())
-        self.assertIn("Autosave", owner.lblBackupPolicyReview.text())
-        self.assertIn("25 archive(s)", owner.lblBackupPolicyReview.text())
+        self.assertIn("final review", owner.lblBackupPolicyState.text())
 
         owner.btnBackupPolicyDiscard.click()
         self.assertEqual(collect_backup_policy(owner), baseline)
-        self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
+        self.assertFalse(owner.btnBackupPolicyApply.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_policy_review_lists_only_changed_values(self) -> None:
+        current = BackupPolicy(on_autosave=False, max_backups=10, max_age_days=7)
+        proposed = BackupPolicy(on_autosave=True, max_backups=25, max_age_days=7)
+
+        changes = backup_policy_change_lines(current, proposed)
+
+        self.assertEqual(
+            changes,
+            (
+                "Backup after autosave: Off -> On",
+                "Maximum backups per type: 10 -> 25",
+            ),
+        )
 
     def test_backup_safety_floor_cannot_exceed_count_limit(self) -> None:
         class Owner:
@@ -561,6 +571,8 @@ class GuiHelperTests(unittest.TestCase):
         css = application_stylesheet()
 
         self.assertIn('buttonRole="primary"', css)
+        self.assertIn('buttonRole="primary"]:disabled', css)
+        self.assertIn("background: palette(mid);", css)
         self.assertIn('buttonRole="danger"', css)
         self.assertIn('noticeKind="error"', css)
         self.assertIn('statusState="healthy"', css)
@@ -731,8 +743,8 @@ class GuiHelperTests(unittest.TestCase):
         )
         self.assertIsInstance(owner.tabsServerSettings.widget(0), QtWidgets.QScrollArea)
         self.assertFalse(owner.frmServerSettingsActions.isHidden())
-        self.assertFalse(owner.boxServerSettingsReview.toggle.isChecked())
-        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+        self.assertFalse(hasattr(owner, "boxServerSettingsReview"))
+        self.assertFalse(hasattr(owner, "btnServerIdentityPreview"))
         self.assertFalse(owner.btnServerIdentityApply.isEnabled())
         labels = [label.text() for label in widget.findChildren(QtWidgets.QLabel)]
         self.assertFalse(any("settings belong to VEIN" in text for text in labels))
@@ -740,10 +752,8 @@ class GuiHelperTests(unittest.TestCase):
 
         owner.tabsServerSettings.setCurrentIndex(4)
         self.assertFalse(owner.frmServerSettingsActions.isHidden())
-        self.assertFalse(owner.boxServerSettingsReview.isHidden())
         owner.tabsServerSettings.setCurrentIndex(5)
         self.assertTrue(owner.frmServerSettingsActions.isHidden())
-        self.assertTrue(owner.boxServerSettingsReview.isHidden())
         owner.tabsServerSettings.setCurrentIndex(0)
         self.assertFalse(owner.frmServerSettingsActions.isHidden())
 
@@ -776,14 +786,15 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(len(loaded["admin_steam_ids"]), 2)
         self.assertIn("will be preserved", owner.lblServerIdentityPasswordStatus.text())
         self.assertIn("Validation: PASS=4", owner.lblServerIdentityState.text())
-        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+        self.assertFalse(owner.btnServerIdentityApply.isEnabled())
 
         owner.edServerIdentityName.clear()
         self.assertIn("required", owner.lblServerIdentityNameError.text())
         self.assertEqual(owner.tabsServerSettings.tabText(0), "General *")
-        self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
+        self.assertFalse(owner.btnServerIdentityApply.isEnabled())
         owner.edServerIdentityName.setText("Updated")
-        self.assertTrue(owner.btnServerIdentityPreview.isEnabled())
+        self.assertTrue(owner.btnServerIdentityApply.isEnabled())
+        self.assertIn("final review", owner.lblServerIdentityState.text())
         self.assertTrue(owner.btnServerIdentityReset.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
@@ -848,6 +859,8 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(next(edit for edit in edits if edit.key == "AdminSteamIDs").values, ())
         summary = identity_access_change_summary(values, baseline)
         self.assertIn("Password", summary)
+        self.assertIn("Server name: Old -> New", summary)
+        self.assertIn("Public visibility: On -> Off", summary)
         self.assertNotIn("replacement-secret", summary)
         self.assertNotIn("/1/secret", summary)
 

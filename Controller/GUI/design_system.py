@@ -141,6 +141,12 @@ def application_stylesheet() -> str:
             font-weight: 600;
             padding: 6px 12px;
         }
+        QPushButton[buttonRole="primary"]:disabled {
+            background: palette(mid);
+            color: palette(dark);
+            border-color: palette(mid);
+            font-weight: 400;
+        }
         QPushButton[buttonRole="danger"] { color: #d84a4a; font-weight: 600; }
         QPushButton[buttonRole="quiet"] { padding: 4px 8px; }
     """

@@ -145,8 +145,9 @@ Watches the selected log file and streams content into the GUI in real time:
   one shared dirty-state model; secret values are preserved unless replacements
   are entered. Inline validation covers required names, SteamID64 values, bind
   addresses, unique ports, and Discord webhook URLs. A shared footer keeps
-  state, Discard, Review, and Apply actions in one consistent location, while a
-  collapsible panel reviews the complete batch. Tabs containing edits display
+  state, Discard, and Apply actions in one consistent location. Apply generates
+  the guarded preview and opens a concise old-to-new confirmation; its optional
+  technical details contain the masked INI diff. Tabs containing edits display
   an unsaved marker, and field-specific network and Discord errors appear beside
   the affected controls. Successful writes create backups, run validation, and
   retain a concise validation summary and next-start/restart guidance through

@@ -15,7 +15,6 @@ from Tools.process import is_server_running
 from Tools.backup_policy import (
     BackupPolicy,
     apply_backup_policy,
-    backup_policy_summary,
     load_backup_policy,
 )
 from .design_system import (
@@ -457,6 +456,56 @@ def collect_backup_policy(owner) -> BackupPolicy:
     )
 
 
+def backup_policy_change_lines(
+    current: BackupPolicy, proposed: BackupPolicy
+) -> tuple[str, ...]:
+    """Describe only changed policy fields for an Apply confirmation."""
+    on_off = lambda value: "On" if value else "Off"
+    fields = (
+        ("enabled", "Backup creation", on_off),
+        ("startup_recovery_enabled", "Missing-save startup recovery", on_off),
+        ("on_autosave", "Backup after autosave", on_off),
+        ("on_crash_detect", "Backup when a crash is detected", on_off),
+        ("on_shutdown", "Backup after controlled shutdown", on_off),
+        ("cleanup_enabled", "Automatic cleanup", on_off),
+        ("minimum_backups", "Protected newest backups per type", str),
+        ("cleanup_by_count", "Count cleanup rule", on_off),
+        ("max_backups", "Maximum backups per type", str),
+        ("cleanup_by_age", "Age cleanup rule", on_off),
+        ("max_age_days", "Maximum backup age in full days", str),
+    )
+    return tuple(
+        f"{label}: {formatter(before)} -> {formatter(after)}"
+        for attribute, label, formatter in fields
+        if (before := getattr(current, attribute))
+        != (after := getattr(proposed, attribute))
+    )
+
+
+def confirm_backup_policy_changes(
+    parent, current: BackupPolicy, proposed: BackupPolicy
+) -> bool:
+    """Show the review naturally as part of Apply, before any write occurs."""
+    changes = backup_policy_change_lines(current, proposed)
+    if not changes:
+        return False
+    dialog = QtWidgets.QMessageBox(parent)
+    dialog.setIcon(QtWidgets.QMessageBox.Question)
+    dialog.setWindowTitle("Review Backup Policy Changes")
+    dialog.setText("Apply these backup policy changes?")
+    dialog.setInformativeText(
+        "\n".join(f"- {change}" for change in changes)
+        + "\n\nconfig.yaml will be backed up and updated atomically. "
+        "Existing backup archives will not be deleted by this action; enabled "
+        "cleanup rules run only after a future successful backup."
+    )
+    apply_button = dialog.addButton("Apply Policy", QtWidgets.QMessageBox.AcceptRole)
+    dialog.addButton(QtWidgets.QMessageBox.Cancel)
+    dialog.setDefaultButton(apply_button)
+    dialog.exec()
+    return dialog.clickedButton() is apply_button
+
+
 def backup_retention_explanation(policy: BackupPolicy) -> str:
     modes = []
     if policy.cleanup_by_count:
@@ -507,15 +556,12 @@ def update_backup_policy_state(owner) -> None:
     )
     owner._backup_policy_dirty = dirty
     owner.btnBackupPolicyDiscard.setEnabled(dirty)
-    owner.btnBackupPolicyReview.setEnabled(dirty)
-    owner.btnBackupPolicyApply.setEnabled(False)
+    owner.btnBackupPolicyApply.setEnabled(dirty)
     if dirty:
         owner.lblBackupPolicyState.setText(
-            "Unsaved backup-policy changes. Review them before applying."
+            "Unsaved backup-policy changes. Apply Policy will show a final review before saving."
         )
         owner.lblBackupPolicyState.set_kind("warning")
-        owner.lblBackupPolicyReview.clear()
-        owner.lblBackupPolicyReview.hide()
     elif baseline is not None:
         owner.lblBackupPolicyState.setText("Backup policy is current.")
         owner.lblBackupPolicyState.set_kind("success")
@@ -538,19 +584,9 @@ def populate_backup_policy(owner, policy: BackupPolicy) -> None:
         owner._backup_policy_baseline = policy
     finally:
         owner._backup_policy_loading = False
-    owner.lblBackupPolicyReview.clear()
-    owner.lblBackupPolicyReview.hide()
     owner.btnBackupHistoryCreate.setEnabled(policy.enabled)
     owner.btnBackupHistoryRestorePoint.setEnabled(policy.enabled)
     update_backup_policy_state(owner)
-
-
-def review_backup_policy(owner) -> None:
-    policy = collect_backup_policy(owner)
-    owner.lblBackupPolicyReview.setText(backup_policy_summary(policy))
-    owner.lblBackupPolicyReview.set_kind("info")
-    owner.lblBackupPolicyReview.show()
-    owner.btnBackupPolicyApply.setEnabled(policy != owner._backup_policy_baseline)
 
 
 def apply_backup_history_filter(owner) -> None:
@@ -928,25 +964,18 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     policy_columns.addWidget(owner.grpBackupPolicyRetention, 3)
     policy_layout.addWidget(owner.wdgBackupPolicyOptions)
     owner.lblBackupPolicyState = InlineNotice("Loading backup policy.")
-    owner.lblBackupPolicyReview = InlineNotice()
-    owner.lblBackupPolicyReview.hide()
-    policy_layout.addWidget(owner.lblBackupPolicyReview)
     policy_footer = QtWidgets.QHBoxLayout()
     owner.btnBackupPolicyDiscard = QtWidgets.QPushButton("Discard Changes")
-    owner.btnBackupPolicyReview = QtWidgets.QPushButton("Review Changes")
     owner.btnBackupPolicyApply = QtWidgets.QPushButton("Apply Policy")
     for button in (
         owner.btnBackupPolicyDiscard,
-        owner.btnBackupPolicyReview,
         owner.btnBackupPolicyApply,
     ):
         button.setEnabled(False)
     set_button_role(owner.btnBackupPolicyDiscard, BUTTON_SECONDARY)
-    set_button_role(owner.btnBackupPolicyReview, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupPolicyApply, BUTTON_PRIMARY)
     policy_footer.addWidget(owner.lblBackupPolicyState, 1)
     policy_footer.addWidget(owner.btnBackupPolicyDiscard)
-    policy_footer.addWidget(owner.btnBackupPolicyReview)
     policy_footer.addWidget(owner.btnBackupPolicyApply)
     policy_layout.addLayout(policy_footer)
     layout.addWidget(owner.boxBackupPolicy)
@@ -1083,7 +1112,6 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     owner.btnBackupPolicyDiscard.clicked.connect(
         lambda: populate_backup_policy(owner, owner._backup_policy_baseline)
     )
-    owner.btnBackupPolicyReview.clicked.connect(lambda: review_backup_policy(owner))
     owner.btnBackupPolicyApply.clicked.connect(
         getattr(owner, "_confirm_apply_backup_policy", lambda: None)
     )
