@@ -21,6 +21,7 @@ class BackupPolicy:
     cleanup_enabled: bool = True
     cleanup_by_count: bool = True
     cleanup_by_age: bool = True
+    minimum_backups: int = 3
     max_backups: int = 10
     max_age_days: int = 7
 
@@ -73,6 +74,14 @@ def backup_policy_from_mapping(data: Mapping[str, Any]) -> BackupPolicy:
     if not isinstance(default_retention, Mapping):
         default_retention = {}
     enabled = backups.get("enabled", backups.get("enable", True))
+    max_backups = int(
+        default_retention.get("max_backups", backups.get("max_backups", 10))
+    )
+    max_age_days = int(
+        default_retention.get(
+            "max_age_days", backups.get("backup_max_age_days", 7)
+        )
+    )
     return BackupPolicy(
         enabled=bool(enabled),
         on_autosave=_trigger_value(triggers, "on_autosave", False),
@@ -81,20 +90,23 @@ def backup_policy_from_mapping(data: Mapping[str, Any]) -> BackupPolicy:
         cleanup_enabled=bool(default_retention.get("enabled", True)),
         cleanup_by_count=bool(default_retention.get("by_count", True)),
         cleanup_by_age=bool(default_retention.get("by_age", True)),
-        max_backups=int(
-            default_retention.get("max_backups", backups.get("max_backups", 10))
+        minimum_backups=int(
+            default_retention.get("minimum_backups", min(3, max_backups))
         ),
-        max_age_days=int(
-            default_retention.get(
-                "max_age_days", backups.get("backup_max_age_days", 7)
-            )
-        ),
+        max_backups=max_backups,
+        max_age_days=max_age_days,
     )
 
 
 def validate_backup_policy(policy: BackupPolicy) -> None:
+    if not 1 <= int(policy.minimum_backups) <= 10000:
+        raise ValueError("Minimum retained backups must be between 1 and 10,000.")
     if not 1 <= int(policy.max_backups) <= 10000:
         raise ValueError("Backup count retention must be between 1 and 10,000.")
+    if policy.cleanup_by_count and policy.max_backups < policy.minimum_backups:
+        raise ValueError(
+            "Maximum backups cannot be lower than the minimum retained backups."
+        )
     if not 1 <= int(policy.max_age_days) <= 3650:
         raise ValueError("Backup age retention must be between 1 and 3,650 days.")
 
@@ -133,7 +145,8 @@ def backup_policy_summary(policy: BackupPolicy) -> str:
     active_note = "" if policy.enabled else " All subordinate actions are inactive."
     return (
         f"Backups {state}; saved triggers: {trigger_text}; automatic cleanup: "
-        f"{cleanup}.{active_note}"
+        f"{cleanup}; always keep at least {policy.minimum_backups} per type."
+        f"{active_note}"
     )
 
 
@@ -210,6 +223,7 @@ def apply_backup_policy(
         retention["default"] = default_retention
     default_retention["max_backups"] = int(policy.max_backups)
     default_retention["max_age_days"] = int(policy.max_age_days)
+    default_retention["minimum_backups"] = int(policy.minimum_backups)
     default_retention["enabled"] = bool(policy.cleanup_enabled)
     default_retention["by_count"] = bool(policy.cleanup_by_count)
     default_retention["by_age"] = bool(policy.cleanup_by_age)

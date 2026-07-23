@@ -175,6 +175,10 @@ def _migrate_backups_view() -> None:
         default_retention.setdefault("enabled", True)
         default_retention.setdefault("by_count", True)
         default_retention.setdefault("by_age", True)
+        default_retention.setdefault(
+            "minimum_backups",
+            min(3, int(default_retention.get("max_backups", default_max))),
+        )
 
     nightly = config.get("nightly_backup", {}) or {}
     if nightly:
@@ -333,6 +337,9 @@ def backup_retention_for(reason: str) -> Dict[str, Any]:
         "enabled": bool(r.get("enabled", default.get("enabled", True))),
         "by_count": bool(r.get("by_count", default.get("by_count", True))),
         "by_age": bool(r.get("by_age", default.get("by_age", True))),
+        "minimum_backups": int(
+            r.get("minimum_backups", default.get("minimum_backups", 3))
+        ),
         "max_backups": int(r.get("max_backups", default.get("max_backups", 10))),
         "max_age_days": int(
             r.get("max_age_days", default.get("max_age_days", 7))

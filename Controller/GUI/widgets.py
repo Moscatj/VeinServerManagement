@@ -23,7 +23,12 @@ class CollapsibleBox(QtWidgets.QWidget):
         header = QtWidgets.QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.addWidget(self.toggle)
-        header.addStretch(1)
+        self.summary = QtWidgets.QLabel()
+        self.summary.setProperty("fieldHelp", True)
+        self.summary.setSizePolicy(
+            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred
+        )
+        header.addWidget(self.summary, 1)
 
         self.container = QtWidgets.QWidget()
         self.vbox = QtWidgets.QVBoxLayout(self.container)
@@ -38,9 +43,18 @@ class CollapsibleBox(QtWidgets.QWidget):
     def _on_toggled(self, on: bool):
         self.container.setVisible(on)
         self.toggle.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+        self.container.updateGeometry()
+        self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
 
     def layout_for_rows(self) -> QtWidgets.QVBoxLayout:
         return self.vbox
+
+    def set_summary(self, text: str) -> None:
+        self.summary.setText(text)
+        self.summary.setToolTip(text)
 
     def set_count(self, n: int, active: bool):
         """Update header with a small count when filtering."""
@@ -60,4 +74,3 @@ class CollapsibleBox(QtWidgets.QWidget):
             else QtWidgets.QVBoxLayout(self.container)
         )
         self.container.setLayout(self.vbox)
-

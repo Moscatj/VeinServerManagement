@@ -25,7 +25,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   plain-language retention guidance clarify when automatic backups run and when
   old archives are cleaned up. Backup history now summarizes archive count,
   disk usage, categories, and oldest/newest dates, with read-only category
-  filtering.
+  filtering. Automatic cleanup now has a configurable minimum-backup safety
+  floor (three per type by default), so age/count rules cannot remove every
+  rollback point after a long period of server inactivity.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

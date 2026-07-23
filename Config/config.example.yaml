@@ -113,6 +113,7 @@ backups:
   retention:
     default:
       enabled: true
+      minimum_backups: 3
       by_count: true
       max_backups: 10
       by_age: true

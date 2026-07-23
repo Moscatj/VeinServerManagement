@@ -120,7 +120,7 @@ not a claim that each phase is complete.
   detailed management to the dedicated Backups page.
 - [x] Add guarded backup-policy controls for global enablement, implemented
   Autosave/Crash/Shutdown triggers, and independently enabled default count/age
-  cleanup.
+  cleanup with a configurable minimum-backup safety floor.
 - [x] Add read-only backup storage totals, oldest/newest context, and category
   filtering to archive history.
 - Expand backup policy with schedules, per-category retention, pinned archives,

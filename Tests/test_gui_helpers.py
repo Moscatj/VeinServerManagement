@@ -100,13 +100,17 @@ class GuiHelperTests(unittest.TestCase):
 
         self.assertEqual(collect_backup_policy(owner), baseline)
         self.assertEqual(owner.grpBackupPolicyTriggers.title(), "Automatic backups")
-        self.assertIn("more than 7 full days old", owner.lblBackupPolicyRetentionHelp.text())
-        self.assertIn("does not immediately delete", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("age 7 days", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("newest 3 per type", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertTrue(owner.boxBackupPolicy.toggle.isChecked())
+        self.assertEqual(owner.wdgBackupPolicyCleanupOptions.minimumHeight(), 100)
+        self.assertEqual(owner.spinBackupPolicyMinimum.value(), 3)
         self.assertTrue(owner.wdgBackupPolicyOptions.isEnabled())
         self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
         owner.chkBackupPolicyAutosave.setChecked(True)
         owner.spinBackupPolicyCount.setValue(25)
-        self.assertIn("keep at most 25", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("maximum 25", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("Unsaved changes", owner.lblBackupPolicyRetentionHelp.text())
         self.assertTrue(owner.btnBackupPolicyReview.isEnabled())
         self.assertFalse(owner.btnBackupPolicyApply.isEnabled())
 
@@ -118,6 +122,23 @@ class GuiHelperTests(unittest.TestCase):
         owner.btnBackupPolicyDiscard.click()
         self.assertEqual(collect_backup_policy(owner), baseline)
         self.assertFalse(owner.btnBackupPolicyReview.isEnabled())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_safety_floor_cannot_exceed_count_limit(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_policy(
+            owner, BackupPolicy(minimum_backups=3, max_backups=10)
+        )
+
+        owner.spinBackupPolicyMinimum.setValue(12)
+
+        self.assertEqual(owner.spinBackupPolicyCount.minimum(), 12)
+        self.assertEqual(owner.spinBackupPolicyCount.value(), 12)
+        self.assertIn("newest 12 per type", owner.lblBackupPolicyRetentionHelp.text())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_backup_policy_master_switch_disables_subordinate_controls(self) -> None:
@@ -146,10 +167,10 @@ class GuiHelperTests(unittest.TestCase):
         owner.chkBackupPolicyCleanupCount.setChecked(False)
         self.assertFalse(owner.spinBackupPolicyCount.isEnabled())
         self.assertTrue(owner.spinBackupPolicyAge.isEnabled())
-        self.assertNotIn("keep at most", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertNotIn("maximum 10", owner.lblBackupPolicyRetentionHelp.text())
         owner.chkBackupPolicyCleanupEnabled.setChecked(False)
         self.assertFalse(owner.wdgBackupPolicyCleanupOptions.isEnabled())
-        self.assertIn("cleanup is off", owner.lblBackupPolicyRetentionHelp.text())
+        self.assertIn("Automatic cleanup off", owner.lblBackupPolicyRetentionHelp.text())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 
     def test_backup_retention_explanation_uses_plain_language(self) -> None:
@@ -157,9 +178,8 @@ class GuiHelperTests(unittest.TestCase):
             BackupPolicy(max_backups=12, max_age_days=30)
         )
 
-        self.assertIn("keep at most 12 archives per backup type", text)
-        self.assertIn("more than 30 full days old", text)
-        self.assertIn("does not immediately delete", text)
+        self.assertIn("maximum 12", text)
+        self.assertIn("age 30 days", text)
 
     def test_backup_history_view_renders_read_only_archive_metadata(self) -> None:
         class Owner:
@@ -187,6 +207,7 @@ class GuiHelperTests(unittest.TestCase):
 
         self.assertIsInstance(widget, QtWidgets.QWidget)
         self.assertEqual(owner.treeBackupHistory.columnCount(), 4)
+        self.assertEqual(owner.treeBackupHistory.minimumHeight(), 200)
         self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
         self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(3), "1.5 KB")
         self.assertIn("1 archive(s)", owner.lblBackupHistoryStatus.text())
@@ -252,6 +273,30 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(1), "Crash")
         self.assertIn("in Crash", owner.lblBackupHistoryFilterStatus.text())
         self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_backup_page_preserves_cleanup_cards_and_archive_height(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_policy(owner, BackupPolicy())
+        widget.resize(1600, 800)
+        widget.show()
+        app().processEvents()
+        cards = [
+            frame
+            for frame in widget.findChildren(QtWidgets.QFrame)
+            if frame.property("policyOption")
+        ]
+
+        self.assertEqual(widget.width(), 1600)
+        self.assertEqual(len(cards), 3)
+        self.assertTrue(
+            all(card.height() >= card.minimumSizeHint().height() for card in cards)
+        )
+        self.assertGreaterEqual(owner.treeBackupHistory.height(), 200)
+        widget.close()
 
     @classmethod
     def setUpClass(cls) -> None:

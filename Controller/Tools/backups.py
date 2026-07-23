@@ -239,6 +239,9 @@ def _retention_for(reason: str) -> dict[str, int | bool]:
         "enabled": bool(rc.get("enabled", dc.get("enabled", True))),
         "by_count": bool(rc.get("by_count", dc.get("by_count", True))),
         "by_age": bool(rc.get("by_age", dc.get("by_age", True))),
+        "minimum_backups": int(
+            rc.get("minimum_backups", dc.get("minimum_backups", 3))
+        ),
         "max_backups": int(max_count),
         "max_age_days": int(max_age),
     }
@@ -553,7 +556,10 @@ def make_backup(
 
 def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dict:
     """
-    Prune by per-reason policy (count/age). Returns {'deleted': int}.
+    Prune by per-reason count/age policy without crossing its safety floor.
+
+    The newest ``minimum_backups`` archives are never automatic-cleanup
+    candidates. Returns ``{'deleted': int}``.
     """
     folder = path or (_dest_for(reason) if reason else _root())
     folder.mkdir(parents=True, exist_ok=True)
@@ -561,6 +567,7 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
     cleanup_enabled = bool(policy["enabled"])
     by_count = bool(policy["by_count"])
     by_age = bool(policy["by_age"])
+    minimum_backups = max(1, int(policy["minimum_backups"]))
     max_count = int(policy["max_backups"])
     max_age = int(policy["max_age_days"])
 
@@ -569,8 +576,11 @@ def prune_backups(reason: str | None = None, *, path: Path | None = None) -> dic
         [p for p in folder.glob("*.zip") if p.is_file()],
         key=lambda p: p.stat().st_mtime,
     )
+    protected = set(zips[-minimum_backups:])
     now = datetime.now()
     for p in list(zips):
+        if p in protected:
+            continue
         age_days = (now - datetime.fromtimestamp(p.stat().st_mtime)).days
         over_age = cleanup_enabled and by_age and age_days > max_age
         over_count = cleanup_enabled and by_count and len(zips) > max_count

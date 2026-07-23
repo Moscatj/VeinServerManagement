@@ -222,13 +222,19 @@ login/logout controls remain roadmap items.
 - backups.retention.default.by_age
   • Enables the maximum archive age rule independently.
 
+- backups.retention.default.minimum_backups
+  • Number of newest archives in each backup category that automatic cleanup
+    must always preserve. Defaults to 3 and cannot exceed an enabled count limit.
+
 Count and age cleanup can both be enabled, either can be used alone, or both
 can be disabled. After a new backup is created, enabled rules are evaluated for
-that backup category. Count cleanup removes the oldest archives until the
-category is within its limit. Age cleanup removes archives more than the
-configured number of full days old. Applying policy in the GUI does not
-immediately delete existing archives; cleanup occurs when that category next
-creates a backup.
+that backup category. The configured minimum newest archives are protected
+first. Count cleanup then removes the oldest unprotected archives until the
+category is within its limit. Age cleanup removes unprotected archives more
+than the configured number of full days old. Applying policy in the GUI does
+not immediately delete existing archives; cleanup occurs when that category
+next creates a backup. Cleanup is reached only after successful backup creation,
+so a failed new backup cannot trigger deletion of existing rollback points.
 Autosave and Crash trigger changes take effect when the log monitor next starts.
 
 - max_backups  

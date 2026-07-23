@@ -68,6 +68,9 @@ Released through `v2.11.0`:
   default count/age cleanup controls. Cleanup can be disabled or use either
   rule independently; Apply backs up and validates config and does not
   immediately delete existing archives.
+- Automatic cleanup protects a configurable minimum of the newest archives in
+  every backup category (three by default), preserving rollback points after
+  long server inactivity or a newly corrupted save.
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
@@ -249,9 +252,8 @@ against storage use without hand-editing YAML.
   per-category policies.
 - Show estimated/current storage use, archive counts, oldest/newest dates, and a
   preview of what the selected retention policy would prune.
-- Support pinned milestone archives that automatic retention cannot prune, keep
-  at least the newest successful archive per enabled category, and never prune
-  a source save because backup creation failed.
+- Support pinned milestone archives that automatic cleanup cannot delete,
+  building on the current configurable minimum-backup safety floor.
 - Keep profile backup roots and retention policies isolated when multi-server
   profiles are introduced.
 

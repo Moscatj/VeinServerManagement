@@ -129,6 +129,12 @@ def application_stylesheet() -> str:
             background: palette(window);
         }
 
+        QFrame[policyOption="true"] {
+            border: 1px solid palette(mid);
+            border-radius: 5px;
+            background: palette(alternate-base);
+        }
+
         QPushButton[buttonRole="primary"] {
             background: palette(highlight);
             color: palette(highlighted-text);

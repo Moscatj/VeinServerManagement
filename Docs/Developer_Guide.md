@@ -162,7 +162,8 @@ The file is loaded once via `config.py`, cached in memory, and accessed through 
 
 ### Key Behaviors
 - Backups are timestamped ZIPs of the current save file.
-- Retention controlled by `max_backups` and `backup_max_age_days`.
+- Structured retention supports independent count/age cleanup and protects the
+  newest `minimum_backups` archives in each category (three by default).
 - Discord notifications gated by `features.discord_backups`.
 
 ---

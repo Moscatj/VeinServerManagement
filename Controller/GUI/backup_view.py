@@ -23,6 +23,7 @@ from .design_system import (
     PageHeader,
     set_button_role,
 )
+from .widgets import CollapsibleBox
 
 BACKUP_HISTORY_DISPLAY_LIMIT = 200
 
@@ -155,6 +156,7 @@ def collect_backup_policy(owner) -> BackupPolicy:
         cleanup_enabled=owner.chkBackupPolicyCleanupEnabled.isChecked(),
         cleanup_by_count=owner.chkBackupPolicyCleanupCount.isChecked(),
         cleanup_by_age=owner.chkBackupPolicyCleanupAge.isChecked(),
+        minimum_backups=owner.spinBackupPolicyMinimum.value(),
         max_backups=owner.spinBackupPolicyCount.value(),
         max_age_days=owner.spinBackupPolicyAge.value(),
     )
@@ -163,18 +165,16 @@ def collect_backup_policy(owner) -> BackupPolicy:
 def backup_retention_explanation(policy: BackupPolicy) -> str:
     modes = []
     if policy.cleanup_by_count:
-        modes.append(f"keep at most {policy.max_backups} archives per backup type")
+        modes.append(f"maximum {policy.max_backups}")
     if policy.cleanup_by_age:
-        modes.append(f"remove archives more than {policy.max_age_days} full days old")
+        modes.append(f"age {policy.max_age_days} days")
     if not policy.cleanup_enabled or not modes:
         return (
-            "Automatic cleanup is off. Existing backup archives are kept until you "
-            "delete them manually or enable at least one cleanup rule."
+            f"Protected: newest {policy.minimum_backups} per type • Automatic cleanup off"
         )
-    rules = " and ".join(modes)
+    rules = "; ".join(modes)
     return (
-        f"Automatic cleanup will {rules}. It runs after that backup type creates a "
-        "new archive. Apply Policy does not immediately delete existing archives."
+        f"Protected: newest {policy.minimum_backups} per type • Cleanup: {rules}"
     )
 
 
@@ -184,6 +184,12 @@ def update_backup_policy_controls(owner) -> None:
     owner.btnBackupHistoryCreate.setEnabled(backups_enabled)
     cleanup_enabled = backups_enabled and owner.chkBackupPolicyCleanupEnabled.isChecked()
     owner.wdgBackupPolicyCleanupOptions.setEnabled(cleanup_enabled)
+    rules_enabled = cleanup_enabled and (
+        owner.chkBackupPolicyCleanupCount.isChecked()
+        or owner.chkBackupPolicyCleanupAge.isChecked()
+    )
+    owner.spinBackupPolicyMinimum.setEnabled(rules_enabled)
+    owner.spinBackupPolicyCount.setMinimum(owner.spinBackupPolicyMinimum.value())
     owner.spinBackupPolicyCount.setEnabled(
         cleanup_enabled and owner.chkBackupPolicyCleanupCount.isChecked()
     )
@@ -197,11 +203,12 @@ def update_backup_policy_state(owner) -> None:
         return
     policy = collect_backup_policy(owner)
     update_backup_policy_controls(owner)
-    owner.lblBackupPolicyRetentionHelp.setText(
-        backup_retention_explanation(policy)
-    )
+    summary = backup_retention_explanation(policy)
     baseline = getattr(owner, "_backup_policy_baseline", None)
     dirty = baseline is not None and policy != baseline
+    owner.boxBackupPolicy.set_summary(
+        f"{summary} • Unsaved changes" if dirty else summary
+    )
     owner._backup_policy_dirty = dirty
     owner.btnBackupPolicyDiscard.setEnabled(dirty)
     owner.btnBackupPolicyReview.setEnabled(dirty)
@@ -228,6 +235,7 @@ def populate_backup_policy(owner, policy: BackupPolicy) -> None:
         owner.chkBackupPolicyCleanupEnabled.setChecked(policy.cleanup_enabled)
         owner.chkBackupPolicyCleanupCount.setChecked(policy.cleanup_by_count)
         owner.chkBackupPolicyCleanupAge.setChecked(policy.cleanup_by_age)
+        owner.spinBackupPolicyMinimum.setValue(policy.minimum_backups)
         owner.spinBackupPolicyCount.setValue(policy.max_backups)
         owner.spinBackupPolicyAge.setValue(policy.max_age_days)
         owner._backup_policy_baseline = policy
@@ -368,8 +376,10 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     owner._backup_policy_loading = False
     owner._backup_policy_baseline = None
     owner._backup_policy_dirty = False
-    policy_group = QtWidgets.QGroupBox("Backup Policy")
-    policy_layout = QtWidgets.QVBoxLayout(policy_group)
+    owner.boxBackupPolicy = CollapsibleBox("Backup Policy")
+    owner.boxBackupPolicy.set_summary("Loading backup policy.")
+    owner.lblBackupPolicyRetentionHelp = owner.boxBackupPolicy.summary
+    policy_layout = owner.boxBackupPolicy.layout_for_rows()
     owner.chkBackupPolicyEnabled = QtWidgets.QCheckBox("Enable all save backups")
     master_font = owner.chkBackupPolicyEnabled.font()
     master_font.setBold(True)
@@ -413,78 +423,115 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     trigger_layout.addWidget(trigger_help)
     trigger_layout.addStretch(1)
 
-    owner.grpBackupPolicyRetention = QtWidgets.QGroupBox(
-        "Automatic cleanup"
-    )
+    owner.grpBackupPolicyRetention = QtWidgets.QGroupBox("Backup cleanup")
     retention_layout = QtWidgets.QVBoxLayout(owner.grpBackupPolicyRetention)
     owner.chkBackupPolicyCleanupEnabled = QtWidgets.QCheckBox(
         "Automatically remove old backup archives"
     )
-    retention_layout.addWidget(owner.chkBackupPolicyCleanupEnabled)
     retention_intro = QtWidgets.QLabel(
-        "Cleanup only removes backup ZIP archives. It never changes the live server save."
+        "Cleanup never changes the live server save."
     )
-    retention_intro.setWordWrap(True)
     retention_intro.setProperty("fieldHelp", True)
-    retention_layout.addWidget(retention_intro)
+    cleanup_header = QtWidgets.QHBoxLayout()
+    cleanup_header.addWidget(owner.chkBackupPolicyCleanupEnabled)
+    cleanup_header.addSpacing(SECTION_SPACING)
+    cleanup_header.addWidget(retention_intro)
+    cleanup_header.addStretch(1)
+    retention_layout.addLayout(cleanup_header)
 
     owner.wdgBackupPolicyCleanupOptions = QtWidgets.QWidget()
-    cleanup_options = QtWidgets.QVBoxLayout(owner.wdgBackupPolicyCleanupOptions)
-    cleanup_options.setContentsMargins(18, 0, 0, 0)
-    cleanup_options.setSpacing(6)
-    owner.chkBackupPolicyCleanupCount = QtWidgets.QCheckBox(
-        "Limit the number kept per backup type"
+    owner.wdgBackupPolicyCleanupOptions.setMinimumHeight(100)
+    cleanup_options = QtWidgets.QHBoxLayout(owner.wdgBackupPolicyCleanupOptions)
+    cleanup_options.setContentsMargins(0, 0, 0, 0)
+    cleanup_options.setSpacing(8)
+
+    safety_card = QtWidgets.QFrame()
+    safety_card.setProperty("policyOption", True)
+    safety_layout = QtWidgets.QVBoxLayout(safety_card)
+    safety_title = QtWidgets.QLabel("Protected backups")
+    safety_title_font = safety_title.font()
+    safety_title_font.setBold(True)
+    safety_title.setFont(safety_title_font)
+    safety_layout.addWidget(safety_title)
+    minimum_row = QtWidgets.QHBoxLayout()
+    owner.spinBackupPolicyMinimum = QtWidgets.QSpinBox()
+    owner.spinBackupPolicyMinimum.setRange(1, 10000)
+    owner.spinBackupPolicyMinimum.setFixedWidth(70)
+    minimum_row.addWidget(owner.spinBackupPolicyMinimum)
+    minimum_row.addWidget(QtWidgets.QLabel("minimum per type"))
+    minimum_row.addStretch(1)
+    safety_layout.addLayout(minimum_row)
+    minimum_help = QtWidgets.QLabel(
+        "Newest rollback points; never removed automatically."
     )
+    minimum_help.setWordWrap(True)
+    minimum_help.setProperty("fieldHelp", True)
+    safety_layout.addWidget(minimum_help)
+
+    count_card = QtWidgets.QFrame()
+    count_card.setProperty("policyOption", True)
+    count_layout = QtWidgets.QVBoxLayout(count_card)
+    owner.chkBackupPolicyCleanupCount = QtWidgets.QCheckBox(
+        "Count limit"
+    )
+    count_title_font = owner.chkBackupPolicyCleanupCount.font()
+    count_title_font.setBold(True)
+    owner.chkBackupPolicyCleanupCount.setFont(count_title_font)
+    count_layout.addWidget(owner.chkBackupPolicyCleanupCount)
     owner.spinBackupPolicyCount = QtWidgets.QSpinBox()
     owner.spinBackupPolicyCount.setRange(1, 10000)
-    owner.spinBackupPolicyCount.setSuffix(" backups")
-    owner.spinBackupPolicyCount.setMinimumWidth(140)
+    owner.spinBackupPolicyCount.setFixedWidth(70)
     count_row = QtWidgets.QHBoxLayout()
-    count_row.addWidget(owner.chkBackupPolicyCleanupCount)
-    count_row.addStretch(1)
     count_row.addWidget(owner.spinBackupPolicyCount)
-    cleanup_options.addLayout(count_row)
+    count_row.addWidget(QtWidgets.QLabel("maximum per type"))
+    count_row.addStretch(1)
+    count_layout.addLayout(count_row)
     count_help = QtWidgets.QLabel(
-        "Oldest archives are removed first when this limit is exceeded."
+        "Removes oldest unprotected backups first."
     )
     count_help.setWordWrap(True)
     count_help.setProperty("fieldHelp", True)
-    cleanup_options.addWidget(count_help)
+    count_layout.addWidget(count_help)
 
+    age_card = QtWidgets.QFrame()
+    age_card.setProperty("policyOption", True)
+    age_layout = QtWidgets.QVBoxLayout(age_card)
     owner.chkBackupPolicyCleanupAge = QtWidgets.QCheckBox(
-        "Remove backups older than"
+        "Age limit"
     )
+    age_title_font = owner.chkBackupPolicyCleanupAge.font()
+    age_title_font.setBold(True)
+    owner.chkBackupPolicyCleanupAge.setFont(age_title_font)
+    age_layout.addWidget(owner.chkBackupPolicyCleanupAge)
     owner.spinBackupPolicyAge = QtWidgets.QSpinBox()
     owner.spinBackupPolicyAge.setRange(1, 3650)
-    owner.spinBackupPolicyAge.setSuffix(" days")
-    owner.spinBackupPolicyAge.setMinimumWidth(140)
+    owner.spinBackupPolicyAge.setFixedWidth(70)
     age_row = QtWidgets.QHBoxLayout()
-    age_row.addWidget(owner.chkBackupPolicyCleanupAge)
-    age_row.addStretch(1)
     age_row.addWidget(owner.spinBackupPolicyAge)
-    cleanup_options.addLayout(age_row)
+    age_row.addWidget(QtWidgets.QLabel("full days"))
+    age_row.addStretch(1)
+    age_layout.addLayout(age_row)
     age_help = QtWidgets.QLabel(
-        "Age is measured in full days when that backup type next runs cleanup."
+        "Removes only older, unprotected backups."
     )
     age_help.setWordWrap(True)
     age_help.setProperty("fieldHelp", True)
-    cleanup_options.addWidget(age_help)
+    age_layout.addWidget(age_help)
+
+    cleanup_options.addWidget(safety_card, 1)
+    cleanup_options.addWidget(count_card, 1)
+    cleanup_options.addWidget(age_card, 1)
     retention_layout.addWidget(owner.wdgBackupPolicyCleanupOptions)
-    owner.lblBackupPolicyRetentionHelp = InlineNotice(
-        backup_retention_explanation(BackupPolicy())
-    )
-    retention_layout.addWidget(owner.lblBackupPolicyRetentionHelp)
     retention_layout.addStretch(1)
 
-    policy_columns.addWidget(owner.grpBackupPolicyTriggers, 1)
-    policy_columns.addWidget(owner.grpBackupPolicyRetention, 1)
+    policy_columns.addWidget(owner.grpBackupPolicyTriggers, 2)
+    policy_columns.addWidget(owner.grpBackupPolicyRetention, 3)
     policy_layout.addWidget(owner.wdgBackupPolicyOptions)
     owner.lblBackupPolicyState = InlineNotice("Loading backup policy.")
     owner.lblBackupPolicyReview = InlineNotice()
     owner.lblBackupPolicyReview.hide()
-    policy_layout.addWidget(owner.lblBackupPolicyState)
     policy_layout.addWidget(owner.lblBackupPolicyReview)
-    policy_actions = QtWidgets.QHBoxLayout()
+    policy_footer = QtWidgets.QHBoxLayout()
     owner.btnBackupPolicyDiscard = QtWidgets.QPushButton("Discard Changes")
     owner.btnBackupPolicyReview = QtWidgets.QPushButton("Review Changes")
     owner.btnBackupPolicyApply = QtWidgets.QPushButton("Apply Policy")
@@ -497,12 +544,12 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     set_button_role(owner.btnBackupPolicyDiscard, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupPolicyReview, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupPolicyApply, BUTTON_PRIMARY)
-    policy_actions.addWidget(owner.btnBackupPolicyDiscard)
-    policy_actions.addStretch(1)
-    policy_actions.addWidget(owner.btnBackupPolicyReview)
-    policy_actions.addWidget(owner.btnBackupPolicyApply)
-    policy_layout.addLayout(policy_actions)
-    layout.addWidget(policy_group)
+    policy_footer.addWidget(owner.lblBackupPolicyState, 1)
+    policy_footer.addWidget(owner.btnBackupPolicyDiscard)
+    policy_footer.addWidget(owner.btnBackupPolicyReview)
+    policy_footer.addWidget(owner.btnBackupPolicyApply)
+    policy_layout.addLayout(policy_footer)
+    layout.addWidget(owner.boxBackupPolicy)
 
     controls = QtWidgets.QHBoxLayout()
     owner.btnBackupHistoryRefresh = QtWidgets.QPushButton("Refresh")
@@ -536,6 +583,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     owner.treeBackupHistory.setAlternatingRowColors(True)
     owner.treeBackupHistory.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     owner.treeBackupHistory.setSortingEnabled(False)
+    owner.treeBackupHistory.setMinimumHeight(200)
     layout.addWidget(owner.treeBackupHistory, 1)
 
     owner.lblBackupHistoryPath = QtWidgets.QLabel()
@@ -575,6 +623,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         owner.chkBackupPolicyCleanupEnabled,
         owner.chkBackupPolicyCleanupCount,
         owner.chkBackupPolicyCleanupAge,
+        owner.spinBackupPolicyMinimum,
         owner.spinBackupPolicyCount,
         owner.spinBackupPolicyAge,
     ):

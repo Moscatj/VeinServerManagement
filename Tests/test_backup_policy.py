@@ -38,6 +38,7 @@ class BackupPolicyTests(unittest.TestCase):
                             "enabled": True,
                             "by_count": False,
                             "by_age": True,
+                            "minimum_backups": 4,
                             "max_backups": 25,
                             "max_age_days": 14,
                         }
@@ -53,6 +54,7 @@ class BackupPolicyTests(unittest.TestCase):
         self.assertTrue(policy.cleanup_enabled)
         self.assertFalse(policy.cleanup_by_count)
         self.assertTrue(policy.cleanup_by_age)
+        self.assertEqual(policy.minimum_backups, 4)
         self.assertEqual(policy.max_backups, 25)
         self.assertEqual(policy.max_age_days, 14)
 
@@ -65,12 +67,25 @@ class BackupPolicyTests(unittest.TestCase):
         self.assertIn("Autosave", summary)
         self.assertIn("maximum 20 archive(s) per type", summary)
         self.assertIn("maximum age 30 day(s)", summary)
+        self.assertIn("always keep at least 3", summary)
+        with self.assertRaisesRegex(ValueError, "Minimum retained"):
+            validate_backup_policy(BackupPolicy(minimum_backups=0))
+        with self.assertRaisesRegex(ValueError, "cannot be lower"):
+            validate_backup_policy(BackupPolicy(minimum_backups=5, max_backups=4))
         with self.assertRaisesRegex(ValueError, "count retention"):
             validate_backup_policy(BackupPolicy(max_backups=0))
         with self.assertRaisesRegex(ValueError, "age retention"):
             validate_backup_policy(BackupPolicy(max_age_days=0))
         with self.assertRaisesRegex(ValueError, "requires the primary YAML"):
             load_backup_policy("Config/config.json")
+
+    def test_legacy_small_count_derives_compatible_safety_floor(self) -> None:
+        policy = backup_policy_from_mapping(
+            {"backups": {"retention": {"default": {"max_backups": 1}}}}
+        )
+
+        self.assertEqual(policy.minimum_backups, 1)
+        validate_backup_policy(policy)
 
     def test_apply_policy_backs_up_writes_atomically_and_post_validates(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -100,6 +115,7 @@ class BackupPolicyTests(unittest.TestCase):
                 cleanup_enabled=True,
                 cleanup_by_count=False,
                 cleanup_by_age=True,
+                minimum_backups=5,
                 max_backups=40,
                 max_age_days=60,
             )
@@ -119,6 +135,9 @@ class BackupPolicyTests(unittest.TestCase):
                 saved["backups"]["retention"]["default"]["by_count"]
             )
             self.assertTrue(saved["backups"]["retention"]["default"]["by_age"])
+            self.assertEqual(
+                saved["backups"]["retention"]["default"]["minimum_backups"], 5
+            )
             self.assertFalse(config_path.with_suffix(".yaml.tmp").exists())
 
             noop = apply_backup_policy(config_path, policy)

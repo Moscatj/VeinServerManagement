@@ -78,6 +78,7 @@ class ConfigHelperTests(unittest.TestCase):
                     "enabled": True,
                     "by_count": True,
                     "by_age": True,
+                    "minimum_backups": 3,
                     "max_backups": 5,
                     "max_age_days": 6,
                 },
@@ -88,6 +89,7 @@ class ConfigHelperTests(unittest.TestCase):
                     "enabled": True,
                     "by_count": True,
                     "by_age": True,
+                    "minimum_backups": 3,
                     "max_backups": 3,
                     "max_age_days": 4,
                 },
@@ -180,6 +182,7 @@ class ConfigHelperTests(unittest.TestCase):
                     "enabled": True,
                     "by_count": True,
                     "by_age": True,
+                    "minimum_backups": 3,
                 },
             )
             self.assertEqual(

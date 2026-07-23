@@ -54,6 +54,7 @@ Injects sane defaults for missing or empty values, such as:
 - `show_monitor_window` = False
 - `max_backups` = 10
 - `backup_max_age_days` = 7
+- `backups.retention.default.minimum_backups` = 3
 - `max_players` = 8
 - `game_port` = 7777
 - `query_port` = 27015

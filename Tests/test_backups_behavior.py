@@ -49,8 +49,16 @@ class BackupsBehaviorTests(unittest.TestCase):
                 "root": str(base / "Backups"),
                 "folders": {"Manual": "Manual", "Crash": "Crash"},
                 "retention": {
-                    "default": {"max_backups": 10, "max_age_days": 30},
-                    "Manual": {"max_backups": 1, "max_age_days": 30},
+                    "default": {
+                        "minimum_backups": 3,
+                        "max_backups": 10,
+                        "max_age_days": 30,
+                    },
+                    "Manual": {
+                        "minimum_backups": 1,
+                        "max_backups": 1,
+                        "max_age_days": 30,
+                    },
                 },
                 "save_dir": str(base / "Saved"),
                 "save_filenames": ["Server.vns"],
@@ -183,13 +191,16 @@ class BackupsBehaviorTests(unittest.TestCase):
                 backups.zipfile,
                 "ZipFile",
                 side_effect=OSError("zip failed"),
-            ), mock.patch("builtins.print"):
+            ), mock.patch.object(backups, "prune_backups") as prune, mock.patch(
+                "builtins.print"
+            ):
                 with self.assertRaises(backups.BackupError):
                     backups.make_backup("Manual")
 
             leftovers = list(dest.glob(".tmp_copy_*"))
 
         self.assertEqual(leftovers, [])
+        prune.assert_not_called()
 
     def test_prune_backups_deletes_oldest_over_count(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
@@ -220,11 +231,17 @@ class BackupsBehaviorTests(unittest.TestCase):
             base = Path(tmp)
             cfg = self._cfg(base)
             cfg["backups"]["discord"]["notify_on_prune"] = True
-            cfg["backups"]["retention"]["Manual"] = {"max_backups": 10, "max_age_days": 0}
+            cfg["backups"]["retention"]["Manual"] = {
+                "minimum_backups": 1,
+                "max_backups": 10,
+                "max_age_days": 0,
+            }
             folder = base / "Backups" / "Manual"
             folder.mkdir(parents=True)
             old_zip = folder / "old.zip"
+            newest_zip = folder / "newest.zip"
             old_zip.write_text("old", encoding="utf-8")
+            newest_zip.write_text("new", encoding="utf-8")
             old_ts = time.time() - 86400 * 2
             os.utime(old_zip, (old_ts, old_ts))
 
@@ -234,8 +251,12 @@ class BackupsBehaviorTests(unittest.TestCase):
                 return_value=True,
             ), mock.patch.object(backups, "send_discord_message") as discord:
                 result = backups.prune_backups("Manual")
+            old_exists = old_zip.exists()
+            newest_exists = newest_zip.exists()
 
         self.assertEqual(result, {"deleted": 1})
+        self.assertFalse(old_exists)
+        self.assertTrue(newest_exists)
         discord.assert_called_once()
 
     def test_prune_backups_can_be_disabled_without_deleting_archives(self) -> None:
@@ -314,6 +335,38 @@ class BackupsBehaviorTests(unittest.TestCase):
 
             self.assertEqual(result, {"deleted": 0})
             self.assertTrue(archive.exists())
+
+    def test_age_cleanup_preserves_minimum_rollback_points_after_long_downtime(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            cfg = self._cfg(base)
+            cfg["backups"]["retention"]["Manual"] = {
+                "enabled": True,
+                "by_count": True,
+                "by_age": True,
+                "minimum_backups": 3,
+                "max_backups": 10,
+                "max_age_days": 30,
+            }
+            folder = base / "Backups" / "Manual"
+            folder.mkdir(parents=True)
+            archives = []
+            now = time.time()
+            for index in range(4):
+                archive = folder / f"backup-{index}.zip"
+                archive.write_text(str(index), encoding="utf-8")
+                timestamp = now - 86400 * (60 - index)
+                os.utime(archive, (timestamp, timestamp))
+                archives.append(archive)
+
+            with mock.patch.object(backups, "_cfg", return_value=cfg), mock.patch.object(
+                backups, "is_discord_channel_enabled", return_value=False
+            ):
+                result = backups.prune_backups("Manual")
+
+            self.assertEqual(result, {"deleted": 1})
+            self.assertFalse(archives[0].exists())
+            self.assertTrue(all(archive.exists() for archive in archives[1:]))
 
     def test_latest_backup_searches_folders_and_restore_extracts_target(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

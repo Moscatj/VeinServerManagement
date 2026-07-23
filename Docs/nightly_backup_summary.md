@@ -44,7 +44,8 @@ than being reimplemented by the scheduler entrypoint.
 ## Side Effects / Files
 - Ensures the configured Nightly destination exists.
 - Writes a `*.zip` backup with timestamped name into the Nightly folder.
-- Deletes old Nightly backups per Nightly retention policy.
+- Deletes old Nightly backups per Nightly retention policy without crossing the
+  configured minimum-backup safety floor.
 
 ---
 

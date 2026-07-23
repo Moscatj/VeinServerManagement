@@ -113,6 +113,7 @@ class BackupsHelperTests(unittest.TestCase):
                         "enabled": True,
                         "by_count": True,
                         "by_age": True,
+                        "minimum_backups": 3,
                         "max_backups": 5,
                         "max_age_days": 3,
                     },
