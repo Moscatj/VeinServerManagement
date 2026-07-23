@@ -104,6 +104,7 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("age 7 days", owner.lblBackupPolicyRetentionHelp.text())
         self.assertIn("newest 3 per type", owner.lblBackupPolicyRetentionHelp.text())
         self.assertTrue(owner.boxBackupPolicy.toggle.isChecked())
+        self.assertTrue(owner.chkBackupStartupRecovery.isChecked())
         self.assertEqual(owner.wdgBackupPolicyCleanupOptions.minimumHeight(), 100)
         self.assertEqual(owner.spinBackupPolicyMinimum.value(), 3)
         self.assertTrue(owner.wdgBackupPolicyOptions.isEnabled())
@@ -154,6 +155,7 @@ class GuiHelperTests(unittest.TestCase):
 
         self.assertFalse(owner.wdgBackupPolicyOptions.isEnabled())
         self.assertFalse(owner.chkBackupPolicyAutosave.isEnabled())
+        self.assertTrue(owner.chkBackupStartupRecovery.isEnabled())
         self.assertFalse(owner.btnBackupHistoryCreate.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 

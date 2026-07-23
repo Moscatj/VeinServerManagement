@@ -166,8 +166,13 @@ def _migrate_backups_view() -> None:
         ret = {}
         b["retention"] = ret
 
-    default_max = int(config.get("max_backups", 10))
-    default_age = int(config.get("backup_max_age_days", 7))
+    # Prefer legacy fields already nested under ``backups`` before falling all
+    # the way back to older top-level aliases. This preserves non-default values
+    # until an explicit GUI Apply migrates them into retention.default.
+    default_max = int(b.get("max_backups", config.get("max_backups", 10)))
+    default_age = int(
+        b.get("backup_max_age_days", config.get("backup_max_age_days", 7))
+    )
     default_retention = ret.setdefault(
         "default", {"max_backups": default_max, "max_age_days": default_age}
     )
@@ -270,7 +275,12 @@ def backups_cfg() -> Dict[str, Any]:
     if b.get("save_dir"):
         out["save_dir"] = _norm_path(b["save_dir"])
     if "retention" not in out or not isinstance(out["retention"], dict):
-        out["retention"] = {"default": {"max_backups": 10, "max_age_days": 7}}
+        out["retention"] = {
+            "default": {
+                "max_backups": int(out.get("max_backups", 10)),
+                "max_age_days": int(out.get("backup_max_age_days", 7)),
+            }
+        }
     return out
 
 

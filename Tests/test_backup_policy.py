@@ -28,6 +28,7 @@ class BackupPolicyTests(unittest.TestCase):
             {
                 "backups": {
                     "enabled": False,
+                    "recovery": {"restore_missing_on_start": False},
                     "triggers": {
                         "on_autosave": True,
                         "on_crash_detect": {"enabled": False},
@@ -48,6 +49,7 @@ class BackupPolicyTests(unittest.TestCase):
         )
 
         self.assertFalse(policy.enabled)
+        self.assertFalse(policy.startup_recovery_enabled)
         self.assertTrue(policy.on_autosave)
         self.assertFalse(policy.on_crash_detect)
         self.assertTrue(policy.on_shutdown)
@@ -100,6 +102,8 @@ class BackupPolicyTests(unittest.TestCase):
                         "backups": {
                             "enabled": True,
                             "root": "Backups",
+                            "max_backups": 9,
+                            "backup_max_age_days": 6,
                             "triggers": {"on_autosave": False},
                         },
                     },
@@ -109,6 +113,7 @@ class BackupPolicyTests(unittest.TestCase):
             )
             policy = BackupPolicy(
                 enabled=False,
+                startup_recovery_enabled=False,
                 on_autosave=True,
                 on_crash_detect=False,
                 on_shutdown=False,
@@ -128,12 +133,17 @@ class BackupPolicyTests(unittest.TestCase):
             self.assertTrue(Path(result.backup).is_file())
             self.assertEqual(loaded, policy)
             self.assertFalse(saved["backups"]["triggers"]["shutdown"]["save_backup"])
+            self.assertFalse(
+                saved["backups"]["recovery"]["restore_missing_on_start"]
+            )
             self.assertEqual(
                 saved["backups"]["retention"]["default"]["max_backups"], 40
             )
             self.assertFalse(
                 saved["backups"]["retention"]["default"]["by_count"]
             )
+            self.assertNotIn("max_backups", saved["backups"])
+            self.assertNotIn("backup_max_age_days", saved["backups"])
             self.assertTrue(saved["backups"]["retention"]["default"]["by_age"])
             self.assertEqual(
                 saved["backups"]["retention"]["default"]["minimum_backups"], 5

@@ -15,6 +15,7 @@ import yaml
 @dataclass(frozen=True)
 class BackupPolicy:
     enabled: bool = True
+    startup_recovery_enabled: bool = True
     on_autosave: bool = False
     on_crash_detect: bool = True
     on_shutdown: bool = True
@@ -74,6 +75,9 @@ def backup_policy_from_mapping(data: Mapping[str, Any]) -> BackupPolicy:
     if not isinstance(default_retention, Mapping):
         default_retention = {}
     enabled = backups.get("enabled", backups.get("enable", True))
+    recovery = backups.get("recovery") or {}
+    if not isinstance(recovery, Mapping):
+        recovery = {}
     max_backups = int(
         default_retention.get("max_backups", backups.get("max_backups", 10))
     )
@@ -84,6 +88,7 @@ def backup_policy_from_mapping(data: Mapping[str, Any]) -> BackupPolicy:
     )
     return BackupPolicy(
         enabled=bool(enabled),
+        startup_recovery_enabled=bool(recovery.get("restore_missing_on_start", True)),
         on_autosave=_trigger_value(triggers, "on_autosave", False),
         on_crash_detect=_trigger_value(triggers, "on_crash_detect", True),
         on_shutdown=_trigger_value(triggers, "shutdown", True),
@@ -142,11 +147,16 @@ def backup_policy_summary(policy: BackupPolicy) -> str:
         if policy.cleanup_enabled and cleanup_modes
         else "disabled"
     )
-    active_note = "" if policy.enabled else " All subordinate actions are inactive."
+    active_note = (
+        "" if policy.enabled else " Backup creation actions are inactive; recovery is independent."
+    )
+    recovery = (
+        "enabled" if policy.startup_recovery_enabled else "disabled"
+    )
     return (
         f"Backups {state}; saved triggers: {trigger_text}; automatic cleanup: "
         f"{cleanup}; always keep at least {policy.minimum_backups} per type."
-        f"{active_note}"
+        f" Missing-save startup recovery: {recovery}.{active_note}"
     )
 
 
@@ -201,6 +211,11 @@ def apply_backup_policy(
     backups["enabled"] = bool(policy.enabled)
     if "enable" in backups:
         backups["enable"] = bool(policy.enabled)
+    recovery = backups.get("recovery")
+    if not isinstance(recovery, Mapping):
+        recovery = {}
+        backups["recovery"] = recovery
+    recovery["restore_missing_on_start"] = bool(policy.startup_recovery_enabled)
     triggers = backups.get("triggers")
     if not isinstance(triggers, Mapping):
         backups["triggers"] = {}
@@ -227,6 +242,11 @@ def apply_backup_policy(
     default_retention["enabled"] = bool(policy.cleanup_enabled)
     default_retention["by_count"] = bool(policy.cleanup_by_count)
     default_retention["by_age"] = bool(policy.cleanup_by_age)
+    # The structured retention policy is authoritative after an explicit Apply.
+    # Remove only the superseded aliases from this same backups mapping so the
+    # YAML cannot display two conflicting answers for one setting.
+    backups.pop("max_backups", None)
+    backups.pop("backup_max_age_days", None)
 
     text = _dump_document(document, engine)
     yaml.safe_load(text)

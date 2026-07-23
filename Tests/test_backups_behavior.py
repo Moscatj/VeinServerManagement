@@ -404,7 +404,7 @@ class BackupsBehaviorTests(unittest.TestCase):
             self.assertFalse(archives[0].exists())
             self.assertTrue(all(archive.exists() for archive in archives[1:]))
 
-    def test_latest_backup_searches_folders_and_restore_extracts_target(self) -> None:
+    def test_latest_backup_searches_folders_and_legacy_restore_never_writes(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)
             save_dir = base / "Saved"
@@ -416,13 +416,12 @@ class BackupsBehaviorTests(unittest.TestCase):
             with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch("builtins.print"):
                 latest = backups.latest_backup()
                 restored = backups.restore_from_latest("Server.vns")
-                restored_text = (save_dir / "nested" / "Server.vns").read_text(encoding="utf-8")
 
             self.assertEqual(latest, archive)
-            self.assertTrue(restored)
-            self.assertEqual(restored_text, "restored")
+            self.assertFalse(restored)
+            self.assertFalse(save_dir.exists())
 
-    def test_restore_from_latest_handles_no_archive_missing_member_and_zip_errors(self) -> None:
+    def test_legacy_restore_is_disabled_without_opening_archive(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             base = Path(tmp)
             backup_dir = base / "Backups" / "Manual"
@@ -431,30 +430,13 @@ class BackupsBehaviorTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as zf:
                 zf.writestr("Other.vns", "other")
 
-            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
-                backups,
-                "latest_backup",
-                return_value=None,
-            ), mock.patch("builtins.print"):
-                self.assertFalse(backups.restore_from_latest("Server.vns"))
-
-            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
-                backups,
-                "latest_backup",
-                return_value=archive,
-            ), mock.patch("builtins.print"):
-                self.assertFalse(backups.restore_from_latest("Server.vns"))
-
-            with mock.patch.object(backups, "_cfg", return_value=self._cfg(base)), mock.patch.object(
-                backups,
-                "latest_backup",
-                return_value=archive,
-            ), mock.patch.object(
+            with mock.patch.object(
                 backups.zipfile,
                 "ZipFile",
                 side_effect=OSError("bad zip"),
-            ), mock.patch("builtins.print"):
+            ) as open_zip, mock.patch("builtins.print"):
                 self.assertFalse(backups.restore_from_latest("Server.vns"))
+            open_zip.assert_not_called()
 
     def test_export_log_snapshot_zips_copy_and_prunes(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:

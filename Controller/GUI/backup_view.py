@@ -370,6 +370,7 @@ class BackupPolicyWorker(QtCore.QRunnable):
 def collect_backup_policy(owner) -> BackupPolicy:
     return BackupPolicy(
         enabled=owner.chkBackupPolicyEnabled.isChecked(),
+        startup_recovery_enabled=owner.chkBackupStartupRecovery.isChecked(),
         on_autosave=owner.chkBackupPolicyAutosave.isChecked(),
         on_crash_detect=owner.chkBackupPolicyCrash.isChecked(),
         on_shutdown=owner.chkBackupPolicyShutdown.isChecked(),
@@ -450,6 +451,7 @@ def populate_backup_policy(owner, policy: BackupPolicy) -> None:
     owner._backup_policy_loading = True
     try:
         owner.chkBackupPolicyEnabled.setChecked(policy.enabled)
+        owner.chkBackupStartupRecovery.setChecked(policy.startup_recovery_enabled)
         owner.chkBackupPolicyAutosave.setChecked(policy.on_autosave)
         owner.chkBackupPolicyCrash.setChecked(policy.on_crash_detect)
         owner.chkBackupPolicyShutdown.setChecked(policy.on_shutdown)
@@ -662,11 +664,30 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     policy_layout.addWidget(owner.chkBackupPolicyEnabled)
     master_help = QtWidgets.QLabel(
         "Master switch for save backups. When off, Backup Now and all automatic "
-        "backup triggers are disabled. Existing backup archives are not deleted."
+        "backup triggers are disabled. Existing backup archives and startup recovery "
+        "are not affected."
     )
     master_help.setWordWrap(True)
     master_help.setProperty("fieldHelp", True)
     policy_layout.addWidget(master_help)
+
+    owner.chkBackupStartupRecovery = QtWidgets.QCheckBox(
+        "Recover a missing save before server startup"
+    )
+    recovery_font = owner.chkBackupStartupRecovery.font()
+    recovery_font.setBold(True)
+    owner.chkBackupStartupRecovery.setFont(recovery_font)
+    policy_layout.addWidget(owner.chkBackupStartupRecovery)
+    recovery_help = QtWidgets.QLabel(
+        "When a configured live save is missing but prior save backups exist, restore "
+        "the newest valid backup before any server process or monitor starts. Startup "
+        "is blocked if those backups cannot be verified. A first startup with no prior "
+        "save backups continues normally. Existing saves are never replaced."
+    )
+    recovery_help.setWordWrap(True)
+    recovery_help.setProperty("fieldHelp", True)
+    recovery_help.setContentsMargins(22, 0, 0, 4)
+    policy_layout.addWidget(recovery_help)
 
     owner.wdgBackupPolicyOptions = QtWidgets.QWidget()
     policy_columns = QtWidgets.QHBoxLayout(owner.wdgBackupPolicyOptions)
@@ -957,6 +978,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     )
     for field in (
         owner.chkBackupPolicyEnabled,
+        owner.chkBackupStartupRecovery,
         owner.chkBackupPolicyAutosave,
         owner.chkBackupPolicyCrash,
         owner.chkBackupPolicyShutdown,

@@ -79,6 +79,13 @@ Released through `v2.11.0`:
 - Selected archives have a read-only restore preview covering ZIP safety,
   manifest/save integrity, destination, server state, and the planned
   pre-restore safety backup. Restore execution remains unavailable.
+- A tested guarded-restore backend now provides locking, journaling, a mandatory
+  pinned safety backup, staged/hash-verified replacement, atomic activation, and
+  automatic rollback. It is not connected to a GUI Restore action yet.
+- Missing-save startup recovery is restored for normal and crash-monitor starts.
+  It is independently configurable in Backup Policy, uses validated staged
+  activation, never replaces an existing save, and blocks an established-server
+  start when prior save archives exist but none can be verified.
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
@@ -267,7 +274,8 @@ against storage use without hand-editing YAML.
 A future Save Library should make rollback and switching worlds simple while
 remaining non-destructive:
 
-- Build the guarded execution path on the implemented read-only Restore Preview.
+- Connect the guarded backend to an explicit final-confirmation workflow, add
+  recovery guidance for interrupted operations, and only then expose Restore.
 - Treat “Load Save” as a separate guarded workflow, not ordinary archive
   browsing or automatic retention.
 - Require the server to be stopped and validate the selected archive/save before

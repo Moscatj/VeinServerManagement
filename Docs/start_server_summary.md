@@ -10,6 +10,8 @@ It handles environment setup, configuration loading, process management, monitor
 **Core responsibilities:**
 - Load and validate the selected config and server executable.
 - Refuse duplicate launches and synchronize runtime state to an existing server.
+- Recover a missing established save from the newest validated backup, or block
+  startup when prior save archives exist but recovery cannot be verified.
 - Optionally update through SteamCMD without making update failure fatal.
 - Start log/crash monitors before launching so the full boot is observed.
 - Launch the dedicated runtime executable, record its PID/state, and report
@@ -38,6 +40,7 @@ It handles environment setup, configuration loading, process management, monitor
   - `enable_steam_update`
 - Behavior toggles:
   - `startup_quiet_seconds`
+  - `backups.recovery.restore_missing_on_start` (default `true`)
 
 ---
 
@@ -60,11 +63,14 @@ It handles environment setup, configuration loading, process management, monitor
 **Startup sequence:**
 1. Validate config and detect an already-running server.
 2. Create the startup lock and publish offline/start state.
-3. Optionally run the non-fatal Steam update.
-4. Start monitors and give the log monitor a short PID-file settle window.
-5. Set the restart quiet period and launch the selected executable.
-6. Record the PID and report that the process is waiting to become joinable.
-7. Stop newly spawned monitors if launch fails and always clear startup locks.
+3. If configured saves are missing, validate and atomically recover the newest
+   valid prior save backup. Allow a first startup with no prior save archives;
+   block when prior save archives exist but none validate.
+4. Optionally run the non-fatal Steam update.
+5. Start monitors and give the log monitor a short PID-file settle window.
+6. Set the restart quiet period and launch the selected executable.
+7. Record the PID and report that the process is waiting to become joinable.
+8. Stop newly spawned monitors if launch fails and always clear startup locks.
 
 ---
 
@@ -75,6 +81,7 @@ Sends structured messages to the configured Discord channels for:
 - Steam update status.
 - Successful server launch.
 - Startup failures (missing exe, crash).
+- Missing-save recovery progress, success, or a blocked unsafe startup.
 
 ---
 

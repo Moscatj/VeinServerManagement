@@ -52,8 +52,8 @@ Builds the list of possible config paths to try in priority order.
 Injects sane defaults for missing or empty values, such as:
 - `monitor_heartbeat_interval_seconds` = 300
 - `show_monitor_window` = False
-- `max_backups` = 10
-- `backup_max_age_days` = 7
+- compatibility defaults `max_backups` = 10 and `backup_max_age_days` = 7;
+  canonical YAML uses `backups.retention.default.*`
 - `backups.retention.default.minimum_backups` = 3
 - `max_players` = 8
 - `game_port` = 7777

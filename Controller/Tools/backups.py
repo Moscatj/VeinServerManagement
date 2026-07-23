@@ -638,25 +638,10 @@ def latest_backup(reason: str | None = None) -> Optional[Path]:
 
 
 def restore_from_latest(target_name: str) -> bool:
-    """
-    Restore a specific save filename (e.g., 'Server.vns') from the newest archive that contains it.
-    """
-    z = latest_backup(None)
-    if not z:
-        print("[Restore] No backup archives found.")
-        return False
-
-    target = _save_dir() / target_name  # use YAML-resolved save_dir
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with zipfile.ZipFile(z, "r") as zf:
-            matches = [m for m in zf.namelist() if os.path.basename(m) == target_name]
-            if not matches:
-                print(f"[Restore] {z.name} does not contain {target_name}")
-                return False
-            zf.extract(matches[0], path=str(target.parent))
-        print(f"[Restore] Restored {target_name} from {z.name}")
-        return True
-    except Exception as e:
-        print(f"[Restore] Failed: {e}")
-        return False
+    """Retained compatibility entrypoint; unsafe direct extraction is disabled."""
+    del target_name
+    print(
+        "[Restore] Legacy direct extraction is disabled. Use guarded manual restore "
+        "or configured missing-save startup recovery."
+    )
+    return False

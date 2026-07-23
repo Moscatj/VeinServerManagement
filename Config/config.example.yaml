@@ -108,8 +108,10 @@ steam:
 backups:
   enabled: true
   root: "Backups"
-  max_backups: 10
-  backup_max_age_days: 7
+  recovery:
+    # Preserve an established world when its live save disappears. This never
+    # overwrites an existing save; disable only if startup should proceed without it.
+    restore_missing_on_start: true
   retention:
     default:
       enabled: true

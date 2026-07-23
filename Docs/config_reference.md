@@ -192,9 +192,27 @@ The Backups page safely edits the primary structured settings below. It exposes
 only triggers with implemented runtime detection. Startup and player
 login/logout controls remain roadmap items.
 
+`Config/config.yaml` remains the only persistent management-configuration
+authority. The GUI reads and atomically updates these fields directly after
+creating a timestamped config backup; it does not maintain a second policy
+store. Older `backups.max_backups` and `backups.backup_max_age_days` fields are
+accepted as read-time aliases. The next explicit GUI Apply migrates their values
+to `backups.retention.default` and removes the superseded aliases so one YAML
+field remains authoritative for each setting.
+
 - backups.enabled
   • Global gate for save backup creation.
   • Legacy `backups.enable` remains compatible.
+
+- backups.recovery.restore_missing_on_start
+  • Defaults to `true`, including when the key is absent from an existing config.
+  • Before a normal start or crash-monitor restart, restores the newest manifest-
+    and hash-validated save backup when every configured live save is missing.
+  • Existing files are never replaced automatically. If prior save archives
+    exist but none can be verified, startup is blocked rather than allowing a
+    fresh world. With no prior save archives, first startup proceeds normally.
+  • This is independent from `backups.enabled`; disabling new backup creation
+    does not make existing recovery archives unusable.
 
 - backups.triggers.on_autosave
   • Back up when the monitored game log reports an autosave.
@@ -237,13 +255,10 @@ next creates a backup. Cleanup is reached only after successful backup creation,
 so a failed new backup cannot trigger deletion of existing rollback points.
 Autosave and Crash trigger changes take effect when the log monitor next starts.
 
-- max_backups  
-  • Max total backups to retain per category.  
-  • Current: 10
-
-- backup_max_age_days  
-  • Prune backups older than this many days (per category).  
-  • Current: 7
+- max_backups / backup_max_age_days
+  • Top-level compatibility defaults for configurations predating the structured
+    `backups` block. New YAML should use `backups.retention.default.max_backups`
+    and `backups.retention.default.max_age_days`.
 
 - backup_folders (object)  
   • Explicit subfolders for categories under `backup_root`.  

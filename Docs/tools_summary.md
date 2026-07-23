@@ -25,6 +25,10 @@ must live in the appropriate Tools module.
   without modifying backup ZIPs.
 - **backup_restore_preview.py** - Read-only ZIP, manifest, save-hash,
   destination, and server-state assessment for the future guarded restore flow.
+- **backup_restore.py** - Guarded manual restore and missing-save startup recovery
+  with locking, journaling, mandatory pinned safety backup where a live save
+  exists, verified staging, atomic activation,
+  and automatic rollback.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.
 - **health_check.py** - Read-only project, dependency, path, SteamCMD, secret, and server-config diagnostics.
 - **server_config_validator.py** - Read-only Vein dedicated server layout and `Game.ini` / `Engine.ini` validation.

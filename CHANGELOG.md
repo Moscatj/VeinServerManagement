@@ -39,6 +39,21 @@ This project uses a lightweight versioning approach suitable for a personal sour
   intentionally provides no restore action. Restore-point labels and notes can
   now be edited without changing their ZIPs, and guarded Remove Protection keeps
   the ZIP while clearly warning that automatic cleanup can remove it later.
+  Added an unexposed guarded-restore backend with an operation lock/journal,
+  repeated server-stop checks, mandatory validated and pinned Before Restore
+  backup, hashed staging, atomic replacement, post-write verification, and
+  automatic rollback. GUI restore execution remains unavailable while recovery
+  presentation and final operator confirmation are designed.
+  Restored the historical missing-save startup safeguard through that validated
+  staging path. Normal and crash-monitor starts now recover the newest valid
+  save backup before launching, never overwrite an existing save, allow a true
+  first startup with no prior save archives, and block startup when prior save
+  archives exist but cannot be verified. The independent recovery switch is
+  available in Backup Policy and defaults on for existing configurations.
+  Backup-policy Apply now migrates older nested count/age aliases into the
+  canonical `backups.retention.default` fields, while read-time compatibility
+  preserves non-default legacy values and `config.yaml` remains the sole policy
+  store.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

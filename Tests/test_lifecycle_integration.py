@@ -127,6 +127,8 @@ class LifecycleIntegrationTests(unittest.TestCase):
             try:
                 with mock.patch.object(start_server, "load_and_validate_config", return_value=vcfg), mock.patch.object(
                     start_server, "find_running_server", return_value=None
+                ), mock.patch.object(
+                    start_server, "_startup_recovery_preflight", return_value=True
                 ), mock.patch.object(start_server, "_steam_update_if_enabled"), mock.patch.object(
                     start_server, "_start_monitors", side_effect=start_monitors
                 ), mock.patch.object(start_server, "start_vein_server", side_effect=start_fake_server), mock.patch.object(

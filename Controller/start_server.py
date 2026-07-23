@@ -27,6 +27,9 @@ from Tools.runtime import (
 from Tools import mgmt_logs
 
 from Tools.config_io import load_and_validate_config
+from Tools.backup_policy import backup_policy_from_mapping
+from Tools.backup_restore import GuardedRestoreError, recover_missing_save
+from Tools.backups import list_backup_archives
 
 
 # --- Config path resolution (shared by this module & spawned children) ---
@@ -63,6 +66,78 @@ def _clear_restart_lock():
         RESTARTING_LOCK.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+def _startup_recovery_preflight(vcfg) -> bool:
+    """Recover a missing known save, or block an unsafe startup.
+
+    A genuinely new server has neither a live save nor prior save archives and
+    is allowed to start. Existing files, including zero-byte files, are never
+    overwritten by this automatic path.
+    """
+    policy = backup_policy_from_mapping(vcfg.raw)
+    if not policy.startup_recovery_enabled:
+        print("[Recovery] Missing-save startup recovery is disabled.")
+        return True
+
+    backups_cfg = vcfg.raw.get("backups") or {}
+    names = backups_cfg.get("save_filenames") or vcfg.raw.get("save_filenames")
+    expected_filenames = [str(name) for name in (names or ["Server.vns"])]
+    save_dir = Path(vcfg.save_dir)
+    if any((save_dir / Path(name).name).exists() for name in expected_filenames):
+        return True
+
+    raw_root = (
+        vcfg.raw.get("backup_root")
+        or backups_cfg.get("root")
+        or (Path(vcfg.path).parent.parent / "Backups")
+    )
+    backup_root = Path(str(raw_root)).expanduser()
+    if not backup_root.is_absolute():
+        backup_root = Path(vcfg.path).parent.parent / backup_root
+    archives = [
+        Path(item.path)
+        for item in list_backup_archives(backup_root, limit=None)
+        if Path(item.filename).name.casefold().startswith("server_")
+    ]
+    if not archives:
+        print("[Recovery] No live save or prior save backups; treating this as first startup.")
+        return True
+
+    print(
+        f"[Recovery] Live save is missing; checking {len(archives)} prior backup(s)."
+    )
+    send_discord_message(
+        "Live save is missing. Validating the newest save backup before startup.",
+        channel="startup",
+    )
+    try:
+        result = recover_missing_save(
+            archives,
+            save_dir=save_dir,
+            expected_filenames=expected_filenames,
+            operation_dir=Path(vcfg.runtime_dir),
+            server_running_check=lambda: find_running_server(
+                executable_names=[Path(name).name for name in vcfg.server_executables],
+                server_dir=Path(vcfg.server_dir),
+            )
+            is not None,
+        )
+    except GuardedRestoreError as exc:
+        message = (
+            "Startup blocked: the live save is missing and automatic recovery "
+            f"could not be verified. {exc}"
+        )
+        print(f"[Recovery] {message}", file=sys.stderr)
+        send_discord_message(message, channel="startup")
+        return False
+
+    message = (
+        f"Recovered missing save from {Path(result.archive).name}; verified before launch."
+    )
+    print(f"[Recovery] {message}")
+    send_discord_message(message, channel="startup")
+    return True
 
 
 def _py_argv() -> list[str]:
@@ -283,10 +358,23 @@ def main() -> int:
         # 2) Startup narration
         send_discord_message("🚀 Vein server preflight starting…", channel="startup")
 
-        # 3) Steam check/update (optional)
+        # 3) Protect against silently creating a new world when an established
+        #    server's live save has disappeared.
+        if not _startup_recovery_preflight(vcfg):
+            set_server_state(
+                False,
+                pid=0,
+                last_start_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                last_exit_code=-2,
+                cwd=str(SERVER_DIR_PATH),
+                startup_error="Missing save could not be recovered safely.",
+            )
+            return 1
+
+        # 4) Steam check/update (optional)
         _steam_update_if_enabled()
 
-        # 4) Start monitors BEFORE launching server so log monitor watches whole boot
+        # 5) Start monitors BEFORE launching server so log monitor watches whole boot
         started_monitors = _start_monitors()
 
         # Verify log monitor actually started; if not, re-spawn once
@@ -298,7 +386,7 @@ def main() -> int:
         except Exception:
             pass
 
-        # 5) Optional quiet window to suppress crash monitor jitters during boot
+        # 6) Optional quiet window to suppress crash monitor jitters during boot
         #    (prefer the new monitor.* home if you added it; fall back to legacy key)
         startup_quiet = int(
             (vcfg.raw.get("monitor", {}) or {}).get(
@@ -308,7 +396,7 @@ def main() -> int:
         if startup_quiet > 0:
             set_autorestart_quiet_period(startup_quiet)
 
-        # 6) Launch server (prefer explicit exe + cwd).
+        # 7) Launch server (prefer explicit exe + cwd).
         try:
             # Debug: show which exe we’re about to launch
             send_discord_message(f"🧩 Selected exe: {SELECTED_EXE}", channel="startup")
@@ -369,7 +457,7 @@ def main() -> int:
             _clear_restart_lock()
             return 1
 
-        # 7) Mark running; monitors (log) will later report “joinable”
+        # 8) Mark running; monitors (log) will later report “joinable”
         try:
             pid_server_path.write_text(str(proc.pid), encoding="utf-8")
         except Exception:

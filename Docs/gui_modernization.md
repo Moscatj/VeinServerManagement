@@ -121,6 +121,9 @@ not a claim that each phase is complete.
 - [x] Add guarded backup-policy controls for global enablement, implemented
   Autosave/Crash/Shutdown triggers, and independently enabled default count/age
   cleanup with a configurable minimum-backup safety floor.
+- [x] Restore independently configurable missing-save recovery before both normal
+  and crash-monitor startup, using verified backups without replacing an existing
+  save or confusing first startup with data loss.
 - [x] Add read-only backup storage totals, oldest/newest context, and category
   filtering to archive history.
 - Expand backup policy with schedules, per-category retention, prune previews,
@@ -128,8 +131,9 @@ not a claim that each phase is complete.
   from labeled restore points is implemented without changing backup ZIPs.
 - Design a guarded Save Library that can load a selected save only after stopping
   the server, validating the source, and protecting the current active save.
-  Read-only archive validation and destination preview are implemented; no
-  restore mutation is exposed yet.
+  Read-only archive validation and destination preview are implemented. The
+  guarded staging/safety-backup/rollback backend is tested but remains unexposed
+  until final confirmation and interrupted-operation recovery UX are complete.
 - Turn diagnostics into actionable repair cards instead of long text output.
 
 ### Phase 7 - GUI Architecture

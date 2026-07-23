@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +23,118 @@ import start_server  # noqa: E402
 
 
 class StartServerOrchestrationTests(unittest.TestCase):
+    def _recovery_config(self, root: Path, *, enabled: bool = True) -> SimpleNamespace:
+        config_path = root / "Config" / "config.yaml"
+        config_path.parent.mkdir()
+        config_path.write_text("version: '2.4'\n", encoding="utf-8")
+        return SimpleNamespace(
+            path=config_path,
+            raw={
+                "backup_root": str(root / "Backups"),
+                "backups": {
+                    "recovery": {"restore_missing_on_start": enabled},
+                    "save_filenames": ["Server.vns"],
+                },
+            },
+            save_dir=root / "SaveGames",
+            runtime_dir=root / "Runtime",
+            server_dir=root / "Server",
+            server_executables=["VeinServer.exe"],
+        )
+
+    def _save_archive(self, path: Path, payload: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "reason": "Crash",
+            "created_utc": "2026-07-23T12:00:00Z",
+            "save_filename": "Server.vns",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr("Server.vns", payload)
+            bundle.writestr("manifest.json", json.dumps(manifest))
+
+    def test_missing_save_is_recovered_before_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vcfg = self._recovery_config(root)
+            self._save_archive(root / "Backups" / "Crash" / "Server_Crash.zip", b"safe")
+
+            with mock.patch.object(
+                start_server, "find_running_server", return_value=None
+            ), mock.patch.object(start_server, "send_discord_message"):
+                allowed = start_server._startup_recovery_preflight(vcfg)
+
+            self.assertTrue(allowed)
+            self.assertEqual((vcfg.save_dir / "Server.vns").read_bytes(), b"safe")
+
+    def test_invalid_prior_save_backup_blocks_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vcfg = self._recovery_config(root)
+            archive = root / "Backups" / "Crash" / "Server_Crash.zip"
+            archive.parent.mkdir(parents=True)
+            archive.write_bytes(b"damaged")
+
+            with mock.patch.object(
+                start_server, "find_running_server", return_value=None
+            ), mock.patch.object(start_server, "send_discord_message"):
+                allowed = start_server._startup_recovery_preflight(vcfg)
+
+            self.assertFalse(allowed)
+            self.assertFalse((vcfg.save_dir / "Server.vns").exists())
+
+    def test_disabled_recovery_does_not_touch_missing_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vcfg = self._recovery_config(root, enabled=False)
+            self._save_archive(root / "Backups" / "Crash" / "Server_Crash.zip", b"safe")
+
+            with mock.patch.object(start_server, "recover_missing_save") as recover:
+                self.assertTrue(start_server._startup_recovery_preflight(vcfg))
+
+            recover.assert_not_called()
+
+    def test_failed_recovery_blocks_update_monitors_and_server_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vcfg = self._recovery_config(root)
+            vcfg.selected_exe = root / "Server" / "VeinServer.exe"
+            vcfg.raw["extra_launch_args"] = []
+            vcfg.runtime_dir.mkdir(parents=True)
+
+            with mock.patch.object(
+                start_server, "load_and_validate_config", return_value=vcfg
+            ), mock.patch.object(
+                start_server, "find_running_server", return_value=None
+            ), mock.patch.object(
+                start_server, "_startup_recovery_preflight", return_value=False
+            ), mock.patch.object(
+                start_server, "_steam_update_if_enabled"
+            ) as update, mock.patch.object(
+                start_server, "_start_monitors"
+            ) as monitors, mock.patch.object(
+                start_server, "start_vein_server"
+            ) as launch, mock.patch.object(
+                start_server, "send_discord_message"
+            ), mock.patch.object(
+                start_server, "set_server_state"
+            ), mock.patch.object(
+                start_server, "create_startup_lock"
+            ), mock.patch.object(
+                start_server, "clear_startup_lock"
+            ), mock.patch.object(
+                start_server, "RUNTIME_DIR", vcfg.runtime_dir
+            ), mock.patch.object(
+                start_server, "RESTARTING_LOCK", vcfg.runtime_dir / "restart.lock"
+            ):
+                result = start_server.main()
+
+            self.assertEqual(result, 1)
+            update.assert_not_called()
+            monitors.assert_not_called()
+            launch.assert_not_called()
+
     def test_existing_server_prevents_duplicate_launch_and_update(self) -> None:
         existing = mock.Mock(pid=4321)
         existing.name.return_value = "VeinServer-Win64-Test.exe"

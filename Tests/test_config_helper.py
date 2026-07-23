@@ -190,6 +190,24 @@ class ConfigHelperTests(unittest.TestCase):
                 {"max_backups": 9, "max_age_days": 31},
             )
 
+    def test_nested_legacy_retention_values_win_over_top_level_defaults(self) -> None:
+        payload = {
+            "backups": {"max_backups": "17", "backup_max_age_days": "45"},
+            "max_backups": 10,
+            "backup_max_age_days": 7,
+        }
+        with mock.patch.dict(config_helper.config, payload, clear=True), mock.patch.dict(
+            config_helper.features, {}, clear=True
+        ):
+            config_helper._migrate_backups_view()
+            retention = config_helper.config["backups"]["retention"]["default"]
+            projected = config_helper.backups_cfg()["retention"]["default"]
+
+        self.assertEqual(retention["max_backups"], 17)
+        self.assertEqual(retention["max_age_days"], 45)
+        self.assertEqual(projected["max_backups"], 17)
+        self.assertEqual(projected["max_age_days"], 45)
+
     def test_deep_get_and_set_handle_missing_and_nested_paths(self) -> None:
         payload = {"a": {"b": 1}, "flat": 2}
 
