@@ -177,6 +177,19 @@ def update_curated_tab_markers(
         tabs.setTabText(index, f"{label} *" if changed else label)
 
 
+def summarize_server_config_validation(
+    checks: Sequence[Mapping[str, Any]],
+) -> str:
+    """Return a compact operator-facing summary of post-write validation."""
+    counts = {"PASS": 0, "INFO": 0, "WARN": 0, "FAIL": 0}
+    for check in checks:
+        status = str(check.get("status") or "").upper()
+        if status in counts:
+            counts[status] += 1
+    parts = [f"{status}={count}" for status, count in counts.items() if count]
+    return "Validation: " + (", ".join(parts) if parts else "no checks reported")
+
+
 def _item_lookup(items: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, str], Mapping[str, Any]]:
     return {
         (str(item.get("source")), str(item.get("section")), str(item.get("key"))): item
@@ -573,10 +586,17 @@ def update_identity_access_form_state(owner) -> None:
         owner.lblServerIdentityState.setText("Resolve the highlighted fields before previewing changes.")
         owner.lblServerIdentityState.set_kind("error")
     elif dirty:
+        owner._server_settings_apply_notice = ""
+        owner._server_settings_apply_notice_kind = "success"
         owner.lblServerIdentityState.setText(
             "Unsaved changes. Preview the complete change set before applying it."
         )
         owner.lblServerIdentityState.set_kind("warning")
+    elif getattr(owner, "_server_settings_apply_notice", ""):
+        owner.lblServerIdentityState.setText(owner._server_settings_apply_notice)
+        owner.lblServerIdentityState.set_kind(
+            getattr(owner, "_server_settings_apply_notice_kind", "success")
+        )
     else:
         owner.lblServerIdentityState.setText("Server Settings are current.")
         owner.lblServerIdentityState.set_kind("success")
@@ -704,15 +724,6 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
             "Review and safely edit supported VEIN Game.ini and Engine.ini settings.",
         )
     )
-    layout.addWidget(
-        InlineNotice(
-            "The DiscordChatWebhookURL and DiscordChatAdminWebhookURL settings "
-            "belong to VEIN and control game chat/admin reports. App startup, "
-            "shutdown, crash, backup, and player notifications use the separate "
-            "App notifications webhook on the Setup page."
-        )
-    )
-
     header = QtWidgets.QHBoxLayout()
     owner.lblServerConfigPreviewStatus = QtWidgets.QLabel("Refresh to inspect Game.ini and Engine.ini.")
     owner.lblServerConfigPreviewStatus.setWordWrap(True)
@@ -758,6 +769,8 @@ def build_server_config_preview_view(owner) -> QtWidgets.QWidget:
     owner._server_discord_chat_webhook_configured = False
     owner._server_discord_admin_webhook_configured = False
     owner._server_identity_dirty = False
+    owner._server_settings_apply_notice = ""
+    owner._server_settings_apply_notice_kind = "success"
     owner.lblServerIdentityState = InlineNotice(
         "Refresh to load the current Server Settings."
     )

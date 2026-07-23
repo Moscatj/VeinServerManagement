@@ -105,6 +105,7 @@ try:
         ProcessController,
         populate_existing_server_settings,
         populate_identity_access_form,
+        summarize_server_config_validation,
         NavigationController,
         ConfigController,
         StatusRenderer,
@@ -2837,6 +2838,8 @@ class Main(QtWidgets.QMainWindow):
             if answer != QtWidgets.QMessageBox.Yes:
                 return
             self._server_identity_dirty = False
+        self._server_settings_apply_notice = ""
+        self._server_settings_apply_notice_kind = "success"
         self._refresh_server_config_preview()
 
     def _apply_server_config_preview(self, payload: dict):
@@ -2956,11 +2959,24 @@ class Main(QtWidgets.QMainWindow):
             return
 
         backups = payload.get("backups") or []
-        self.lblServerIdentityState.setText(
-            "Changes saved and validated. Restart the server to ensure every setting takes effect."
+        validation = payload.get("validation") or []
+        validation_summary = summarize_server_config_validation(validation)
+        has_warnings = any(
+            str(item.get("status") or "").upper() in {"WARN", "FAIL"}
+            for item in validation
         )
-        self.lblServerIdentityState.set_kind("success")
-        self._status(f"Server Settings saved. Backup file(s): {len(backups)}")
+        notice = (
+            f"Changes saved. {validation_summary}. Settings take effect on the next "
+            "server start or restart."
+        )
+        self._server_settings_apply_notice = notice
+        self._server_settings_apply_notice_kind = "warning" if has_warnings else "success"
+        self.lblServerIdentityState.setText(notice)
+        self.lblServerIdentityState.set_kind(self._server_settings_apply_notice_kind)
+        self.txtServerIdentityPreview.appendPlainText(f"\n\n{validation_summary}.")
+        self._status(
+            f"Server Settings saved. Backup file(s): {len(backups)}. {validation_summary}."
+        )
         self._server_identity_dirty = False
         self._refresh_server_config_preview()
         self._kick_preflight_check()

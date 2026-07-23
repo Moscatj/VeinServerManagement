@@ -18,6 +18,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   controls that need attention.
   Helper text and shared action areas use readable neutral palette colors instead
   of low-contrast or conflicting theme accent backgrounds.
+  Successful applies retain their validation summary through the automatic
+  refresh and explain that changes take effect on the next server start or
+  restart.
 
 ## 2.11.0 - 2026-07-21
 

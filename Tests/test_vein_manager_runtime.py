@@ -99,6 +99,7 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
     def test_server_settings_refresh_preserves_unsaved_changes_when_declined(self) -> None:
         owner = mock.Mock()
         owner._server_identity_dirty = True
+        owner._server_settings_apply_notice = "Previous result"
         with mock.patch.object(
             vein_manager.QtWidgets.QMessageBox,
             "question",
@@ -107,11 +108,13 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
             vein_manager.Main._request_server_config_preview_refresh(owner)
 
         self.assertTrue(owner._server_identity_dirty)
+        self.assertEqual(owner._server_settings_apply_notice, "Previous result")
         owner._refresh_server_config_preview.assert_not_called()
 
     def test_server_settings_refresh_discards_only_after_confirmation(self) -> None:
         owner = mock.Mock()
         owner._server_identity_dirty = True
+        owner._server_settings_apply_notice = "Previous result"
         with mock.patch.object(
             vein_manager.QtWidgets.QMessageBox,
             "question",
@@ -120,6 +123,29 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
             vein_manager.Main._request_server_config_preview_refresh(owner)
 
         self.assertFalse(owner._server_identity_dirty)
+        self.assertEqual(owner._server_settings_apply_notice, "")
+        owner._refresh_server_config_preview.assert_called_once_with()
+
+    def test_server_settings_apply_preserves_validation_outcome_through_refresh(self) -> None:
+        owner = mock.Mock()
+        payload = {
+            "ok": True,
+            "action": "apply",
+            "summary": "Proposed Server Settings changes:\n- Server name",
+            "diffs": {"Game.ini": "+ServerName=Updated\n"},
+            "changed_files": ["Game.ini"],
+            "backups": ["Game.ini.backup"],
+            "validation": [
+                {"status": "PASS", "name": "server.config.server_name"},
+                {"status": "WARN", "name": "server.config.admins"},
+            ],
+        }
+
+        vein_manager.Main._apply_identity_access_edit_result(owner, payload)
+
+        self.assertIn("PASS=1, WARN=1", owner._server_settings_apply_notice)
+        self.assertIn("next server start or restart", owner._server_settings_apply_notice)
+        self.assertEqual(owner._server_settings_apply_notice_kind, "warning")
         owner._refresh_server_config_preview.assert_called_once_with()
 
     def test_source_python_uses_console_sibling_of_pythonw(self) -> None:

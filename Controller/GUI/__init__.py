@@ -61,6 +61,7 @@ from .server_config_view import (
     identity_access_values_from_preview,
     mask_sensitive_config_diff,
     populate_identity_access_form,
+    summarize_server_config_validation,
     validate_identity_access_values,
 )
 from .quickstart import (
@@ -131,6 +132,7 @@ __all__ = [
     "identity_access_values_from_preview",
     "mask_sensitive_config_diff",
     "populate_identity_access_form",
+    "summarize_server_config_validation",
     "validate_identity_access_values",
     "build_quick_start_view",
     "build_quick_start_preview",

@@ -107,8 +107,8 @@ not a claim that each phase is complete.
 - [x] Clearly separate VEIN game-chat/admin webhooks from app notifications.
 - [x] Mark curated tabs with unsaved changes and place validation feedback next
   to the affected network and Discord controls.
-- Add broader restart-required indicators,
-  validation summaries, and previews for sensitive writes.
+- [x] Preserve post-apply validation summaries and next-start/restart guidance
+  through the automatic settings refresh; keep sensitive previews masked.
 
 ### Phase 6 - Logs, Backups, And Diagnostics
 

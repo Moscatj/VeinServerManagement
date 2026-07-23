@@ -148,7 +148,8 @@ Watches the selected log file and streams content into the GUI in real time:
   collapsible panel reviews the complete batch. Tabs containing edits display
   an unsaved marker, and field-specific network and Discord errors appear beside
   the affected controls. Successful writes create backups, run validation, and
-  display restart guidance.
+  retain a concise validation summary and next-start/restart guidance through
+  the automatic settings refresh.
 - The original allowlisted `Game.ini` / `Engine.ini` table remains under
   Advanced Settings for individual technical edits. Passwords, webhook URLs,
   token-like values, and sensitive

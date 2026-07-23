@@ -47,6 +47,7 @@ from GUI.server_config_view import (  # noqa: E402
     identity_access_values_from_preview,
     mask_sensitive_config_diff,
     populate_identity_access_form,
+    summarize_server_config_validation,
     validate_identity_access_values,
 )
 from GUI.status_view import StatusRenderer  # noqa: E402
@@ -284,6 +285,9 @@ class GuiHelperTests(unittest.TestCase):
         self.assertFalse(owner.boxServerSettingsReview.toggle.isChecked())
         self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
         self.assertFalse(owner.btnServerIdentityApply.isEnabled())
+        labels = [label.text() for label in widget.findChildren(QtWidgets.QLabel)]
+        self.assertFalse(any("settings belong to VEIN" in text for text in labels))
+        self.assertTrue(any("These are VEIN Game.ini integrations" in text for text in labels))
 
         owner.tabsServerSettings.setCurrentIndex(4)
         self.assertFalse(owner.frmServerSettingsActions.isHidden())
@@ -311,6 +315,10 @@ class GuiHelperTests(unittest.TestCase):
             {"source": "Game.ini", "section": "/Script/Vein.VeinGameStateBase", "key": "WhitelistedPlayers", "value": "(not set)", "present": False},
         ]
 
+        owner._server_settings_apply_notice = (
+            "Changes saved. Validation: PASS=4. Settings take effect on the next start."
+        )
+        owner._server_settings_apply_notice_kind = "success"
         populate_identity_access_form(owner, items)
         loaded = collect_identity_access_values(owner)
         self.assertEqual(loaded["server_name"], "Local")
@@ -318,6 +326,7 @@ class GuiHelperTests(unittest.TestCase):
         self.assertFalse(loaded["public"])
         self.assertEqual(len(loaded["admin_steam_ids"]), 2)
         self.assertIn("will be preserved", owner.lblServerIdentityPasswordStatus.text())
+        self.assertIn("Validation: PASS=4", owner.lblServerIdentityState.text())
         self.assertFalse(owner.btnServerIdentityPreview.isEnabled())
 
         owner.edServerIdentityName.clear()
@@ -449,6 +458,23 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("bind_addr", errors)
         self.assertIn("ports", errors)
         self.assertIn("discord_chat_webhook_url", errors)
+
+    def test_server_config_validation_summary_counts_known_states(self) -> None:
+        summary = summarize_server_config_validation(
+            [
+                {"status": "PASS"},
+                {"status": "pass"},
+                {"status": "INFO"},
+                {"status": "WARN"},
+                {"status": "unknown"},
+            ]
+        )
+
+        self.assertEqual(summary, "Validation: PASS=2, INFO=1, WARN=1")
+        self.assertEqual(
+            summarize_server_config_validation([]),
+            "Validation: no checks reported",
+        )
 
     def test_edit_values_from_text_supports_scalar_and_lists(self) -> None:
         self.assertEqual(edit_values_from_text("One"), "One")
