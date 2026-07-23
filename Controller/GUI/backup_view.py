@@ -24,6 +24,8 @@ from .design_system import (
     set_button_role,
 )
 
+BACKUP_HISTORY_DISPLAY_LIMIT = 200
+
 
 def format_archive_size(size_bytes: int) -> str:
     """Format archive bytes for a compact history table."""
@@ -37,6 +39,42 @@ def format_archive_size(size_bytes: int) -> str:
     return f"{size} B"
 
 
+def backup_history_summary(
+    archives: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Summarize already-discovered archives without touching the filesystem."""
+    if not archives:
+        return {
+            "count": 0,
+            "size_bytes": 0,
+            "categories": 0,
+            "newest": "",
+            "oldest": "",
+        }
+    return {
+        "count": len(archives),
+        "size_bytes": sum(int(item.get("size_bytes") or 0) for item in archives),
+        "categories": len({str(item.get("category") or "Root") for item in archives}),
+        "newest": str(archives[0].get("modified") or ""),
+        "oldest": str(archives[-1].get("modified") or ""),
+    }
+
+
+def filter_backup_archives(
+    archives: Sequence[Mapping[str, Any]],
+    category: str = "",
+    *,
+    limit: int = BACKUP_HISTORY_DISPLAY_LIMIT,
+) -> list[Mapping[str, Any]]:
+    """Return the newest archives matching one category for table display."""
+    matches = [
+        archive
+        for archive in archives
+        if not category or str(archive.get("category") or "Root") == category
+    ]
+    return matches[: max(1, int(limit))]
+
+
 class BackupHistorySignals(QtCore.QObject):
     ready = QtCore.Signal(dict)
 
@@ -44,7 +82,7 @@ class BackupHistorySignals(QtCore.QObject):
 class BackupHistoryWorker(QtCore.QRunnable):
     """Scan a configured backup root without blocking the GUI thread."""
 
-    def __init__(self, root: str | Path, *, limit: int = 200) -> None:
+    def __init__(self, root: str | Path, *, limit: int | None = None) -> None:
         super().__init__()
         self.root = Path(root)
         self.limit = limit
@@ -209,19 +247,36 @@ def review_backup_policy(owner) -> None:
     owner.btnBackupPolicyApply.setEnabled(policy != owner._backup_policy_baseline)
 
 
-def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
-    """Render a backup history payload without performing filesystem work."""
+def apply_backup_history_filter(owner) -> None:
+    """Render the selected category from the cached read-only archive scan."""
     tree = owner.treeBackupHistory
     tree.clear()
-    archives: Sequence[Mapping[str, Any]] = payload.get("archives") or []
-    error = str(payload.get("error") or "")
-    root = str(payload.get("root") or "")
+    archives: Sequence[Mapping[str, Any]] = getattr(
+        owner, "_backup_history_archives", []
+    )
+    error = str(getattr(owner, "_backup_history_error", "") or "")
+    root = str(getattr(owner, "_backup_history_root", "") or "")
+    category = str(owner.cmbBackupHistoryCategory.currentData() or "")
+    matches = [
+        archive
+        for archive in archives
+        if not category or str(archive.get("category") or "Root") == category
+    ]
+    displayed = filter_backup_archives(archives, category)
+    owner.lblBackupHistoryStatus.setToolTip(
+        f"Backup root: {root}" if root else ""
+    )
+
     if error:
         owner.lblBackupHistoryStatus.setText(f"Backup history could not be loaded: {error}")
         owner.lblBackupHistoryStatus.set_kind("error")
     elif archives:
+        summary = backup_history_summary(archives)
         owner.lblBackupHistoryStatus.setText(
-            f"Showing {len(archives)} newest archive(s) under {root}."
+            f"{summary['count']} archive(s) • "
+            f"{format_archive_size(summary['size_bytes'])} total • "
+            f"{summary['categories']} categor{'y' if summary['categories'] == 1 else 'ies'} • "
+            f"Newest: {summary['newest']} • Oldest: {summary['oldest']}"
         )
         owner.lblBackupHistoryStatus.set_kind("success")
     else:
@@ -230,7 +285,7 @@ def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
         )
         owner.lblBackupHistoryStatus.set_kind("warning")
 
-    for archive in archives:
+    for archive in displayed:
         path = str(archive.get("path") or "")
         item = QtWidgets.QTreeWidgetItem(
             [
@@ -245,9 +300,49 @@ def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
         tree.addTopLevelItem(item)
     for column in range(tree.columnCount()):
         tree.resizeColumnToContents(column)
+    if error:
+        owner.lblBackupHistoryFilterStatus.setText("")
+    elif matches:
+        scope = category or "all categories"
+        limited = len(matches) > len(displayed)
+        message = (
+            f"Showing the newest {len(displayed)} of {len(matches)} archive(s)"
+            if limited
+            else f"Showing all {len(matches)} archive(s)"
+        )
+        owner.lblBackupHistoryFilterStatus.setText(
+            f"{message} in {scope}, newest first."
+        )
+    else:
+        scope = category or "all categories"
+        owner.lblBackupHistoryFilterStatus.setText(
+            f"No archives match {scope}."
+        )
     owner.lblBackupHistoryPath.setText(
-        "Select an archive to inspect its full path." if archives else ""
+        "Select an archive to inspect its full path." if displayed else ""
     )
+
+
+def populate_backup_history(owner, payload: Mapping[str, Any]) -> None:
+    """Cache and render a backup history payload without filesystem work."""
+    archives: Sequence[Mapping[str, Any]] = payload.get("archives") or []
+    owner._backup_history_archives = list(archives)
+    owner._backup_history_error = str(payload.get("error") or "")
+    owner._backup_history_root = str(payload.get("root") or "")
+    previous = str(owner.cmbBackupHistoryCategory.currentData() or "")
+    categories = sorted(
+        {str(archive.get("category") or "Root") for archive in archives},
+        key=str.casefold,
+    )
+    owner.cmbBackupHistoryCategory.blockSignals(True)
+    owner.cmbBackupHistoryCategory.clear()
+    owner.cmbBackupHistoryCategory.addItem("All categories", "")
+    for category in categories:
+        owner.cmbBackupHistoryCategory.addItem(category, category)
+    selected = owner.cmbBackupHistoryCategory.findData(previous)
+    owner.cmbBackupHistoryCategory.setCurrentIndex(max(0, selected))
+    owner.cmbBackupHistoryCategory.blockSignals(False)
+    apply_backup_history_filter(owner)
 
 
 def build_backup_history_view(owner) -> QtWidgets.QWidget:
@@ -413,17 +508,26 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     owner.btnBackupHistoryRefresh = QtWidgets.QPushButton("Refresh")
     owner.btnBackupHistoryOpen = QtWidgets.QPushButton("Open Backups Folder")
     owner.btnBackupHistoryCreate = QtWidgets.QPushButton("Backup Now")
+    owner.cmbBackupHistoryCategory = QtWidgets.QComboBox()
+    owner.cmbBackupHistoryCategory.addItem("All categories", "")
+    owner.cmbBackupHistoryCategory.setMinimumWidth(180)
     set_button_role(owner.btnBackupHistoryRefresh, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryOpen, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryCreate, BUTTON_PRIMARY)
     controls.addWidget(owner.btnBackupHistoryRefresh)
     controls.addWidget(owner.btnBackupHistoryOpen)
+    controls.addSpacing(SECTION_SPACING)
+    controls.addWidget(QtWidgets.QLabel("Show"))
+    controls.addWidget(owner.cmbBackupHistoryCategory)
     controls.addStretch(1)
     controls.addWidget(owner.btnBackupHistoryCreate)
     layout.addLayout(controls)
 
     owner.lblBackupHistoryStatus = InlineNotice("Loading backup history.")
     layout.addWidget(owner.lblBackupHistoryStatus)
+    owner.lblBackupHistoryFilterStatus = QtWidgets.QLabel()
+    owner.lblBackupHistoryFilterStatus.setProperty("fieldHelp", True)
+    layout.addWidget(owner.lblBackupHistoryFilterStatus)
 
     owner.treeBackupHistory = QtWidgets.QTreeWidget()
     owner.treeBackupHistory.setColumnCount(4)
@@ -443,6 +547,9 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         lambda current, _previous: owner.lblBackupHistoryPath.setText(
             str(current.data(0, QtCore.Qt.UserRole)) if current else ""
         )
+    )
+    owner.cmbBackupHistoryCategory.currentIndexChanged.connect(
+        lambda _index: apply_backup_history_filter(owner)
     )
     owner.btnBackupHistoryRefresh.clicked.connect(
         getattr(owner, "_refresh_backup_history", lambda: None)

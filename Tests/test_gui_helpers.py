@@ -53,9 +53,11 @@ from GUI.server_config_view import (  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 from GUI.backup_view import (  # noqa: E402
+    backup_history_summary,
     backup_retention_explanation,
     build_backup_history_view,
     collect_backup_policy,
+    filter_backup_archives,
     format_archive_size,
     populate_backup_policy,
     populate_backup_history,
@@ -187,10 +189,69 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(owner.treeBackupHistory.columnCount(), 4)
         self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
         self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(3), "1.5 KB")
-        self.assertIn("Showing 1 newest", owner.lblBackupHistoryStatus.text())
+        self.assertIn("1 archive(s)", owner.lblBackupHistoryStatus.text())
+        self.assertIn("1.5 KB total", owner.lblBackupHistoryStatus.text())
+        self.assertEqual(owner.cmbBackupHistoryCategory.count(), 2)
+        self.assertIn("Showing all 1", owner.lblBackupHistoryFilterStatus.text())
         self.assertEqual(owner.btnBackupHistoryCreate.text(), "Backup Now")
         self.assertEqual(format_archive_size(0), "0 B")
         self.assertEqual(format_archive_size(1024 * 1024), "1.0 MB")
+
+    def test_backup_history_summary_and_filter_are_read_only(self) -> None:
+        archives = [
+            {"modified": "newest", "category": "Manual", "size_bytes": 1024},
+            {"modified": "oldest", "category": "Crash", "size_bytes": 2048},
+        ]
+
+        summary = backup_history_summary(archives)
+        filtered = filter_backup_archives(archives, "Crash")
+
+        self.assertEqual(summary["count"], 2)
+        self.assertEqual(summary["size_bytes"], 3072)
+        self.assertEqual(summary["categories"], 2)
+        self.assertEqual(summary["newest"], "newest")
+        self.assertEqual(summary["oldest"], "oldest")
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["category"], "Crash")
+
+    def test_backup_history_category_control_filters_cached_results(self) -> None:
+        class Owner:
+            pass
+
+        owner = Owner()
+        widget = build_backup_history_view(owner)
+        populate_backup_history(
+            owner,
+            {
+                "root": "C:/Backups",
+                "error": "",
+                "archives": [
+                    {
+                        "modified": "newest",
+                        "category": "Manual",
+                        "filename": "manual.zip",
+                        "size_bytes": 10,
+                        "path": "C:/Backups/Manual/manual.zip",
+                    },
+                    {
+                        "modified": "oldest",
+                        "category": "Crash",
+                        "filename": "crash.zip",
+                        "size_bytes": 20,
+                        "path": "C:/Backups/Crash/crash.zip",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 2)
+        owner.cmbBackupHistoryCategory.setCurrentIndex(
+            owner.cmbBackupHistoryCategory.findData("Crash")
+        )
+        self.assertEqual(owner.treeBackupHistory.topLevelItemCount(), 1)
+        self.assertEqual(owner.treeBackupHistory.topLevelItem(0).text(1), "Crash")
+        self.assertIn("in Crash", owner.lblBackupHistoryFilterStatus.text())
+        self.assertIsInstance(widget, QtWidgets.QWidget)
 
     @classmethod
     def setUpClass(cls) -> None:

@@ -68,6 +68,8 @@ Released through `v2.11.0`:
   default count/age cleanup controls. Cleanup can be disabled or use either
   rule independently; Apply backs up and validates config and does not
   immediately delete existing archives.
+- Read-only archive history shows total archive count and size, category count,
+  oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
 ## Near-Term Priorities
 

@@ -404,7 +404,9 @@ def _prune_log_snapshots() -> dict:
 # -----------------------------
 # Public API
 # -----------------------------
-def list_backup_archives(root: Path, *, limit: int = 200) -> list[BackupArchive]:
+def list_backup_archives(
+    root: Path, *, limit: int | None = 200
+) -> list[BackupArchive]:
     """Return newest ZIP archives below ``root`` without opening or modifying them."""
     root = Path(root)
     if not root.is_dir():
@@ -435,7 +437,8 @@ def list_backup_archives(root: Path, *, limit: int = 200) -> list[BackupArchive]
         except (OSError, ValueError):
             continue
     entries.sort(key=lambda item: item[0], reverse=True)
-    return [entry for _, entry in entries[: max(1, int(limit))]]
+    selected = entries if limit is None else entries[: max(1, int(limit))]
+    return [entry for _, entry in selected]
 
 
 def manual_backup_main() -> int:

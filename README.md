@@ -23,7 +23,8 @@ Python or other developer tools from the
 - Log monitoring for server health and player events.
 - Manual, event-driven, and scheduled backups.
 - Read-only backup history for save, log, and configuration archives, with safe
-  folder access, non-blocking manual creation, and save-loading guidance.
+  folder access, non-blocking manual creation, storage totals, category filters,
+  and save-loading guidance.
 - Guarded GUI backup policy for global enablement, supported automatic triggers,
   and independently enabled count/age cleanup.
 - Clearly separated Discord webhook setup for app notifications, VEIN game

@@ -48,9 +48,11 @@ class BackupsHelperTests(unittest.TestCase):
                 (root / f"backup-{index}.zip").write_bytes(str(index).encode())
 
             archives = backups.list_backup_archives(root, limit=2)
+            all_archives = backups.list_backup_archives(root, limit=None)
             missing = backups.list_backup_archives(root / "missing")
 
         self.assertEqual(len(archives), 2)
+        self.assertEqual(len(all_archives), 3)
         self.assertEqual(missing, [])
 
     def test_cfg_to_dict_handles_dict_dataclass_like_attrs(self) -> None:

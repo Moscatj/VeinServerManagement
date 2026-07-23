@@ -23,7 +23,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   reviewed, backed up, written atomically, and post-validated; applying a policy
   does not immediately delete existing archives. Numbered sections and
   plain-language retention guidance clarify when automatic backups run and when
-  old archives are cleaned up.
+  old archives are cleaned up. Backup history now summarizes archive count,
+  disk usage, categories, and oldest/newest dates, with read-only category
+  filtering.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook
