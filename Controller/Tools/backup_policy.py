@@ -209,8 +209,7 @@ def apply_backup_policy(
         document["backups"] = {}
         backups = document["backups"]
     backups["enabled"] = bool(policy.enabled)
-    if "enable" in backups:
-        backups["enable"] = bool(policy.enabled)
+    backups.pop("enable", None)
     recovery = backups.get("recovery")
     if not isinstance(recovery, Mapping):
         recovery = {}
@@ -227,7 +226,7 @@ def apply_backup_policy(
         shutdown = {}
         triggers["shutdown"] = shutdown
     shutdown["enabled"] = bool(policy.on_shutdown)
-    shutdown["save_backup"] = bool(policy.on_shutdown)
+    shutdown.pop("save_backup", None)
     retention = backups.get("retention")
     if not isinstance(retention, Mapping):
         retention = {}

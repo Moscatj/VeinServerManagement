@@ -144,7 +144,7 @@ backups:
       cooldown_seconds: 600
     on_crash_detect: true
     shutdown:
-      save_backup: true
+      enabled: true
       reason: "Shutdown"
 
 log_monitor:

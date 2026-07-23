@@ -184,7 +184,7 @@ def build_dashboard(owner: "Main", dot_style) -> QtWidgets.QWidget:
     owner.lblBkEnabled = QtWidgets.QLabel("Checking")
     owner.lblBkLast = QtWidgets.QLabel("No successful backup recorded yet.")
     owner.lblBkLast.setWordWrap(True)
-    bkLay.addWidget(QtWidgets.QLabel("Backup protection"), 0, 0)
+    bkLay.addWidget(QtWidgets.QLabel("Backup creation"), 0, 0)
     bkLay.addWidget(owner.lblBkEnabled, 0, 1)
     bkLay.addWidget(QtWidgets.QLabel("Last successful backup"), 1, 0)
     bkLay.addWidget(owner.lblBkLast, 1, 1)

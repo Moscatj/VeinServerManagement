@@ -53,8 +53,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
   Backup-policy Apply now migrates older nested count/age aliases into the
   canonical `backups.retention.default` fields, while read-time compatibility
   preserves non-default legacy values and `config.yaml` remains the sole policy
-  store.
-  Added Review & Restore to backup history. A selected archive must pass preview,
+  store. Home backup health and its compact backup card now refresh from that
+  same live policy after GUI or event-driven direct YAML edits, without periodic
+  config-file parsing. Policy Apply also removes
+  superseded enable and shutdown-trigger aliases while retaining read support.
+  Added Review and Restore to backup history. A selected archive must pass preview,
   the server must be stopped, backup creation must be enabled, and the operator
   must accept a final consequence summary. Restore runs off the GUI thread through
   the guarded backend, disables conflicting lifecycle/policy actions, creates and

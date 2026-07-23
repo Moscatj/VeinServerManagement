@@ -1,6 +1,6 @@
 # Guarded Backup Restore
 
-The Backups page exposes **Review & Restore** for explicit operator-driven save
+The Backups page exposes **Review and Restore** for explicit operator-driven save
 rollback. Browsing and preview remain read-only; activation is available only
 after validation passes and the operator accepts a final confirmation.
 
@@ -71,7 +71,7 @@ automatic replacement.
 
 ## GUI Workflow
 
-- Select an archive and choose **Review & Restore**.
+- Select an archive and choose **Review and Restore**.
 - The dialog repeats source, destination, validation, server state, safety-backup
   behavior, and the consequence that the selected save becomes active.
 - Restore is unavailable unless the server is stopped, the current live save is

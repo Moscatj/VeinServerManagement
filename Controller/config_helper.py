@@ -6,8 +6,10 @@ config_helper.py — ergonomic helpers around the raw config dict.
 
 from __future__ import annotations
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import config as _config_module
 from config import load_config
 
 # ---------------------------------------------------------------------------
@@ -115,7 +117,7 @@ def log_snap_cfg() -> dict:
 
 # ---------------------------------------------------------------------------
 # Migration (in-memory; does not rewrite YAML)
-# - Prefer backups.enable over features.enable_backups
+# - Prefer backups.enabled/enable over features.enable_backups
 # - Carry legacy backup_* keys into backups.* view for unified access
 # ---------------------------------------------------------------------------
 def _migrate_backups_view() -> None:
@@ -199,6 +201,37 @@ def _migrate_backups_view() -> None:
 
 
 _migrate_backups_view()
+
+
+def refresh_config(config_path: str | os.PathLike | None = None) -> Dict[str, Any]:
+    """Reload the active config while preserving shared dictionary references.
+
+    Several long-running tools import ``config`` or ``features`` directly from
+    this module. Rebinding either object would leave those consumers pointing
+    at stale settings, so refresh them in place after an atomic YAML edit.
+    """
+    old_env = os.environ.get("VEIN_CONFIG")
+    if config_path:
+        os.environ["VEIN_CONFIG"] = str(Path(config_path).resolve())
+    try:
+        _config_module._CONFIG_CACHE = None
+        fresh = _config_module.load_config()
+    finally:
+        if old_env is None:
+            os.environ.pop("VEIN_CONFIG", None)
+        else:
+            os.environ["VEIN_CONFIG"] = old_env
+
+    fresh_features = fresh.get("features")
+    config.clear()
+    config.update(fresh)
+    features.clear()
+    if isinstance(fresh_features, dict):
+        features.update(fresh_features)
+    config["features"] = features
+    _migrate_backups_view()
+    _config_module._CONFIG_CACHE = config
+    return config
 
 
 # ---------------------------------------------------------------------------

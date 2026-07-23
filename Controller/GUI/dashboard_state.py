@@ -42,7 +42,7 @@ def home_health_state(
     }
     backups = {
         "text": "Enabled" if backups_enabled else "Disabled",
-        "state": "healthy" if backups_enabled else "warning",
+        "state": "healthy" if backups_enabled else "error",
     }
 
     if not server_available and not server_running:

@@ -56,6 +56,7 @@ if str(CTRL_DIR) not in sys.path:
 
 # Now it is safe to import Tools modules
 try:
+    from config_helper import refresh_config
     from Tools.config_io import load_and_validate_config
     from Tools import app_info, mgmt_logs
     from Tools.server_quickstart import (
@@ -1704,6 +1705,7 @@ class Main(QtWidgets.QMainWindow):
             return
         policy = BackupPolicy(**(payload.get("policy") or {}))
         populate_backup_policy(self, policy)
+        self._apply_backup_enabled_ui(policy.enabled)
         if action == "apply":
             backup = str(payload.get("backup") or "")
             message = (
@@ -1720,6 +1722,29 @@ class Main(QtWidgets.QMainWindow):
             self.load_config_text()
             self._refresh_backup_history()
             self._kick_preflight_check()
+
+    def _apply_backup_enabled_ui(self, enabled: bool) -> None:
+        """Keep both Home backup summaries aligned with the active policy."""
+        enabled = bool(enabled)
+        if hasattr(self, "badgeHomeBackups"):
+            self.badgeHomeBackups.set_state(
+                "healthy" if enabled else "error",
+                "Enabled" if enabled else "Disabled",
+            )
+        if hasattr(self, "lblBkEnabled"):
+            self.lblBkEnabled.setText("Enabled" if enabled else "Disabled")
+        if hasattr(self, "btnBkNow"):
+            self.btnBkNow.setEnabled(enabled)
+
+    def _sync_config_consumers(self) -> None:
+        """Refresh long-lived config readers after the selected file changes."""
+        refresh_config(self.config_path)
+        try:
+            resolved = str(Path(self.config_path).resolve())
+            _RUNTIME_CFG_CACHE.pop(resolved, None)
+        except Exception:
+            _RUNTIME_CFG_CACHE.clear()
+        self._kick_status_poll()
 
     def _refresh_backup_history(self):
         if getattr(self, "_backup_history_running", False):
@@ -2092,6 +2117,7 @@ class Main(QtWidgets.QMainWindow):
                 self._status(f"Loaded {kind.upper()}.")
 
             self._rebuild_base_titles()
+            self._sync_config_consumers()
         except Exception as e:
             self._data = {}
             self.json.setPlainText("")
@@ -2242,11 +2268,32 @@ class Main(QtWidgets.QMainWindow):
                 f.write(self.json.toPlainText())
             os.replace(tmp, path)
             self._status("Saved atomically.")
-            QtCore.QTimer.singleShot(250, self._kick_preflight_check)
+            QtCore.QTimer.singleShot(250, self._finish_config_save)
         except Exception as e:
             self._status(f"Save failed: {e}")
         finally:
-            QtCore.QTimer.singleShot(250, lambda: setattr(self, "_saving", False))
+            if self._saving:
+                QtCore.QTimer.singleShot(250, lambda: setattr(self, "_saving", False))
+
+    def _finish_config_save(self):
+        self._saving = False
+        self._handle_external_config_change()
+        self._kick_preflight_check()
+
+    def _handle_external_config_change(self):
+        if self._saving:
+            return
+        self.load_config_text()
+        self.watch_config()
+        if not getattr(self, "_backup_policy_dirty", False) and not getattr(
+            self, "_backup_policy_running", False
+        ):
+            self._refresh_backup_policy()
+        elif hasattr(self, "lblBackupPolicyState"):
+            self.lblBackupPolicyState.setText(
+                "config.yaml changed externally. Discard or apply the current form edits, then refresh Backup Policy."
+            )
+            self.lblBackupPolicyState.set_kind("warning")
 
     # ---------------------------- Watch / tail --------------------------------
     def watch_config(self):
@@ -2262,7 +2309,7 @@ class Main(QtWidgets.QMainWindow):
                 self.watcher.addPath(self.config_path)
             self.watcher.fileChanged.connect(
                 lambda _: (self._saving and None)
-                or QtCore.QTimer.singleShot(300, self.load_config_text)
+                or QtCore.QTimer.singleShot(300, self._handle_external_config_change)
             )
         except Exception:
             pass
@@ -2634,8 +2681,7 @@ class Main(QtWidgets.QMainWindow):
         if self.noticeHomeGuidance.property("noticeKind") != guidance["kind"]:
             self.noticeHomeGuidance.set_kind(guidance["kind"])
 
-        self.lblBkEnabled.setText("Enabled" if bk_enabled else "Disabled")
-        self.btnBkNow.setEnabled(bk_enabled)
+        self._apply_backup_enabled_ui(bk_enabled)
         self.lblBkLast.setText(
             f"{bk_last} ({age})"
             if bk_last and bk_last != "-"

@@ -111,6 +111,7 @@ class DashboardStateTests(unittest.TestCase):
         self.assertEqual(warning["log_monitor"]["text"], "Stale")
         self.assertEqual(warning["crash_monitor"]["state"], "warning")
         self.assertEqual(warning["backups"]["text"], "Disabled")
+        self.assertEqual(warning["backups"]["state"], "error")
         self.assertIn("safeguards", warning["guidance"]["text"])
 
     def test_home_health_state_reports_healthy_running_server(self) -> None:

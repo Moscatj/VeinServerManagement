@@ -15,6 +15,33 @@ import config_helper  # noqa: E402
 
 
 class ConfigHelperTests(unittest.TestCase):
+    def test_refresh_config_updates_shared_references_in_place(self) -> None:
+        config_ref = config_helper.config
+        features_ref = config_helper.features
+        fresh = {
+            "features": {"enable_discord": False},
+            "backups": {"enabled": False},
+        }
+        original_config = dict(config_helper.config)
+        original_features = dict(config_helper.features)
+        try:
+            with mock.patch.object(
+                config_helper._config_module, "load_config", return_value=fresh
+            ):
+                refreshed = config_helper.refresh_config("Config/config.yaml")
+
+            self.assertIs(refreshed, config_ref)
+            self.assertIs(config_helper.features, features_ref)
+            self.assertFalse(config_helper.backups_enabled())
+            self.assertFalse(config_helper.features["enable_discord"])
+        finally:
+            config_helper.config.clear()
+            config_helper.config.update(original_config)
+            config_helper.features.clear()
+            config_helper.features.update(original_features)
+            config_helper.config["features"] = config_helper.features
+            config_helper._config_module._CONFIG_CACHE = config_helper.config
+
     def test_feature_and_discord_channel_flags(self) -> None:
         with mock.patch.dict(
             config_helper.features,

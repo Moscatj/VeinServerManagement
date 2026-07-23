@@ -19,6 +19,7 @@ if str(CTRL) not in sys.path:
 from PySide6 import QtWidgets  # noqa: E402
 
 from GUI import status  # noqa: E402
+from GUI.design_system import StatusBadge  # noqa: E402
 import vein_manager  # noqa: E402
 
 
@@ -136,6 +137,19 @@ class StatusPollerTests(unittest.TestCase):
         assert worker.signals.finished.callback is not None
         worker.signals.finished.callback()
         self.assertIsNone(owner._poller)
+
+    def test_home_backup_surfaces_update_together(self) -> None:
+        owner = mock.Mock()
+        owner.badgeHomeBackups = StatusBadge("Enabled", "healthy")
+        owner.lblBkEnabled = QtWidgets.QLabel("Enabled")
+        owner.btnBkNow = QtWidgets.QPushButton("Backup Now")
+
+        vein_manager.Main._apply_backup_enabled_ui(owner, False)
+
+        self.assertEqual(owner.badgeHomeBackups.text(), "Disabled")
+        self.assertEqual(owner.badgeHomeBackups.property("statusState"), "error")
+        self.assertEqual(owner.lblBkEnabled.text(), "Disabled")
+        self.assertFalse(owner.btnBkNow.isEnabled())
 
 
 if __name__ == "__main__":

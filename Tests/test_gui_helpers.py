@@ -247,7 +247,15 @@ class GuiHelperTests(unittest.TestCase):
         self.assertIn("Showing all 1", owner.lblBackupHistoryFilterStatus.text())
         self.assertEqual(owner.btnBackupHistoryCreate.text(), "Backup Now")
         self.assertEqual(
+            owner.btnBackupHistoryPreview.text(), "Review and Restore"
+        )
+        self.assertEqual(
             owner.btnBackupHistoryRestorePoint.text(), "Create from Current Save"
+        )
+        self.assertEqual(owner.lblBackupSelectedActions.text(), "Selected backup:")
+        self.assertEqual(owner.lblBackupNewRestorePoint.text(), "New restore point:")
+        self.assertEqual(
+            owner.btnBackupHistoryPreview.property("buttonRole"), BUTTON_PRIMARY
         )
         self.assertEqual(owner.btnBackupHistoryPin.text(), "Protect Selected")
         self.assertEqual(

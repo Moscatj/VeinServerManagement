@@ -745,7 +745,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         InlineNotice(
             "Browsing never changes backup ZIPs. Protect Selected marks an existing "
             "backup as a restore point without copying it. Create from Current Save "
-            "captures a new protected backup from the active save. Review & Restore "
+            "captures a new protected backup from the active save. Review and Restore "
             "validates the selected archive and requires a stopped server plus a "
             "verified, protected Before Restore safety point."
         )
@@ -958,9 +958,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         "Browse existing archives, create or protect rollback points, and safely restore a selected save backup."
     )
     archive_intro.setProperty("fieldHelp", True)
-    archive_layout.addWidget(archive_intro)
 
-    controls = QtWidgets.QHBoxLayout()
     owner.btnBackupHistoryRefresh = QtWidgets.QPushButton("Refresh")
     owner.btnBackupHistoryOpen = QtWidgets.QPushButton("Open Backups Folder")
     owner.btnBackupHistoryCreate = QtWidgets.QPushButton("Backup Now")
@@ -975,7 +973,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         "Make the selected existing backup a restore point without creating another ZIP."
     )
     owner.btnBackupHistoryPin.setEnabled(False)
-    owner.btnBackupHistoryPreview = QtWidgets.QPushButton("Review & Restore")
+    owner.btnBackupHistoryPreview = QtWidgets.QPushButton("Review and Restore")
     owner.btnBackupHistoryPreview.setToolTip(
         "Validate the selected archive, review its destination and safeguards, then optionally restore it."
     )
@@ -993,10 +991,17 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     set_button_role(owner.btnBackupHistoryRefresh, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryOpen, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryCreate, BUTTON_PRIMARY)
-    set_button_role(owner.btnBackupHistoryRestorePoint, BUTTON_PRIMARY)
+    set_button_role(owner.btnBackupHistoryRestorePoint, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryPin, BUTTON_SECONDARY)
-    set_button_role(owner.btnBackupHistoryPreview, BUTTON_SECONDARY)
+    set_button_role(owner.btnBackupHistoryPreview, BUTTON_PRIMARY)
     set_button_role(owner.btnBackupHistoryRemoveProtection, BUTTON_SECONDARY)
+
+    archive_header = QtWidgets.QHBoxLayout()
+    archive_header.addWidget(archive_intro, 1)
+    archive_header.addWidget(owner.btnBackupHistoryCreate)
+    archive_layout.addLayout(archive_header)
+
+    controls = QtWidgets.QHBoxLayout()
     controls.addWidget(owner.btnBackupHistoryRefresh)
     controls.addWidget(owner.btnBackupHistoryOpen)
     controls.addSpacing(SECTION_SPACING)
@@ -1005,17 +1010,19 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     owner.chkBackupHistoryPinnedOnly = QtWidgets.QCheckBox("Restore points only")
     controls.addWidget(owner.chkBackupHistoryPinnedOnly)
     controls.addStretch(1)
-    controls.addWidget(owner.btnBackupHistoryCreate)
     archive_layout.addLayout(controls)
 
     restore_controls = QtWidgets.QHBoxLayout()
-    restore_controls.addStretch(1)
-    restore_actions_label = QtWidgets.QLabel("Restore points:")
-    restore_actions_label.setProperty("fieldHelp", True)
-    restore_controls.addWidget(restore_actions_label)
+    owner.lblBackupSelectedActions = QtWidgets.QLabel("Selected backup:")
+    owner.lblBackupSelectedActions.setProperty("fieldHelp", True)
+    restore_controls.addWidget(owner.lblBackupSelectedActions)
     restore_controls.addWidget(owner.btnBackupHistoryPreview)
     restore_controls.addWidget(owner.btnBackupHistoryPin)
     restore_controls.addWidget(owner.btnBackupHistoryRemoveProtection)
+    restore_controls.addStretch(1)
+    owner.lblBackupNewRestorePoint = QtWidgets.QLabel("New restore point:")
+    owner.lblBackupNewRestorePoint.setProperty("fieldHelp", True)
+    restore_controls.addWidget(owner.lblBackupNewRestorePoint)
     restore_controls.addWidget(owner.btnBackupHistoryRestorePoint)
     archive_layout.addLayout(restore_controls)
 

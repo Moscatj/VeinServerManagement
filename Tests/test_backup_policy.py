@@ -132,7 +132,9 @@ class BackupPolicyTests(unittest.TestCase):
             self.assertTrue(result.changed)
             self.assertTrue(Path(result.backup).is_file())
             self.assertEqual(loaded, policy)
-            self.assertFalse(saved["backups"]["triggers"]["shutdown"]["save_backup"])
+            self.assertFalse(saved["backups"]["triggers"]["shutdown"]["enabled"])
+            self.assertNotIn("save_backup", saved["backups"]["triggers"]["shutdown"])
+            self.assertNotIn("enable", saved["backups"])
             self.assertFalse(
                 saved["backups"]["recovery"]["restore_missing_on_start"]
             )

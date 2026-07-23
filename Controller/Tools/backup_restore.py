@@ -132,7 +132,7 @@ def inspect_restore_operation(operation_dir: Path) -> RestoreOperationStatus:
             phase=phase,
             kind="warning",
             summary="The last restore stopped safely before changing the live save.",
-            guidance="Review the reported error, then run Review & Restore again if desired.",
+            guidance="Review the reported error, then run Review and Restore again if desired.",
             journal=str(journal),
             safety_backup=safety,
         )

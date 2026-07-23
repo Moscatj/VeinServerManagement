@@ -195,10 +195,16 @@ login/logout controls remain roadmap items.
 `Config/config.yaml` remains the only persistent management-configuration
 authority. The GUI reads and atomically updates these fields directly after
 creating a timestamped config backup; it does not maintain a second policy
-store. Older `backups.max_backups` and `backups.backup_max_age_days` fields are
-accepted as read-time aliases. The next explicit GUI Apply migrates their values
-to `backups.retention.default` and removes the superseded aliases so one YAML
-field remains authoritative for each setting.
+store. Home, Backup Policy, and Backup Archives all read this same file. Policy
+Apply updates both Home summaries immediately. External edits are reloaded by
+the operating system's event-driven file watcher; the GUI does not repeatedly
+parse the YAML while it is idle.
+
+Older `backups.enable`, `backups.max_backups`,
+`backups.backup_max_age_days`, and `shutdown.save_backup` fields are accepted as
+read-time aliases. The next explicit GUI Apply migrates their values to
+`backups.enabled`, `backups.retention.default`, and `shutdown.enabled`, removing
+the superseded aliases so one YAML field remains authoritative for each setting.
 
 - backups.enabled
   • Global gate for save backup creation.
@@ -221,8 +227,8 @@ field remains authoritative for each setting.
   • Back up when the log monitor detects a configured crash signature.
 
 - backups.triggers.shutdown
-  • Back up during controlled shutdown. Boolean and `enabled`/`save_backup`
-    object forms remain compatible.
+  • Back up during controlled shutdown. `shutdown.enabled` is canonical;
+    boolean and `save_backup` object forms remain read compatible.
 
 - backups.retention.default.max_backups
   • Default maximum archive count per category.
