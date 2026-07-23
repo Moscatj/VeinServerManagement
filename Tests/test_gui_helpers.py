@@ -324,7 +324,9 @@ class GuiHelperTests(unittest.TestCase):
         self.assertEqual(item.text(2), "Before migration")
         owner.treeBackupHistory.setCurrentItem(item)
         self.assertIn("Known-good state", owner.lblBackupHistoryPath.text())
-        self.assertFalse(owner.btnBackupHistoryPin.isEnabled())
+        self.assertTrue(owner.btnBackupHistoryPin.isEnabled())
+        self.assertEqual(owner.btnBackupHistoryPin.text(), "Edit Details")
+        self.assertFalse(owner.btnBackupHistoryRemoveProtection.isHidden())
         self.assertTrue(owner.btnBackupHistoryPreview.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
 

@@ -1748,7 +1748,12 @@ class Main(QtWidgets.QMainWindow):
         self.process_ctl.create_manual_backup()
 
     def _start_restore_point_action(
-        self, *, action: str, archive: str | None = None
+        self,
+        *,
+        action: str,
+        archive: str | None = None,
+        initial_label: str = "",
+        initial_note: str = "",
     ) -> None:
         if getattr(self, "_restore_point_running", False):
             return
@@ -1757,8 +1762,12 @@ class Main(QtWidgets.QMainWindow):
             title=(
                 "Create Restore Point"
                 if action == "create"
+                else "Edit Restore Point"
+                if action == "edit"
                 else "Protect Selected Backup as Restore Point"
             ),
+            initial_label=initial_label,
+            initial_note=initial_note,
         )
         if details is None:
             return
@@ -1769,6 +1778,8 @@ class Main(QtWidgets.QMainWindow):
         message = (
             "Creating and protecting a new restore point."
             if action == "create"
+            else "Updating restore-point details without changing the backup ZIP."
+            if action == "edit"
             else "Making the selected backup a protected restore point."
         )
         self.lblBackupHistoryStatus.setText(message)
@@ -1786,9 +1797,47 @@ class Main(QtWidgets.QMainWindow):
         item = self.treeBackupHistory.currentItem()
         archive = str(item.data(0, QtCore.Qt.UserRole) or "") if item else ""
         if not archive:
-            self._status("Select a backup archive to pin.")
+            self._status("Select a backup archive.")
             return
-        self._start_restore_point_action(action="pin", archive=archive)
+        metadata = item.data(0, QtCore.Qt.UserRole + 1) or {}
+        pinned = bool(metadata.get("pinned"))
+        self._start_restore_point_action(
+            action="edit" if pinned else "pin",
+            archive=archive,
+            initial_label=str(metadata.get("pin_label") or ""),
+            initial_note=str(metadata.get("pin_note") or ""),
+        )
+
+    def _on_remove_restore_point_protection_clicked(self):
+        if getattr(self, "_restore_point_running", False):
+            return
+        item = self.treeBackupHistory.currentItem()
+        archive = str(item.data(0, QtCore.Qt.UserRole) or "") if item else ""
+        metadata = item.data(0, QtCore.Qt.UserRole + 1) if item else {}
+        if not archive or not metadata or not metadata.get("pinned"):
+            self._status("Select a restore point first.")
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Remove Restore-Point Protection",
+            "The backup ZIP will be kept, but it will become eligible for automatic "
+            "cleanup under the active age and count rules. Remove protection?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        self._restore_point_running = True
+        self.btnBackupHistoryPin.setEnabled(False)
+        self.btnBackupHistoryRemoveProtection.setEnabled(False)
+        self.btnBackupHistoryRestorePoint.setEnabled(False)
+        self.lblBackupHistoryStatus.setText(
+            "Removing restore-point protection; the backup ZIP will be kept."
+        )
+        self.lblBackupHistoryStatus.set_kind("info")
+        worker = RestorePointWorker(action="remove", archive=archive)
+        worker.signals.ready.connect(self._apply_restore_point_result)
+        self._pool.start(worker)
 
     def _on_preview_restore_clicked(self):
         if getattr(self, "_restore_preview_running", False):
@@ -1847,12 +1896,26 @@ class Main(QtWidgets.QMainWindow):
         )
         if not payload.get("ok"):
             message = (
-                "Restore point was not created: "
+                "Restore-point update failed: "
                 f"{payload.get('error') or 'unknown error'}"
             )
             self.lblBackupHistoryStatus.setText(message)
             self.lblBackupHistoryStatus.set_kind("error")
             self._status(message)
+            item = self.treeBackupHistory.currentItem()
+            metadata = item.data(0, QtCore.Qt.UserRole + 1) if item else {}
+            self.btnBackupHistoryPin.setEnabled(item is not None)
+            self.btnBackupHistoryRemoveProtection.setEnabled(
+                bool(metadata and metadata.get("pinned"))
+            )
+            return
+        if payload.get("action") == "remove":
+            message = (
+                "Restore-point protection was removed. The backup ZIP was kept and is "
+                "now subject to automatic cleanup rules."
+            )
+            self._status(message)
+            self._refresh_backup_history()
             return
         label = str((payload.get("pin") or {}).get("label") or "Restore point")
         message = f'Restore point "{label}" is protected from automatic cleanup.'

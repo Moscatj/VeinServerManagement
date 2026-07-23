@@ -18,6 +18,8 @@ from Tools.backup_pins import (  # noqa: E402
     pin_backup,
     pin_sidecar_path,
     read_backup_pin,
+    remove_backup_pin,
+    update_backup_pin,
 )
 
 
@@ -60,6 +62,32 @@ class BackupPinTests(unittest.TestCase):
                 pin_backup(Path(tmp) / "missing.zip", label="Point")
             with self.assertRaises(BackupPinError):
                 pin_backup(archive, label="x" * 81)
+
+    def test_update_and_remove_protection_never_modify_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "backup.zip"
+            archive.write_bytes(b"immutable archive")
+            before = archive.read_bytes()
+            original = pin_backup(archive, label="First", note="Original")
+
+            updated = update_backup_pin(archive, label="Branch point", note="Revised")
+
+            self.assertEqual(updated.label, "Branch point")
+            self.assertEqual(updated.note, "Revised")
+            self.assertEqual(updated.pinned_utc, original.pinned_utc)
+            self.assertEqual(archive.read_bytes(), before)
+            self.assertTrue(remove_backup_pin(archive))
+            self.assertEqual(archive.read_bytes(), before)
+            self.assertFalse(is_archive_pinned(archive))
+
+    def test_update_and_remove_require_existing_restore_point(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "backup.zip"
+            archive.write_bytes(b"archive")
+            with self.assertRaises(BackupPinError):
+                update_backup_pin(archive, label="Updated")
+            with self.assertRaises(BackupPinError):
+                remove_backup_pin(archive)
 
 
 if __name__ == "__main__":

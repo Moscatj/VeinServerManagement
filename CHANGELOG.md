@@ -36,7 +36,9 @@ This project uses a lightweight versioning approach suitable for a personal sour
   archives that checks ZIP integrity, unsafe or duplicate paths, manifest and
   save-file hashes, the intended live-save destination, and current server-stop
   readiness. The preview explains the future safety-backup/staging plan but
-  intentionally provides no restore action.
+  intentionally provides no restore action. Restore-point labels and notes can
+  now be edited without changing their ZIPs, and guarded Remove Protection keeps
+  the ZIP while clearly warning that automatic cleanup can remove it later.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

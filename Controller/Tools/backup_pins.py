@@ -74,6 +74,20 @@ def read_backup_pin(archive: Path) -> BackupPin | None:
 def pin_backup(archive: Path, *, label: str, note: str = "") -> BackupPin:
     """Atomically add or replace metadata for an existing ZIP archive."""
     archive = Path(archive)
+    return _write_backup_pin(archive, label=label, note=note, preserve_time=False)
+
+
+def update_backup_pin(archive: Path, *, label: str, note: str = "") -> BackupPin:
+    """Update restore-point details without changing the archive or pin time."""
+    archive = Path(archive)
+    if not is_archive_pinned(archive):
+        raise BackupPinError("The selected backup is not a restore point.")
+    return _write_backup_pin(archive, label=label, note=note, preserve_time=True)
+
+
+def _write_backup_pin(
+    archive: Path, *, label: str, note: str, preserve_time: bool
+) -> BackupPin:
     clean_label = " ".join(str(label).split()).strip()
     clean_note = str(note).strip()
     if not archive.is_file() or archive.suffix.casefold() != ".zip":
@@ -85,10 +99,16 @@ def pin_backup(archive: Path, *, label: str, note: str = "") -> BackupPin:
     if len(clean_note) > 500:
         raise BackupPinError("The restore-point note must be 500 characters or fewer.")
 
+    current = read_backup_pin(archive) if preserve_time else None
+    pinned_utc = (
+        current.pinned_utc
+        if current is not None and current.status == "valid" and current.pinned_utc
+        else now_iso()
+    )
     pin = BackupPin(
         label=clean_label,
         note=clean_note,
-        pinned_utc=now_iso(),
+        pinned_utc=pinned_utc,
         archive_sha256=_sha256(archive),
     )
     sidecar = pin_sidecar_path(archive)
@@ -105,3 +125,18 @@ def pin_backup(archive: Path, *, label: str, note: str = "") -> BackupPin:
         temporary.unlink(missing_ok=True)
         raise BackupPinError(f"Could not save restore-point metadata: {exc}") from exc
     return pin
+
+
+def remove_backup_pin(archive: Path) -> bool:
+    """Remove cleanup protection metadata without deleting the backup ZIP."""
+    archive = Path(archive)
+    sidecar = pin_sidecar_path(archive)
+    if not archive.is_file() or archive.suffix.casefold() != ".zip":
+        raise BackupPinError("Select an existing backup ZIP archive.")
+    if not sidecar.is_file():
+        raise BackupPinError("The selected backup is not a restore point.")
+    try:
+        sidecar.unlink()
+    except OSError as exc:
+        raise BackupPinError(f"Could not remove restore-point protection: {exc}") from exc
+    return True

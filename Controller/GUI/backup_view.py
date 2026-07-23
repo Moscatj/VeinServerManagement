@@ -8,7 +8,7 @@ from typing import Any, Mapping, Sequence
 from PySide6 import QtCore, QtWidgets
 
 from Tools.backups import list_backup_archives, make_backup
-from Tools.backup_pins import pin_backup
+from Tools.backup_pins import pin_backup, remove_backup_pin, update_backup_pin
 from Tools.backup_restore_preview import inspect_restore_archive
 from Tools.backup_policy import (
     BackupPolicy,
@@ -120,7 +120,7 @@ class RestorePointWorker(QtCore.QRunnable):
         self,
         *,
         action: str,
-        label: str,
+        label: str = "",
         note: str = "",
         archive: str | Path | None = None,
     ) -> None:
@@ -138,12 +138,22 @@ class RestorePointWorker(QtCore.QRunnable):
                 archive = make_backup("RestorePoint")
             if archive is None:
                 raise ValueError("No backup archive was selected.")
-            pin = pin_backup(archive, label=self.label, note=self.note)
+            if self.action == "remove":
+                remove_backup_pin(archive)
+                pin_payload = {}
+            elif self.action == "edit":
+                pin_payload = update_backup_pin(
+                    archive, label=self.label, note=self.note
+                ).as_dict()
+            else:
+                pin_payload = pin_backup(
+                    archive, label=self.label, note=self.note
+                ).as_dict()
             payload = {
                 "ok": True,
                 "action": self.action,
                 "archive": str(archive),
-                "pin": pin.as_dict(),
+                "pin": pin_payload,
                 "error": "",
             }
         except Exception as exc:
@@ -187,7 +197,11 @@ class RestorePreviewWorker(QtCore.QRunnable):
 
 
 def prompt_restore_point_details(
-    parent: QtWidgets.QWidget, *, title: str
+    parent: QtWidgets.QWidget,
+    *,
+    title: str,
+    initial_label: str = "",
+    initial_note: str = "",
 ) -> tuple[str, str] | None:
     """Collect a required short label and optional note in one compact dialog."""
     dialog = QtWidgets.QDialog(parent)
@@ -204,9 +218,11 @@ def prompt_restore_point_details(
     label = QtWidgets.QLineEdit()
     label.setMaxLength(80)
     label.setPlaceholderText("Example: Before server migration")
+    label.setText(initial_label)
     note = QtWidgets.QPlainTextEdit()
     note.setMaximumHeight(90)
     note.setPlaceholderText("Optional context about this rollback point")
+    note.setPlainText(initial_note)
     form.addRow("Label", label)
     form.addRow("Note", note)
     layout.addLayout(form)
@@ -214,7 +230,7 @@ def prompt_restore_point_details(
         QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel
     )
     save = buttons.button(QtWidgets.QDialogButtonBox.Save)
-    save.setEnabled(False)
+    save.setEnabled(bool(initial_label.strip()))
     label.textChanged.connect(lambda text: save.setEnabled(bool(text.strip())))
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
@@ -259,10 +275,18 @@ def build_restore_preview_dialog(
         ("Restore point", payload.get("restore_point_label") or "No"),
         ("Restore-point note", payload.get("restore_point_note") or "None"),
         ("Backup type", payload.get("reason") or "Unknown"),
-        ("Backup created", payload.get("created_utc") or payload.get("archive_modified") or "Unknown"),
+        (
+            "Backup created",
+            payload.get("created_utc")
+            or payload.get("archive_modified")
+            or "Unknown",
+        ),
         ("Contained save", payload.get("save_member") or "Not validated"),
         ("Save size", format_archive_size(int(payload.get("save_size") or 0))),
-        ("Manifest and save hash", "Verified" if payload.get("manifest_valid") else "Not verified"),
+        (
+            "Manifest and save hash",
+            "Verified" if payload.get("manifest_valid") else "Not verified",
+        ),
         ("Live-save destination", payload.get("destination") or "Unknown"),
         ("Current live save", "Present" if payload.get("destination_exists") else "Not found"),
         ("Server state", "Running - stop required" if payload.get("server_running") else "Stopped"),
@@ -570,6 +594,8 @@ def update_backup_history_selection(owner, current) -> None:
     if current is None:
         owner.lblBackupHistoryPath.setText("Select an archive to inspect its details.")
         owner.btnBackupHistoryPin.setEnabled(False)
+        owner.btnBackupHistoryPin.setText("Protect Selected")
+        owner.btnBackupHistoryRemoveProtection.setVisible(False)
         owner.btnBackupHistoryPreview.setEnabled(False)
         return
     archive = current.data(0, QtCore.Qt.UserRole + 1) or {}
@@ -585,7 +611,13 @@ def update_backup_history_selection(owner, current) -> None:
             f"{details}"
         )
     owner.lblBackupHistoryPath.setText(details)
-    owner.btnBackupHistoryPin.setEnabled(not bool(archive.get("pinned")))
+    pinned = bool(archive.get("pinned"))
+    owner.btnBackupHistoryPin.setEnabled(True)
+    owner.btnBackupHistoryPin.setText(
+        "Edit Details" if pinned else "Protect Selected"
+    )
+    owner.btnBackupHistoryRemoveProtection.setVisible(pinned)
+    owner.btnBackupHistoryRemoveProtection.setEnabled(pinned)
     owner.btnBackupHistoryPreview.setEnabled(True)
 
 
@@ -823,6 +855,13 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         "Validate the selected archive and preview its destination without changing files."
     )
     owner.btnBackupHistoryPreview.setEnabled(False)
+    owner.btnBackupHistoryRemoveProtection = QtWidgets.QPushButton(
+        "Remove Protection"
+    )
+    owner.btnBackupHistoryRemoveProtection.setToolTip(
+        "Keep the backup ZIP but allow automatic cleanup rules to remove it later."
+    )
+    owner.btnBackupHistoryRemoveProtection.setVisible(False)
     owner.cmbBackupHistoryCategory = QtWidgets.QComboBox()
     owner.cmbBackupHistoryCategory.addItem("All categories", "")
     owner.cmbBackupHistoryCategory.setMinimumWidth(180)
@@ -832,6 +871,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     set_button_role(owner.btnBackupHistoryRestorePoint, BUTTON_PRIMARY)
     set_button_role(owner.btnBackupHistoryPin, BUTTON_SECONDARY)
     set_button_role(owner.btnBackupHistoryPreview, BUTTON_SECONDARY)
+    set_button_role(owner.btnBackupHistoryRemoveProtection, BUTTON_SECONDARY)
     controls.addWidget(owner.btnBackupHistoryRefresh)
     controls.addWidget(owner.btnBackupHistoryOpen)
     controls.addSpacing(SECTION_SPACING)
@@ -850,6 +890,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     restore_controls.addWidget(restore_actions_label)
     restore_controls.addWidget(owner.btnBackupHistoryPreview)
     restore_controls.addWidget(owner.btnBackupHistoryPin)
+    restore_controls.addWidget(owner.btnBackupHistoryRemoveProtection)
     restore_controls.addWidget(owner.btnBackupHistoryRestorePoint)
     archive_layout.addLayout(restore_controls)
 
@@ -903,6 +944,9 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     )
     owner.btnBackupHistoryPreview.clicked.connect(
         getattr(owner, "_on_preview_restore_clicked", lambda: None)
+    )
+    owner.btnBackupHistoryRemoveProtection.clicked.connect(
+        getattr(owner, "_on_remove_restore_point_protection_clicked", lambda: None)
     )
     owner.btnBackupPolicyDiscard.clicked.connect(
         lambda: populate_backup_policy(owner, owner._backup_policy_baseline)

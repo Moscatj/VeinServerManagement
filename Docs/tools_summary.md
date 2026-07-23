@@ -20,8 +20,9 @@ must live in the appropriate Tools module.
 - **backups.py / backups_api.py** - Backup plumbing plus a safe API for controllers/GUI.
 - **backup_policy.py** - Guarded backup-policy loading, summary, config backup,
   atomic write, and post-write validation for the Backups page.
-- **backup_pins.py** - Atomic sidecar metadata for labeled restore points and
-  fail-safe cleanup protection without modifying backup ZIPs.
+- **backup_pins.py** - Atomic sidecar metadata for labeled restore points,
+  editable details, guarded protection removal, and fail-safe cleanup protection
+  without modifying backup ZIPs.
 - **backup_restore_preview.py** - Read-only ZIP, manifest, save-hash,
   destination, and server-state assessment for the future guarded restore flow.
 - **monitors.py** - Convenience helpers for stopping log/crash monitors.

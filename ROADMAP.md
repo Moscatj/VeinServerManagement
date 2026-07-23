@@ -73,7 +73,9 @@ Released through `v2.11.0`:
   long server inactivity or a newly corrupted save.
 - Operators can make existing archives into restore points or create new
   labeled restore points with optional notes. Restore points are filterable and
-  excluded from automatic age/count cleanup; this does not yet expose save loading.
+  excluded from automatic age/count cleanup. Labels/notes can be edited, and
+  protection can be removed without deleting the ZIP; this does not yet expose
+  save loading.
 - Selected archives have a read-only restore preview covering ZIP safety,
   manifest/save integrity, destination, server state, and the planned
   pre-restore safety backup. Restore execution remains unavailable.
@@ -258,8 +260,7 @@ against storage use without hand-editing YAML.
   per-category policies.
 - Show estimated/current storage use, archive counts, oldest/newest dates, and a
   preview of what the selected retention policy would prune.
-- Expand the implemented restore points with rename/edit and guarded removal of
-  restore-point protection, then include them in cleanup previews and storage guidance.
+- Include implemented restore points in cleanup previews and storage guidance.
 - Keep profile backup roots and retention policies isolated when multi-server
   profiles are introduced.
 

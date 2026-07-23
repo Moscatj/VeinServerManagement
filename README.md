@@ -28,7 +28,8 @@ Python or other developer tools from the
 - Guarded GUI backup policy for global enablement, supported automatic triggers,
   independently enabled count/age cleanup, and a minimum rollback-point safety
   floor. Labeled restore points are separately protected from automatic
-  cleanup without modifying their backup ZIPs.
+  cleanup without modifying their backup ZIPs; their details can be edited or
+  their cleanup protection removed while retaining the archive.
 - Read-only restore previews validate a selected ZIP, manifest, save hash,
   destination, and server-stop readiness without extracting or changing files.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
