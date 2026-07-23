@@ -174,6 +174,7 @@ class BackupsBehaviorTests(unittest.TestCase):
 
         self.assertIn("Server.vns", names)
         self.assertIn("extra/extra.txt", names)
+        self.assertNotIn("extra/Server.vns", names)
         self.assertNotIn("extra/missing.txt", names)
 
     def test_make_backup_wraps_archive_write_failure_and_removes_temp_copy(self) -> None:

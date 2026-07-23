@@ -345,7 +345,9 @@ def recover_missing_save(
                 candidate, save_dir=save_dir, server_running=False
             )
             if (
-                preview.ready_for_guarded_restore
+                preview.archive_valid
+                and preview.manifest_valid
+                and bool(preview.save_member)
                 and Path(preview.destination).name.casefold() in expected
                 and preview.save_size > 0
             ):

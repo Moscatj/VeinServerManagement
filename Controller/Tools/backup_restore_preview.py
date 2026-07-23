@@ -39,6 +39,7 @@ class RestorePreview:
             self.archive_valid
             and self.manifest_valid
             and bool(self.save_member)
+            and self.destination_exists
             and not self.server_running
         )
 
@@ -161,6 +162,11 @@ def inspect_restore_archive(
     except OSError:
         destination_exists = False
         destination_size = 0
+    if not destination_exists and save_member:
+        warnings.append(
+            "The current live save is missing. Manual restore requires a current "
+            "save so a Before Restore safety point can be verified."
+        )
 
     return RestorePreview(
         archive=str(archive),

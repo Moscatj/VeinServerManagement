@@ -10,6 +10,8 @@ from PySide6 import QtCore, QtWidgets
 from Tools.backups import list_backup_archives, make_backup
 from Tools.backup_pins import pin_backup, remove_backup_pin, update_backup_pin
 from Tools.backup_restore_preview import inspect_restore_archive
+from Tools.backup_restore import guarded_restore
+from Tools.process import is_server_running
 from Tools.backup_policy import (
     BackupPolicy,
     apply_backup_policy,
@@ -196,6 +198,43 @@ class RestorePreviewWorker(QtCore.QRunnable):
         self.signals.ready.emit(payload)
 
 
+class GuardedRestoreWorker(QtCore.QRunnable):
+    """Run the guarded restore engine without blocking the GUI thread."""
+
+    def __init__(
+        self,
+        archive: str | Path,
+        *,
+        save_dir: str | Path,
+        operation_dir: str | Path,
+    ) -> None:
+        super().__init__()
+        self.archive = Path(archive)
+        self.save_dir = Path(save_dir)
+        self.operation_dir = Path(operation_dir)
+        self.signals = BackupHistorySignals()
+
+    def run(self) -> None:
+        try:
+            def create_safety_backup(source: Path) -> Path:
+                archive = make_backup("BeforeRestore", files=[source])
+                if archive is None:
+                    raise RuntimeError("Before Restore safety backup was not created.")
+                return Path(archive)
+
+            result = guarded_restore(
+                self.archive,
+                save_dir=self.save_dir,
+                operation_dir=self.operation_dir,
+                server_running_check=is_server_running,
+                create_safety_backup=create_safety_backup,
+            )
+            payload = {"ok": True, "result": result.as_dict(), "error": ""}
+        except Exception as exc:
+            payload = {"ok": False, "result": {}, "error": str(exc)}
+        self.signals.ready.emit(payload)
+
+
 def prompt_restore_point_details(
     parent: QtWidgets.QWidget,
     *,
@@ -242,9 +281,12 @@ def prompt_restore_point_details(
 
 
 def build_restore_preview_dialog(
-    parent: QtWidgets.QWidget | None, payload: Mapping[str, Any]
+    parent: QtWidgets.QWidget | None,
+    payload: Mapping[str, Any],
+    *,
+    allow_restore: bool = False,
 ) -> QtWidgets.QDialog:
-    """Build a read-only restore assessment with no mutation action."""
+    """Build restore assessment and, when allowed, final confirmation."""
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle("Restore Preview")
     dialog.setMinimumSize(680, 520)
@@ -256,8 +298,7 @@ def build_restore_preview_dialog(
     status = InlineNotice()
     if ready:
         status.setText(
-            "Archive validation passed and the server is stopped. This is still a preview; "
-            "restore execution has not been enabled."
+            "Archive validation passed, the current save is present, and the server is stopped."
         )
         status.set_kind("success")
     else:
@@ -311,19 +352,39 @@ def build_restore_preview_dialog(
     layout.addWidget(findings)
 
     plan = InlineNotice(
-        "Future guarded restore plan: stop the server; create and protect a fresh "
+        "Guarded restore will create and protect a fresh "
         "Before Restore backup of the current save; stage and validate the selected "
         "save; then replace the live save atomically with a rollback path."
     )
     plan.set_kind("info")
     layout.addWidget(plan)
-    preview_only = QtWidgets.QLabel(
-        "Preview only - there is intentionally no Restore button in this phase."
-    )
-    preview_only.setProperty("fieldHelp", True)
-    layout.addWidget(preview_only)
-    buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
-    buttons.rejected.connect(dialog.reject)
+    can_restore = bool(ready and allow_restore)
+    if can_restore:
+        consequence = InlineNotice(
+            "The selected backup will become the active server save. The current save "
+            "will remain available as a protected Before Restore point. The server will "
+            "remain stopped after completion."
+        )
+        consequence.set_kind("warning")
+        layout.addWidget(consequence)
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Cancel
+        )
+        restore = buttons.addButton(
+            "Restore Selected Backup", QtWidgets.QDialogButtonBox.AcceptRole
+        )
+        set_button_role(restore, BUTTON_PRIMARY)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+    else:
+        preview_only = QtWidgets.QLabel(
+            "Preview only. Restore requires a valid archive, an existing live save, "
+            "a stopped server, and enabled save backups for the mandatory safety point."
+        )
+        preview_only.setProperty("fieldHelp", True)
+        layout.addWidget(preview_only)
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.reject)
     layout.addWidget(buttons)
     return dialog
 
@@ -620,7 +681,9 @@ def update_backup_history_selection(owner, current) -> None:
     )
     owner.btnBackupHistoryRemoveProtection.setVisible(pinned)
     owner.btnBackupHistoryRemoveProtection.setEnabled(pinned)
-    owner.btnBackupHistoryPreview.setEnabled(True)
+    owner.btnBackupHistoryPreview.setEnabled(
+        not bool(getattr(owner, "_guarded_restore_running", False))
+    )
 
 
 def build_backup_history_view(owner) -> QtWidgets.QWidget:
@@ -637,16 +700,16 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     layout.addWidget(
         PageHeader(
             "Backups",
-            "Review save, log, and configuration archives without modifying them.",
+            "Manage backup history, retention, restore points, and guarded save recovery.",
         )
     )
     layout.addWidget(
         InlineNotice(
             "Browsing never changes backup ZIPs. Protect Selected marks an existing "
             "backup as a restore point without copying it. Create from Current Save "
-            "captures a new protected backup from the active save. Loading a save is not offered "
-            "until it can preview the destination, protect the current save, and "
-            "validate the result."
+            "captures a new protected backup from the active save. Review & Restore "
+            "validates the selected archive and requires a stopped server plus a "
+            "verified, protected Before Restore safety point."
         )
     )
 
@@ -851,7 +914,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     archive_layout = QtWidgets.QVBoxLayout(owner.grpBackupArchives)
     archive_layout.setSpacing(CONTROL_SPACING)
     archive_intro = QtWidgets.QLabel(
-        "Browse existing archives, create a regular backup, or protect a rollback point."
+        "Browse existing archives, create or protect rollback points, and safely restore a selected save backup."
     )
     archive_intro.setProperty("fieldHelp", True)
     archive_layout.addWidget(archive_intro)
@@ -871,9 +934,9 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         "Make the selected existing backup a restore point without creating another ZIP."
     )
     owner.btnBackupHistoryPin.setEnabled(False)
-    owner.btnBackupHistoryPreview = QtWidgets.QPushButton("Preview Restore")
+    owner.btnBackupHistoryPreview = QtWidgets.QPushButton("Review & Restore")
     owner.btnBackupHistoryPreview.setToolTip(
-        "Validate the selected archive and preview its destination without changing files."
+        "Validate the selected archive, review its destination and safeguards, then optionally restore it."
     )
     owner.btnBackupHistoryPreview.setEnabled(False)
     owner.btnBackupHistoryRemoveProtection = QtWidgets.QPushButton(

@@ -54,6 +54,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
   canonical `backups.retention.default` fields, while read-time compatibility
   preserves non-default legacy values and `config.yaml` remains the sole policy
   store.
+  Added Review & Restore to backup history. A selected archive must pass preview,
+  the server must be stopped, backup creation must be enabled, and the operator
+  must accept a final consequence summary. Restore runs off the GUI thread through
+  the guarded backend, disables conflicting lifecycle/policy actions, creates and
+  pins a verified Before Restore safety point, and leaves the server stopped.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook

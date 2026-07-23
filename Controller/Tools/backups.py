@@ -527,7 +527,11 @@ def make_backup(
             if files:
                 for extra in files:
                     try:
-                        if isinstance(extra, Path) and extra.exists():
+                        if (
+                            isinstance(extra, Path)
+                            and extra.exists()
+                            and extra.resolve() != src.resolve()
+                        ):
                             zf.write(extra, arcname=f"extra/{extra.name}")
                     except Exception:
                         pass

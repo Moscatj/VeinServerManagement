@@ -70,6 +70,20 @@ class BackupRestorePreviewTests(unittest.TestCase):
             self.assertFalse(preview.ready_for_guarded_restore)
             self.assertIn("Stop the server", preview.warnings[0])
 
+    def test_missing_live_save_is_valid_for_recovery_but_not_manual_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            preview = inspect_restore_archive(
+                self._archive(root), save_dir=root / "live", server_running=False
+            )
+
+            self.assertTrue(preview.archive_valid)
+            self.assertTrue(preview.manifest_valid)
+            self.assertFalse(preview.ready_for_guarded_restore)
+            self.assertTrue(
+                any("current live save is missing" in item.lower() for item in preview.warnings)
+            )
+
     def test_hash_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

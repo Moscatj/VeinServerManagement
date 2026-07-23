@@ -74,6 +74,7 @@ try:
         NavigationPanel,
         BackupHistoryWorker,
         BackupPolicyWorker,
+        GuardedRestoreWorker,
         RestorePointWorker,
         RestorePreviewWorker,
         ExistingServerLoadWorker,
@@ -116,6 +117,7 @@ try:
         populate_backup_history,
         populate_backup_policy,
         prompt_restore_point_details,
+        update_backup_history_selection,
         summarize_server_config_validation,
         NavigationController,
         ConfigController,
@@ -1887,7 +1889,94 @@ class Main(QtWidgets.QMainWindow):
         self.lblBackupHistoryStatus.setText(message)
         self.lblBackupHistoryStatus.set_kind("success" if ready else "warning")
         self._status(message)
-        build_restore_preview_dialog(self, preview).exec()
+        allow_restore = bool(
+            ready
+            and self.chkBackupPolicyEnabled.isChecked()
+            and not getattr(self, "_guarded_restore_running", False)
+        )
+        dialog = build_restore_preview_dialog(
+            self, preview, allow_restore=allow_restore
+        )
+        if dialog.exec() == QtWidgets.QDialog.Accepted and allow_restore:
+            self._start_guarded_restore(preview)
+
+    def _start_guarded_restore(self, preview: dict) -> None:
+        if getattr(self, "_guarded_restore_running", False):
+            return
+        if bool(getattr(self, "_server_running", False)):
+            self._status("Stop the server before restoring a save.")
+            return
+        archive = str(preview.get("archive") or "")
+        if not archive:
+            self._status("The selected restore archive is unavailable.")
+            return
+        try:
+            paths = _runtime_paths(self.config_path)
+            save_dir = Path(paths["save_dir"])
+            operation_dir = Path(paths["runtime_dir"])
+        except Exception as exc:
+            self._status(f"Restore paths could not be resolved: {exc}")
+            return
+
+        self._guarded_restore_running = True
+        self._server_action_busy = True
+        self._server_action_busy_label = "Restoring Save..."
+        self.boxBackupPolicy.setEnabled(False)
+        self.b_server_action.setText(self._server_action_busy_label)
+        self.b_server_action.setEnabled(False)
+        self.b_restart.setEnabled(False)
+        for button in (
+            self.btnBackupHistoryPreview,
+            self.btnBackupHistoryPin,
+            self.btnBackupHistoryRemoveProtection,
+            self.btnBackupHistoryRestorePoint,
+            self.btnBackupHistoryCreate,
+        ):
+            button.setEnabled(False)
+        self.lblBackupHistoryStatus.setText(
+            "Creating a protected Before Restore point, then validating and activating the selected save."
+        )
+        self.lblBackupHistoryStatus.set_kind("info")
+        self._status("Guarded save restore is running. The server will remain stopped.")
+        worker = GuardedRestoreWorker(
+            archive,
+            save_dir=save_dir,
+            operation_dir=operation_dir,
+        )
+        worker.signals.ready.connect(self._apply_guarded_restore_result)
+        self._pool.start(worker)
+
+    def _apply_guarded_restore_result(self, payload: dict) -> None:
+        self._guarded_restore_running = False
+        self._server_action_busy = False
+        self._server_action_busy_label = ""
+        self.boxBackupPolicy.setEnabled(True)
+        self.btnBackupHistoryCreate.setEnabled(
+            self.chkBackupPolicyEnabled.isChecked()
+        )
+        self.btnBackupHistoryRestorePoint.setEnabled(
+            self.chkBackupPolicyEnabled.isChecked()
+        )
+        if not payload.get("ok"):
+            message = f"Restore failed safely: {payload.get('error') or 'unknown error'}"
+            self.lblBackupHistoryStatus.setText(message)
+            self.lblBackupHistoryStatus.set_kind("error")
+            self._status(message)
+            update_backup_history_selection(
+                self, self.treeBackupHistory.currentItem()
+            )
+            return
+
+        result = payload.get("result") or {}
+        safety = Path(str(result.get("safety_backup") or "")).name
+        message = (
+            "Save restored and verified. The server remains stopped. "
+            f"Protected safety point: {safety or 'Before Restore backup'}."
+        )
+        self.lblBackupHistoryStatus.setText(message)
+        self.lblBackupHistoryStatus.set_kind("success")
+        self._status(message)
+        self._refresh_backup_history()
 
     def _apply_restore_point_result(self, payload: dict):
         self._restore_point_running = False

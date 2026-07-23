@@ -131,9 +131,9 @@ not a claim that each phase is complete.
   from labeled restore points is implemented without changing backup ZIPs.
 - Design a guarded Save Library that can load a selected save only after stopping
   the server, validating the source, and protecting the current active save.
-  Read-only archive validation and destination preview are implemented. The
-  guarded staging/safety-backup/rollback backend is tested but remains unexposed
-  until final confirmation and interrupted-operation recovery UX are complete.
+  [x] Archive validation, destination preview, explicit final confirmation, and
+  guarded background activation through the shared safety-backup/staging/rollback
+  engine are implemented. Interrupted-operation recovery guidance remains.
 - Turn diagnostics into actionable repair cards instead of long text output.
 
 ### Phase 7 - GUI Architecture

@@ -1,8 +1,8 @@
 # Guarded Backup Restore
 
-The restore subsystem is being introduced in safety-first phases. The Backups
-page currently exposes read-only **Preview Restore** only. Restore execution is
-not connected to the GUI yet.
+The Backups page exposes **Review & Restore** for explicit operator-driven save
+rollback. Browsing and preview remain read-only; activation is available only
+after validation passes and the operator accepts a final confirmation.
 
 ## Implemented Backend
 
@@ -69,14 +69,23 @@ automatic replacement.
 - Tests use temporary directories and injected backup/server-state helpers; they
   never touch a real Vein installation.
 
-## Remaining Before GUI Restore
+## GUI Workflow
 
-- Wire the engine to the configured shared backup workflow without bypassing
-  backup gates or notifications.
-- Add a final confirmation screen that repeats source, destination, server state,
-  safety backup behavior, and consequences.
-- Present interrupted-operation journal/recovery guidance clearly.
-- Recheck authoritative process state at execution time and prevent other server
-  lifecycle actions while restore is active.
+- Select an archive and choose **Review & Restore**.
+- The dialog repeats source, destination, validation, server state, safety-backup
+  behavior, and the consequence that the selected save becomes active.
+- Restore is unavailable unless the server is stopped, the current live save is
+  present, the archive validates, and backup creation is enabled.
+- On confirmation, lifecycle actions and Backup Policy edits are disabled while
+  a background worker invokes the shared guarded engine.
+- The engine rechecks authoritative process state, creates and pins the mandatory
+  Before Restore archive through the normal backup workflow, and revalidates
+  everything before atomic activation.
+- Completion leaves the server stopped and refreshes archive history so the new
+  safety point is visible.
+
+Interrupted-operation journal guidance remains a future UX improvement. The
+backend already preserves the journal and recovery artifacts needed for diagnosis.
+
 - The legacy `restore_from_latest()` compatibility entrypoint remains callable,
   but direct extraction is disabled so it cannot bypass guarded restoration.

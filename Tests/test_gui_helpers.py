@@ -4,6 +4,8 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -53,6 +55,7 @@ from GUI.server_config_view import (  # noqa: E402
 from GUI.status_view import StatusRenderer  # noqa: E402
 from GUI.widgets import CollapsibleBox  # noqa: E402
 from GUI.backup_view import (  # noqa: E402
+    GuardedRestoreWorker,
     backup_history_summary,
     backup_retention_explanation,
     build_backup_history_view,
@@ -83,6 +86,30 @@ def app() -> QtWidgets.QApplication:
 
 
 class GuiHelperTests(unittest.TestCase):
+    def test_guarded_restore_worker_delegates_to_shared_restore_and_backup_paths(self) -> None:
+        result = SimpleNamespace(as_dict=lambda: {"destination": "live"})
+        worker = GuardedRestoreWorker(
+            "C:/Backups/selected.zip",
+            save_dir="C:/Server/SaveGames",
+            operation_dir="C:/Runtime",
+        )
+        with mock.patch(
+            "GUI.backup_view.guarded_restore", return_value=result
+        ) as restore, mock.patch(
+            "GUI.backup_view.make_backup",
+            return_value=Path("C:/Backups/BeforeRestore/safety.zip"),
+        ) as backup:
+            worker.run()
+            kwargs = restore.call_args.kwargs
+            safety = kwargs["create_safety_backup"](
+                Path("C:/Server/SaveGames/Server.vns")
+            )
+            self.assertEqual(safety.name, "safety.zip")
+            backup.assert_called_once_with(
+                "BeforeRestore", files=[Path("C:/Server/SaveGames/Server.vns")]
+            )
+        self.assertTrue(callable(kwargs["server_running_check"]))
+
     def test_backup_policy_form_tracks_reviews_and_discards_changes(self) -> None:
         class Owner:
             pass
@@ -357,10 +384,45 @@ class GuiHelperTests(unittest.TestCase):
 
         self.assertIn("Archive validation passed", text)
         self.assertIn("Before Restore backup", text)
-        self.assertIn("intentionally no Restore button", text)
+        self.assertIn("Preview only", text)
         self.assertEqual(
             buttons.standardButtons(), QtWidgets.QDialogButtonBox.Close
         )
+        dialog.close()
+
+    def test_ready_restore_dialog_requires_explicit_restore_confirmation(self) -> None:
+        dialog = build_restore_preview_dialog(
+            None,
+            {
+                "archive": "C:/Backups/Manual/backup.zip",
+                "archive_valid": True,
+                "manifest_valid": True,
+                "ready_for_guarded_restore": True,
+                "save_member": "Server.vns",
+                "save_size": 4096,
+                "destination": "C:/Server/SaveGames/Server.vns",
+                "destination_exists": True,
+                "server_running": False,
+                "errors": [],
+                "warnings": [],
+            },
+            allow_restore=True,
+        )
+        text = " ".join(label.text() for label in dialog.findChildren(QtWidgets.QLabel))
+        buttons = dialog.findChild(QtWidgets.QDialogButtonBox)
+
+        self.assertIn("selected backup will become the active server save", text)
+        self.assertIsNotNone(
+            next(
+                (
+                    button
+                    for button in buttons.buttons()
+                    if button.text() == "Restore Selected Backup"
+                ),
+                None,
+            )
+        )
+        self.assertTrue(buttons.standardButtons() & QtWidgets.QDialogButtonBox.Cancel)
         dialog.close()
 
     def test_backup_page_preserves_cleanup_cards_and_archive_height(self) -> None:

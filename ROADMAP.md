@@ -77,11 +77,13 @@ Released through `v2.11.0`:
   protection can be removed without deleting the ZIP; this does not yet expose
   save loading.
 - Selected archives have a read-only restore preview covering ZIP safety,
-  manifest/save integrity, destination, server state, and the planned
-  pre-restore safety backup. Restore execution remains unavailable.
+  manifest/save integrity, destination, and server state. Operators can continue
+  through explicit final confirmation into guarded restore only when the server
+  is stopped and the current save can first be protected.
 - A tested guarded-restore backend now provides locking, journaling, a mandatory
   pinned safety backup, staged/hash-verified replacement, atomic activation, and
-  automatic rollback. It is not connected to a GUI Restore action yet.
+  automatic rollback. The Backups GUI delegates execution to this shared engine
+  on a background worker and leaves the server stopped afterward.
 - Missing-save startup recovery is restored for normal and crash-monitor starts.
   It is independently configurable in Backup Policy, uses validated staged
   activation, never replaces an existing save, and blocks an established-server
