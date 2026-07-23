@@ -116,8 +116,8 @@ not a claim that each phase is complete.
 ### Phase 6 - Logs, Backups, And Diagnostics
 
 - Consolidate log tools into one Logs page with consistent filtering.
-- [x] Give backups a history-oriented read-only page with safe restore guidance;
-  keep restore unavailable until preview and current-save protection exist.
+- [x] Give backups a history-oriented workspace with validated restore preview,
+  current-save protection, guarded activation, and rollback.
 - [x] Run one shared Backup Now action off the GUI thread from Home and Backups.
 - [x] Keep Home backup controls compact and route history, folder access, and
   detailed management to the dedicated Backups page.
@@ -132,11 +132,10 @@ not a claim that each phase is complete.
 - Expand backup policy with schedules, per-category retention, prune previews,
   and storage guidance. Creating, filtering, editing, and removing protection
   from labeled restore points is implemented without changing backup ZIPs.
-- Design a guarded Save Library that can load a selected save only after stopping
-  the server, validating the source, and protecting the current active save.
-  [x] Archive validation, destination preview, explicit final confirmation, and
-  guarded background activation through the shared safety-backup/staging/rollback
-  engine are implemented.
+- Expand the guarded restore foundation into a Save Library for named saves,
+  branches, and easier switching. Archive validation, destination preview,
+  explicit final confirmation, current-save protection, and guarded background
+  activation through the shared staging/rollback engine are implemented.
 - [x] Surface restore-journal attention only when useful, distinguishing active,
   safely aborted, verified rollback, interrupted, and rollback-failed states with
   paths to preserved safety/recovery artifacts.

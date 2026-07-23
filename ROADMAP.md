@@ -6,7 +6,7 @@ portfolio project, not a commercial product roadmap.
 
 ## Current Baseline
 
-Released through `v2.11.0`:
+Released through `v2.12.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -37,11 +37,12 @@ Released through `v2.11.0`:
   layout and key Vein `Game.ini` / `Engine.ini` settings.
 - The GUI dashboard surfaces a read-only server preflight summary so operators
   can spot missing files or mismatched ports before starting the server.
-- The GUI includes a server-config preview and guarded editor for allowlisted
-  `Game.ini` and `Engine.ini` values. Secrets are masked, changes require a
-  preview and confirmation, and every write is backed up and validated.
+- The GUI includes guarded editors for allowlisted `Game.ini` and `Engine.ini`
+  values. Routine forms generate their old-to-new review from Apply; technical
+  edits retain explicit diffs. Secrets are masked and every write is backed up
+  and validated.
 - Everyday Server Settings are organized into focused General, Access,
-  Gameplay, Network, and Discord tabs with one shared review/apply workflow;
+  Gameplay, Network, and Discord tabs with one shared Apply-driven review;
   the allowlisted technical table remains available under Advanced Settings.
 - Server Setup routes new and installer-provisioned servers through guided First
   Setup, connects unregistered existing servers compactly, and sends configured
@@ -62,8 +63,8 @@ Released through `v2.11.0`:
 - Quick Start now distinguishes app notifications from VEIN game-chat and
   admin-report webhooks, while lifecycle state remains accurate through
   joinable readiness and controlled monitor shutdown.
-- The GUI provides read-only backup history across save, log, and configuration
-  archives without exposing an insufficiently guarded restore action.
+- The GUI provides backup history across save, log, and configuration archives
+  with guarded restore available for validated save backups.
 - The Backups page provides guarded global, Autosave, Crash, Shutdown, and
   default count/age cleanup controls. Cleanup can be disabled or use either
   rule independently; Apply backs up and validates config and does not
@@ -74,8 +75,7 @@ Released through `v2.11.0`:
 - Operators can make existing archives into restore points or create new
   labeled restore points with optional notes. Restore points are filterable and
   excluded from automatic age/count cleanup. Labels/notes can be edited, and
-  protection can be removed without deleting the ZIP; this does not yet expose
-  save loading.
+  protection can be removed without deleting the ZIP.
 - Selected archives have a read-only restore preview covering ZIP safety,
   manifest/save integrity, destination, and server state. Operators can continue
   through explicit final confirmation into guarded restore only when the server
@@ -111,10 +111,10 @@ Released through `v2.11.0`:
 - Add an in-app first-run checklist that connects installer results, Quick
   Start, preflight, firewall/router guidance, and the first successful launch.
 - Complete the remaining phased GUI modernization described in
-  `Docs/gui_modernization.md`, especially responsive layouts, logs/backups
-  usability, diagnostics, and lifecycle integration hardening.
-- Improve server-config editing with richer field descriptions, backup restore
-  guidance, and broader validation summaries.
+  `Docs/gui_modernization.md`, especially responsive layouts, log filtering,
+  diagnostics, and lifecycle integration hardening.
+- Improve server-config editing with richer field descriptions and broader
+  validation summaries.
 - Add a guided network-readiness workflow for Windows Firewall, router port
   forwarding, and external reachability checks without silently changing
   network configuration.
@@ -280,17 +280,16 @@ against storage use without hand-editing YAML.
 A future Save Library should make rollback and switching worlds simple while
 remaining non-destructive:
 
-- Connect the guarded backend to an explicit final-confirmation workflow, add
-  recovery guidance for interrupted operations, and only then expose Restore.
-- Treat “Load Save” as a separate guarded workflow, not ordinary archive
-  browsing or automatic retention.
-- Require the server to be stopped and validate the selected archive/save before
-  activation.
-- Always create and verify a pre-load safety backup of the current active save.
-- Stage the selected save, verify it, then replace the active file atomically;
-  preserve the prior active save in history rather than deleting it.
-- Show source, destination, timestamps, and consequences before confirmation,
-  then validate the active save after loading and provide a clear rollback path.
+- Present active saves, backup archives, and restore points as clearly named
+  library entries with timestamps, labels, notes, and validation state.
+- Add guarded import, export, duplication, and world-switching actions on top of
+  the implemented restore engine rather than introducing a second write path.
+- Preserve the current stopped-server, validated-source, pre-load safety backup,
+  staged activation, post-write verification, and rollback guarantees.
+- Make branches and intentional rollback points easy to distinguish from
+  automatic operational backups.
+- Keep Load Save separate from automatic retention so selecting or switching a
+  world never silently changes cleanup policy.
 
 ### Future Theme Customization
 

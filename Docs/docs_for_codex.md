@@ -8,7 +8,7 @@ contract; do not duplicate those rules here.
 
 Vein Server Management Suite is a Windows PySide6 application and packaged CLI
 for installing, configuring, running, monitoring, and backing up a Vein
-dedicated server. The current stable baseline is v2.11.0. Native Linux and WSL2
+dedicated server. The current stable baseline is v2.12.0. Native Linux and WSL2
 support are roadmap targets, not current release capabilities.
 
 Normal packaged users run `VeinManager.exe` and `VeinTools.exe` without Python.

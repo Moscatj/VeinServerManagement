@@ -46,5 +46,5 @@ Use this command as a stability gate alongside the unit test and coverage checks
 documented in [testing.md](testing.md).
 
 `server-config-check` runs the dedicated-server portion by itself. It is useful
-after installer setup, after changing local ports/admin settings, or before
-adding future GUI-based game-config editing.
+after installer setup, after changing local ports/admin settings, or when
+diagnosing guarded GUI server-config edits.

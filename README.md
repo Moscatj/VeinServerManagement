@@ -12,7 +12,7 @@ This repository does not contain the game server. It is a management layer that 
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
-The current stable release is **v2.11.0**. Windows users can install it without
+The current stable release is **v2.12.0**. Windows users can install it without
 Python or other developer tools from the
 [GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 
@@ -22,16 +22,17 @@ Python or other developer tools from the
 - Crash monitoring with restart throttling and intentional-shutdown guards.
 - Log monitoring for server health and player events.
 - Manual, event-driven, and scheduled backups.
-- Read-only backup history for save, log, and configuration archives, with safe
-  folder access, non-blocking manual creation, storage totals, category filters,
-  and save-loading guidance.
+- Backup history for save, log, and configuration archives, with safe folder
+  access, non-blocking manual creation, storage totals, category filters,
+  protected restore points, and guarded save restoration.
 - Guarded GUI backup policy for global enablement, supported automatic triggers,
   independently enabled count/age cleanup, and a minimum rollback-point safety
   floor. Labeled restore points are separately protected from automatic
   cleanup without modifying their backup ZIPs; their details can be edited or
   their cleanup protection removed while retaining the archive.
-- Read-only restore previews validate a selected ZIP, manifest, save hash,
-  destination, and server-stop readiness without extracting or changing files.
+- Guarded restore validates a selected ZIP, manifest, save hash, destination,
+  and server-stop readiness; protects the current save, stages and verifies the
+  replacement, activates it atomically, and rolls back automatically on failure.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
   chat, and VEIN admin reports, with protected environment references supported
   for app notifications.
@@ -40,8 +41,9 @@ Python or other developer tools from the
 - Read-only health checks for local paths, SteamCMD, dedicated server files, and key Vein `Game.ini` / `Engine.ini` settings.
 - GUI server preflight summary for install/config readiness before starting the server.
 - Focused General, Access, Gameplay, Network, and Discord server settings plus
-  an advanced allowlisted INI editor; all use guarded previews, backups, atomic
-  writes, validation, and masked secrets.
+  an advanced allowlisted INI editor; routine forms use Apply-driven review,
+  while all writes retain backups, atomic activation, validation, and masked
+  secrets.
 - State-aware Server Setup: a guided new/first setup wizard, compact existing-server connection, and guarded everyday Server Settings.
 - Guided installer flows for fresh installs, side-by-side app instances,
   in-place update/repair, missing-server reinstall, and uninstall.

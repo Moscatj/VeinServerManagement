@@ -8,7 +8,7 @@ Version tags use this format:
 vMAJOR.MINOR.PATCH
 ```
 
-The current release baseline is `v2.11.0`.
+The current release baseline is `v2.12.0`.
 
 ## Version Meaning
 

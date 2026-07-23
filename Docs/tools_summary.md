@@ -24,7 +24,7 @@ must live in the appropriate Tools module.
   editable details, guarded protection removal, and fail-safe cleanup protection
   without modifying backup ZIPs.
 - **backup_restore_preview.py** - Read-only ZIP, manifest, save-hash,
-  destination, and server-state assessment for the future guarded restore flow.
+  destination, and server-state assessment used by guarded restore.
 - **backup_restore.py** - Guarded manual restore and missing-save startup recovery
   with locking, journaling, mandatory pinned safety backup where a live save
   exists, verified staging, atomic activation, and read-only recovery-state

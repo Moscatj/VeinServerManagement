@@ -6,90 +6,40 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
-- Extended validated owner publishing so a clean, fast-forward-only chain of
-  local commits can be validated and pushed together without squashing or
-  rewriting its commit messages; exact-HEAD GitHub CI remains mandatory.
+## 2.12.0 - 2026-07-23
 
-- Added a dedicated read-only Backups page with background archive discovery,
-  newest-first history, category, timestamp, size, selectable full paths, and
-  access to the backup folder. Backup Now is available on both Home and Backups
-  through one non-blocking source/packaged helper with shared progress and
-  results. Save loading remains unavailable until it has destination preview,
-  current-save protection, and post-load validation.
-  Manual creation now honors the primary `backups.enabled` feature gate while
-  retaining compatibility with legacy `backups.enable` configurations.
-  Home now keeps only backup health, the last successful time, Backup Now, and
-  View Backups; archive details and folder access live on the dedicated page.
-  Added a guarded Backup Policy form for global enablement, implemented
-  Autosave/Crash/Shutdown triggers, and independently enabled count/age cleanup.
-  The global gate and cleanup gate disable their subordinate controls so the
-  active policy is visually explicit. Changes are
-  reviewed, backed up, written atomically, and post-validated; applying a policy
-  does not immediately delete existing archives. Numbered sections and
-  plain-language retention guidance clarify when automatic backups run and when
-  old archives are cleaned up. Backup history now summarizes archive count,
-  disk usage, categories, and oldest/newest dates, with read-only category
-  filtering. Automatic cleanup now has a configurable minimum-backup safety
-  floor (three per type by default), so age/count rules cannot remove every
-  rollback point after a long period of server inactivity. Operators can also
-  make an existing archive a restore point or create a new labeled restore
-  point with an optional note. Restore-point ZIPs remain immutable, are shown and filterable in backup
-  history, and are excluded from automatic age/count cleanup; unreadable pin
-  metadata fails safe by retaining cleanup protection. Restore/loading is not
-  enabled by this change. Added a read-only Restore Preview for selected
-  archives that checks ZIP integrity, unsafe or duplicate paths, manifest and
-  save-file hashes, the intended live-save destination, and current server-stop
-  readiness. The preview explains the future safety-backup/staging plan but
-  intentionally provides no restore action. Restore-point labels and notes can
-  now be edited without changing their ZIPs, and guarded Remove Protection keeps
-  the ZIP while clearly warning that automatic cleanup can remove it later.
-  Added an unexposed guarded-restore backend with an operation lock/journal,
-  repeated server-stop checks, mandatory validated and pinned Before Restore
-  backup, hashed staging, atomic replacement, post-write verification, and
-  automatic rollback. GUI restore execution remains unavailable while recovery
-  presentation and final operator confirmation are designed.
-  Restored the historical missing-save startup safeguard through that validated
-  staging path. Normal and crash-monitor starts now recover the newest valid
-  save backup before launching, never overwrite an existing save, allow a true
-  first startup with no prior save archives, and block startup when prior save
-  archives exist but cannot be verified. The independent recovery switch is
-  available in Backup Policy and defaults on for existing configurations.
-  Backup-policy Apply now migrates older nested count/age aliases into the
-  canonical `backups.retention.default` fields, while read-time compatibility
-  preserves non-default legacy values and `config.yaml` remains the sole policy
-  store. Home backup health and its compact backup card now refresh from that
-  same live policy after GUI or event-driven direct YAML edits, without periodic
-  config-file parsing. Backup Policy no longer requires a separate Review
-  action: Apply now presents only the changed old-to-new values for final
-  confirmation, and its disabled state is visibly subdued until changes are
-  available. Policy Apply also removes
-  superseded enable and shutdown-trigger aliases while retaining read support.
-  Added Review and Restore to backup history. A selected archive must pass preview,
-  the server must be stopped, backup creation must be enabled, and the operator
-  must accept a final consequence summary. Restore runs off the GUI thread through
-  the guarded backend, disables conflicting lifecycle/policy actions, creates and
-  pins a verified Before Restore safety point, and leaves the server stopped.
-  Backup history now surfaces restore-journal attention without cluttering normal
-  operation: safely aborted, verified rollback, interrupted, unreadable, and
-  rollback-failed states receive distinct guidance and identify preserved safety
-  or recovery artifacts. Pre-replacement failures now record an explicit terminal
-  state instead of resembling interrupted staging.
-- Added focused General, Access, Gameplay, Network, and Discord tabs to Server
-  Settings. The forms cover identity, player access, common gameplay rules,
-  bind address and ports, and protected VEIN game-chat/admin webhook
-  replacement while clearly separating the app notifications webhook on
-  Setup. All tabs share unsaved-change tracking, inline validation, and one
-  guarded Apply action that presents a concise old-to-new review with optional
-  secret-masked technical details before confirmation. The
-  original allowlisted INI table remains available under Advanced Settings.
-  Edited tabs are marked until changes are discarded or applied, field guidance
-  explains less-obvious behavior, and network/Discord errors appear beside the
-  controls that need attention.
-  Helper text and shared action areas use readable neutral palette colors instead
-  of low-contrast or conflicting theme accent backgrounds.
-  Successful applies retain their validation summary through the automatic
-  refresh and explain that changes take effect on the next server start or
-  restart.
+- Added a dedicated Backups workspace with non-blocking manual creation,
+  newest-first archive history, category filtering, storage totals, restore
+  points, editable labels/notes, and direct access to the configured folder.
+  Home retains a compact synchronized backup-health card and links to the full
+  workspace.
+- Added guarded Backup Policy editing for the master creation gate,
+  missing-save startup recovery, Autosave/Crash/Shutdown triggers, independently
+  enabled count/age cleanup, and a configurable minimum rollback-point floor.
+  Apply presents only changed values, backs up and atomically updates
+  `config.yaml`, validates the result, and never deletes archives immediately.
+- Added protected restore points and guarded save restoration. Restore validates
+  ZIP paths, manifest and save hashes, destination, and stopped-server state;
+  creates and pins a verified Before Restore safety backup; stages and atomically
+  activates the selected save; verifies the result; and automatically rolls back
+  on post-write failure. Journal guidance identifies interrupted or failed
+  operations and preserved recovery artifacts while leaving the server stopped.
+- Restored missing-save startup recovery for normal and crash-monitor starts.
+  It never replaces an existing save, accepts a true first start with no prior
+  archives, restores only a validated backup, and blocks an established-server
+  start when no prior archive can be verified.
+- Added focused General, Access, Gameplay, Network, and Discord Server Settings
+  tabs with inline validation, unsaved tab markers, protected secret replacement,
+  and a guarded Apply action that shows concise old-to-new changes with an
+  optional masked INI diff. The allowlisted technical editor remains under
+  Advanced Settings.
+- Kept `config.yaml` as the sole persistent management-policy store. Home,
+  Backup Policy, and archive actions now synchronize through immediate GUI saves
+  and event-driven external edit detection; explicit Apply migrates superseded
+  backup enable, shutdown-trigger, and retention aliases to canonical fields.
+- Extended validated owner publishing so a clean, fast-forward-only chain of
+  local commits can be validated and pushed without squashing or rewriting
+  commit messages; exact-HEAD GitHub CI remains mandatory.
 
 ## 2.11.0 - 2026-07-21
 
