@@ -72,8 +72,11 @@ Released through `v2.11.0`:
   every backup category (three by default), preserving rollback points after
   long server inactivity or a newly corrupted save.
 - Operators can make existing archives into restore points or create new
-  labeled restore points with optional notes. Restore points are filterable and excluded from automatic
-  age/count cleanup; this does not yet expose save loading.
+  labeled restore points with optional notes. Restore points are filterable and
+  excluded from automatic age/count cleanup; this does not yet expose save loading.
+- Selected archives have a read-only restore preview covering ZIP safety,
+  manifest/save integrity, destination, server state, and the planned
+  pre-restore safety backup. Restore execution remains unavailable.
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
@@ -263,6 +266,7 @@ against storage use without hand-editing YAML.
 A future Save Library should make rollback and switching worlds simple while
 remaining non-destructive:
 
+- Build the guarded execution path on the implemented read-only Restore Preview.
 - Treat “Load Save” as a separate guarded workflow, not ordinary archive
   browsing or automatic retention.
 - Require the server to be stopped and validate the selected archive/save before

@@ -119,12 +119,14 @@ subsystems:
       - Controller/Tools/backups_api.py
       - Controller/Tools/backup_policy.py
       - Controller/Tools/backup_pins.py
+      - Controller/Tools/backup_restore_preview.py
     tests:
       - Tests/test_backups_api.py
       - Tests/test_backups_behavior.py
       - Tests/test_backups_helpers.py
       - Tests/test_backup_policy.py
       - Tests/test_backup_pins.py
+      - Tests/test_backup_restore_preview.py
     docs:
       - Docs/nightly_backup_summary.md
       - Docs/tools_summary.md

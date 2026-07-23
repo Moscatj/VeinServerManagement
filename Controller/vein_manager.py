@@ -75,6 +75,7 @@ try:
         BackupHistoryWorker,
         BackupPolicyWorker,
         RestorePointWorker,
+        RestorePreviewWorker,
         ExistingServerLoadWorker,
         apply_design_system,
         apply_quick_start,
@@ -89,6 +90,7 @@ try:
         startup_runtime_feedback,
         build_command_bar,
         build_backup_history_view,
+        build_restore_preview_dialog,
         build_left_panel,
         build_log_panel,
         CollapsibleBox,
@@ -1788,6 +1790,56 @@ class Main(QtWidgets.QMainWindow):
             return
         self._start_restore_point_action(action="pin", archive=archive)
 
+    def _on_preview_restore_clicked(self):
+        if getattr(self, "_restore_preview_running", False):
+            return
+        item = self.treeBackupHistory.currentItem()
+        archive = str(item.data(0, QtCore.Qt.UserRole) or "") if item else ""
+        if not archive:
+            self._status("Select a backup archive to preview.")
+            return
+        try:
+            save_dir = Path(_runtime_paths(self.config_path)["save_dir"])
+        except Exception as exc:
+            self._status(f"Restore preview could not resolve the live save folder: {exc}")
+            return
+        self._restore_preview_running = True
+        self.btnBackupHistoryPreview.setEnabled(False)
+        self.lblBackupHistoryStatus.setText(
+            "Validating the selected archive without extracting or changing files."
+        )
+        self.lblBackupHistoryStatus.set_kind("info")
+        worker = RestorePreviewWorker(
+            archive,
+            save_dir=save_dir,
+            server_running=bool(getattr(self, "_server_running", False)),
+        )
+        worker.signals.ready.connect(self._apply_restore_preview_result)
+        self._pool.start(worker)
+
+    def _apply_restore_preview_result(self, payload: dict):
+        self._restore_preview_running = False
+        self.btnBackupHistoryPreview.setEnabled(
+            self.treeBackupHistory.currentItem() is not None
+        )
+        if not payload.get("ok"):
+            message = f"Restore preview failed: {payload.get('error') or 'unknown error'}"
+            self.lblBackupHistoryStatus.setText(message)
+            self.lblBackupHistoryStatus.set_kind("error")
+            self._status(message)
+            return
+        preview = payload.get("preview") or {}
+        ready = bool(preview.get("ready_for_guarded_restore"))
+        message = (
+            "Restore preview passed its read-only checks; no files were changed."
+            if ready
+            else "Restore preview found items requiring attention; no files were changed."
+        )
+        self.lblBackupHistoryStatus.setText(message)
+        self.lblBackupHistoryStatus.set_kind("success" if ready else "warning")
+        self._status(message)
+        build_restore_preview_dialog(self, preview).exec()
+
     def _apply_restore_point_result(self, payload: dict):
         self._restore_point_running = False
         self.btnBackupHistoryRestorePoint.setEnabled(
@@ -2246,6 +2298,7 @@ class Main(QtWidgets.QMainWindow):
 
         # Server
         server_on = bool(snap.get("server", False))
+        self._server_running = server_on
         server_available = bool(snap.get("server_available", False))
         action_state = server_action_state(server_available, server_on)
         lm_on = bool(snap.get("logmon", False))

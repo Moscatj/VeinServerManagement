@@ -128,6 +128,8 @@ not a claim that each phase is complete.
   filtering labeled restore points is implemented.
 - Design a guarded Save Library that can load a selected save only after stopping
   the server, validating the source, and protecting the current active save.
+  Read-only archive validation and destination preview are implemented; no
+  restore mutation is exposed yet.
 - Turn diagnostics into actionable repair cards instead of long text output.
 
 ### Phase 7 - GUI Architecture

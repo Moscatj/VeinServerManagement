@@ -29,6 +29,8 @@ Python or other developer tools from the
   independently enabled count/age cleanup, and a minimum rollback-point safety
   floor. Labeled restore points are separately protected from automatic
   cleanup without modifying their backup ZIPs.
+- Read-only restore previews validate a selected ZIP, manifest, save hash,
+  destination, and server-stop readiness without extracting or changing files.
 - Clearly separated Discord webhook setup for app notifications, VEIN game
   chat, and VEIN admin reports, with protected environment references supported
   for app notifications.

@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtWidgets
 
 from Tools.backups import list_backup_archives, make_backup
 from Tools.backup_pins import pin_backup
+from Tools.backup_restore_preview import inspect_restore_archive
 from Tools.backup_policy import (
     BackupPolicy,
     apply_backup_policy,
@@ -156,6 +157,35 @@ class RestorePointWorker(QtCore.QRunnable):
         self.signals.ready.emit(payload)
 
 
+class RestorePreviewWorker(QtCore.QRunnable):
+    """Validate a possible restore source without extracting or writing it."""
+
+    def __init__(
+        self,
+        archive: str | Path,
+        *,
+        save_dir: str | Path,
+        server_running: bool,
+    ) -> None:
+        super().__init__()
+        self.archive = Path(archive)
+        self.save_dir = Path(save_dir)
+        self.server_running = bool(server_running)
+        self.signals = BackupHistorySignals()
+
+    def run(self) -> None:
+        try:
+            preview = inspect_restore_archive(
+                self.archive,
+                save_dir=self.save_dir,
+                server_running=self.server_running,
+            )
+            payload = {"ok": True, "preview": preview.as_dict(), "error": ""}
+        except Exception as exc:
+            payload = {"ok": False, "preview": {}, "error": str(exc)}
+        self.signals.ready.emit(payload)
+
+
 def prompt_restore_point_details(
     parent: QtWidgets.QWidget, *, title: str
 ) -> tuple[str, str] | None:
@@ -193,6 +223,85 @@ def prompt_restore_point_details(
     if dialog.exec() != QtWidgets.QDialog.Accepted:
         return None
     return label.text().strip(), note.toPlainText().strip()
+
+
+def build_restore_preview_dialog(
+    parent: QtWidgets.QWidget | None, payload: Mapping[str, Any]
+) -> QtWidgets.QDialog:
+    """Build a read-only restore assessment with no mutation action."""
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle("Restore Preview")
+    dialog.setMinimumSize(680, 520)
+    layout = QtWidgets.QVBoxLayout(dialog)
+
+    ready = bool(payload.get("ready_for_guarded_restore"))
+    errors = [str(item) for item in payload.get("errors") or []]
+    warnings = [str(item) for item in payload.get("warnings") or []]
+    status = InlineNotice()
+    if ready:
+        status.setText(
+            "Archive validation passed and the server is stopped. This is still a preview; "
+            "restore execution has not been enabled."
+        )
+        status.set_kind("success")
+    else:
+        status.setText(
+            "This archive is not ready for a guarded restore. Review the findings below. "
+            "No files were changed."
+        )
+        status.set_kind("warning" if not errors else "error")
+    layout.addWidget(status)
+
+    form = QtWidgets.QFormLayout()
+    fields = (
+        ("Archive", payload.get("archive") or "Unknown"),
+        ("Archive size", format_archive_size(int(payload.get("archive_size") or 0))),
+        ("Restore point", payload.get("restore_point_label") or "No"),
+        ("Restore-point note", payload.get("restore_point_note") or "None"),
+        ("Backup type", payload.get("reason") or "Unknown"),
+        ("Backup created", payload.get("created_utc") or payload.get("archive_modified") or "Unknown"),
+        ("Contained save", payload.get("save_member") or "Not validated"),
+        ("Save size", format_archive_size(int(payload.get("save_size") or 0))),
+        ("Manifest and save hash", "Verified" if payload.get("manifest_valid") else "Not verified"),
+        ("Live-save destination", payload.get("destination") or "Unknown"),
+        ("Current live save", "Present" if payload.get("destination_exists") else "Not found"),
+        ("Server state", "Running - stop required" if payload.get("server_running") else "Stopped"),
+    )
+    for label, value in fields:
+        text = QtWidgets.QLabel(str(value))
+        text.setWordWrap(True)
+        text.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        form.addRow(label, text)
+    layout.addLayout(form)
+
+    findings = QtWidgets.QGroupBox("Validation findings")
+    findings_layout = QtWidgets.QVBoxLayout(findings)
+    messages = errors + warnings
+    if messages:
+        for message in messages:
+            finding = QtWidgets.QLabel(f"- {message}")
+            finding.setWordWrap(True)
+            findings_layout.addWidget(finding)
+    else:
+        findings_layout.addWidget(QtWidgets.QLabel("No validation problems found."))
+    layout.addWidget(findings)
+
+    plan = InlineNotice(
+        "Future guarded restore plan: stop the server; create and protect a fresh "
+        "Before Restore backup of the current save; stage and validate the selected "
+        "save; then replace the live save atomically with a rollback path."
+    )
+    plan.set_kind("info")
+    layout.addWidget(plan)
+    preview_only = QtWidgets.QLabel(
+        "Preview only - there is intentionally no Restore button in this phase."
+    )
+    preview_only.setProperty("fieldHelp", True)
+    layout.addWidget(preview_only)
+    buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    return dialog
 
 
 class BackupPolicyWorker(QtCore.QRunnable):
@@ -461,6 +570,7 @@ def update_backup_history_selection(owner, current) -> None:
     if current is None:
         owner.lblBackupHistoryPath.setText("Select an archive to inspect its details.")
         owner.btnBackupHistoryPin.setEnabled(False)
+        owner.btnBackupHistoryPreview.setEnabled(False)
         return
     archive = current.data(0, QtCore.Qt.UserRole + 1) or {}
     path = str(current.data(0, QtCore.Qt.UserRole) or "")
@@ -476,6 +586,7 @@ def update_backup_history_selection(owner, current) -> None:
         )
     owner.lblBackupHistoryPath.setText(details)
     owner.btnBackupHistoryPin.setEnabled(not bool(archive.get("pinned")))
+    owner.btnBackupHistoryPreview.setEnabled(True)
 
 
 def build_backup_history_view(owner) -> QtWidgets.QWidget:
@@ -707,6 +818,11 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
         "Make the selected existing backup a restore point without creating another ZIP."
     )
     owner.btnBackupHistoryPin.setEnabled(False)
+    owner.btnBackupHistoryPreview = QtWidgets.QPushButton("Preview Restore")
+    owner.btnBackupHistoryPreview.setToolTip(
+        "Validate the selected archive and preview its destination without changing files."
+    )
+    owner.btnBackupHistoryPreview.setEnabled(False)
     owner.cmbBackupHistoryCategory = QtWidgets.QComboBox()
     owner.cmbBackupHistoryCategory.addItem("All categories", "")
     owner.cmbBackupHistoryCategory.setMinimumWidth(180)
@@ -715,6 +831,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     set_button_role(owner.btnBackupHistoryCreate, BUTTON_PRIMARY)
     set_button_role(owner.btnBackupHistoryRestorePoint, BUTTON_PRIMARY)
     set_button_role(owner.btnBackupHistoryPin, BUTTON_SECONDARY)
+    set_button_role(owner.btnBackupHistoryPreview, BUTTON_SECONDARY)
     controls.addWidget(owner.btnBackupHistoryRefresh)
     controls.addWidget(owner.btnBackupHistoryOpen)
     controls.addSpacing(SECTION_SPACING)
@@ -731,6 +848,7 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     restore_actions_label = QtWidgets.QLabel("Restore points:")
     restore_actions_label.setProperty("fieldHelp", True)
     restore_controls.addWidget(restore_actions_label)
+    restore_controls.addWidget(owner.btnBackupHistoryPreview)
     restore_controls.addWidget(owner.btnBackupHistoryPin)
     restore_controls.addWidget(owner.btnBackupHistoryRestorePoint)
     archive_layout.addLayout(restore_controls)
@@ -782,6 +900,9 @@ def build_backup_history_view(owner) -> QtWidgets.QWidget:
     )
     owner.btnBackupHistoryPin.clicked.connect(
         getattr(owner, "_on_pin_backup_clicked", lambda: None)
+    )
+    owner.btnBackupHistoryPreview.clicked.connect(
+        getattr(owner, "_on_preview_restore_clicked", lambda: None)
     )
     owner.btnBackupPolicyDiscard.clicked.connect(
         lambda: populate_backup_policy(owner, owner._backup_policy_baseline)

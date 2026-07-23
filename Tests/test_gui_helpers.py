@@ -56,6 +56,7 @@ from GUI.backup_view import (  # noqa: E402
     backup_history_summary,
     backup_retention_explanation,
     build_backup_history_view,
+    build_restore_preview_dialog,
     collect_backup_policy,
     filter_backup_archives,
     format_archive_size,
@@ -324,7 +325,39 @@ class GuiHelperTests(unittest.TestCase):
         owner.treeBackupHistory.setCurrentItem(item)
         self.assertIn("Known-good state", owner.lblBackupHistoryPath.text())
         self.assertFalse(owner.btnBackupHistoryPin.isEnabled())
+        self.assertTrue(owner.btnBackupHistoryPreview.isEnabled())
         self.assertIsInstance(widget, QtWidgets.QWidget)
+
+    def test_restore_preview_dialog_is_read_only_and_explains_safety_plan(self) -> None:
+        dialog = build_restore_preview_dialog(
+            None,
+            {
+                "archive": "C:/Backups/Manual/backup.zip",
+                "archive_valid": True,
+                "manifest_valid": True,
+                "ready_for_guarded_restore": True,
+                "save_member": "Server.vns",
+                "save_size": 4096,
+                "reason": "Manual",
+                "created_utc": "2026-07-23T12:00:00Z",
+                "destination": "C:/Server/SaveGames/Server.vns",
+                "destination_exists": True,
+                "server_running": False,
+                "restore_point_label": "Before migration",
+                "errors": [],
+                "warnings": [],
+            },
+        )
+        text = " ".join(label.text() for label in dialog.findChildren(QtWidgets.QLabel))
+        buttons = dialog.findChild(QtWidgets.QDialogButtonBox)
+
+        self.assertIn("Archive validation passed", text)
+        self.assertIn("Before Restore backup", text)
+        self.assertIn("intentionally no Restore button", text)
+        self.assertEqual(
+            buttons.standardButtons(), QtWidgets.QDialogButtonBox.Close
+        )
+        dialog.close()
 
     def test_backup_page_preserves_cleanup_cards_and_archive_height(self) -> None:
         class Owner:

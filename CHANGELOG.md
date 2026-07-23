@@ -32,7 +32,11 @@ This project uses a lightweight versioning approach suitable for a personal sour
   point with an optional note. Restore-point ZIPs remain immutable, are shown and filterable in backup
   history, and are excluded from automatic age/count cleanup; unreadable pin
   metadata fails safe by retaining cleanup protection. Restore/loading is not
-  enabled by this change.
+  enabled by this change. Added a read-only Restore Preview for selected
+  archives that checks ZIP integrity, unsafe or duplicate paths, manifest and
+  save-file hashes, the intended live-save destination, and current server-stop
+  readiness. The preview explains the future safety-backup/staging plan but
+  intentionally provides no restore action.
 - Added focused General, Access, Gameplay, Network, and Discord tabs to Server
   Settings. The forms cover identity, player access, common gameplay rules,
   bind address and ports, and protected VEIN game-chat/admin webhook
