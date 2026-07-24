@@ -6,6 +6,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.14.0 - 2026-07-24
+
+- Added a clean link to the official VEIN Steam page in the README, Server
+  Quick Start documentation, and About dialog so players can find the demo or
+  purchase the game without confusing this unofficial management suite for the
+  game itself.
+
 ## 2.13.0 - 2026-07-24
 
 - Added explicit GitHub project and version-aware release-notes actions to the

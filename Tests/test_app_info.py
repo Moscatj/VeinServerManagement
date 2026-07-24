@@ -47,6 +47,10 @@ class AppInfoTests(unittest.TestCase):
         self.assertEqual(info["commit"], "unknown")
         self.assertEqual(info["mode"], "Packaged")
         self.assertEqual(
+            info["game"],
+            "https://store.steampowered.com/app/1857950/VEIN/",
+        )
+        self.assertEqual(
             info["release_notes"],
             "https://github.com/Moscatj/VeinServerManagement/releases/tag/v2.3.14",
         )

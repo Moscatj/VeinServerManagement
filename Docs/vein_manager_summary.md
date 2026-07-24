@@ -79,9 +79,11 @@ The `Help > About Vein Server Manager` menu opens a copyable version/runtime dia
 - Shows the installed app version from `version.txt` when packaged.
 - Falls back to environment or Git metadata during source/development runs.
 - Includes commit, Python, PySide6, Qt, OS, license, repository, app root, and active config path.
-- Provides deliberate **Open GitHub Project** and **View release notes** actions.
+- Provides deliberate **Open VEIN on Steam**, **Open GitHub Project**, and
+  **View release notes** actions.
   Stable packaged versions open their exact tagged release; development builds
-  use the latest-release page. Neither link performs a background network check.
+  use the latest-release page. External links open only after a user action and
+  do not perform a background network check.
 
 ---
 

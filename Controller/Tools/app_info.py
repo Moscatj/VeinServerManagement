@@ -16,6 +16,7 @@ APP_GUI_NAME = "Vein Server Manager"
 APP_PUBLISHER = "Vein Server Management Contributors"
 APP_LICENSE = "Non-Commercial Source Available"
 APP_REPOSITORY = "https://github.com/Moscatj/VeinServerManagement"
+APP_GAME_URL = "https://store.steampowered.com/app/1857950/VEIN/"
 VERSION_FILE = "version.txt"
 UNKNOWN_VERSION = "0.0.0-dev"
 STABLE_VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
@@ -107,5 +108,6 @@ def build_about_info(
         "config": str(config_path) if config_path else "",
         "license": APP_LICENSE,
         "repository": APP_REPOSITORY,
+        "game": APP_GAME_URL,
         "release_notes": release_notes_url(version),
     }

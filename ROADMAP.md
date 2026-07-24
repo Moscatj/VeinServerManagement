@@ -7,7 +7,7 @@ support commitment.
 
 ## Current Baseline
 
-Released through `v2.13.0`:
+Released through `v2.14.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -106,6 +106,9 @@ Released through `v2.13.0`:
 - The About dialog provides deliberate links to the GitHub project and the
   installed version's release notes without performing a background network
   request; development builds fall back to the latest release page.
+- The README, Server Quick Start guide, and About dialog link clearly to the
+  official VEIN Steam page while distinguishing this unofficial management
+  suite and its separately installed dedicated-server files from the game.
 
 ## Product Direction
 

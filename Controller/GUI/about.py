@@ -18,6 +18,7 @@ def _about_lines(info: dict[str, Any]) -> list[str]:
         f"Qt: {QtCore.qVersion()}",
         f"OS: {info.get('os', 'unknown')}",
         f"License: {info.get('license', 'unknown')}",
+        f"VEIN on Steam: {info.get('game', '')}",
         f"Repository: {info.get('repository', '')}",
         f"Release notes: {info.get('release_notes', '')}",
         f"App root: {info.get('app_root', '')}",
@@ -81,6 +82,9 @@ def show_about_dialog(parent: QtWidgets.QWidget, info: dict[str, Any]) -> None:
     layout.addWidget(details)
 
     buttons = QtWidgets.QDialogButtonBox()
+    game_btn = buttons.addButton(
+        "Open VEIN on Steam", QtWidgets.QDialogButtonBox.ActionRole
+    )
     project_btn = buttons.addButton(
         "Open GitHub Project", QtWidgets.QDialogButtonBox.ActionRole
     )
@@ -90,6 +94,9 @@ def show_about_dialog(parent: QtWidgets.QWidget, info: dict[str, Any]) -> None:
     copy_btn = buttons.addButton("Copy", QtWidgets.QDialogButtonBox.ActionRole)
     ok_btn = buttons.addButton(QtWidgets.QDialogButtonBox.Ok)
     ok_btn.setDefault(True)
+    game_btn.clicked.connect(
+        lambda _checked=False: _open_https_url(info.get("game"))
+    )
     project_btn.clicked.connect(
         lambda _checked=False: _open_https_url(info.get("repository"))
     )

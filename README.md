@@ -8,6 +8,14 @@ hosting, and supervising a Vein dedicated server on Windows.
 
 This repository does not contain the game server. It is a management layer that can either install/manage a Vein dedicated server under the packaged app folder or point at an existing Steam-installed server elsewhere on disk.
 
+## Get VEIN
+
+This management suite is unofficial and does not include the VEIN game. Players
+can download the demo or purchase the game from the
+[official VEIN page on Steam](https://store.steampowered.com/app/1857950/VEIN/).
+The dedicated server files are installed separately through SteamCMD by the
+suite's guided installer or supplied from an existing server installation.
+
 ## Why This Exists
 
 Vein Server Management Suite began with a simple friend-group problem: a normal
@@ -39,7 +47,7 @@ should extend that workflow without making the one-server case harder.
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
-The current stable release is **v2.13.0**. Windows users can install it without
+The current stable release is **v2.14.0**. Windows users can install it without
 Python or other developer tools from the
 [GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 

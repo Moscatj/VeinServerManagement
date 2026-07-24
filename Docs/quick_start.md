@@ -5,6 +5,11 @@ server. Existing configured servers use the smaller Server Settings view for
 everyday changes. Importing an existing unregistered server is a compact,
 explicit connection step rather than a trip through the new-server wizard.
 
+This unofficial management suite does not include the VEIN game. Players can
+find the demo and purchase options on the
+[official VEIN Steam page](https://store.steampowered.com/app/1857950/VEIN/).
+The guided server workflow installs only the separate dedicated server files.
+
 ## Current Scope
 
 `Controller/Tools/server_quickstart.py` creates a `QuickStartPlan` from user
