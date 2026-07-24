@@ -8,6 +8,33 @@ hosting, and supervising a Vein dedicated server on Windows.
 
 This repository does not contain the game server. It is a management layer that can either install/manage a Vein dedicated server under the packaged app folder or point at an existing Steam-installed server elsewhere on disk.
 
+## Why This Exists
+
+Vein Server Management Suite began with a simple friend-group problem: a normal
+multiplayer session ended when the player hosting it went offline. A dedicated
+server could keep the shared world available on a spare or gaming Windows PC,
+but native setup was intimidating, crashes happened while the host was away,
+and lost saves turned routine hosting into repeated manual recovery.
+
+The suite grew from batch scripts and Windows process helpers into a local-first
+application designed so one person can install and configure a private Vein
+server, leave it running in the background, and let friends play without that
+person actively playing or constantly watching the machine. Guided setup,
+lifecycle monitoring, crash recovery, backups, and guarded restore all serve
+that unattended-continuity goal.
+
+Discord is part of that experience rather than an unrelated add-on. VEIN's game
+hooks can connect game chat and admin reports to a group's Discord, while the
+management application can report server state and failures when the host is
+away. Log monitoring also provides the foundation for useful player and game
+event updates, keeping the group connected to its shared world without exposing
+a remote management panel.
+
+The product remains aimed first at approachable, dependable hosting among
+friends: no paid host is required, local operation remains fully supported, and
+advanced multi-server, Linux, migration, and remote-management capabilities
+should extend that workflow without making the one-server case harder.
+
 ## Project Status
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.

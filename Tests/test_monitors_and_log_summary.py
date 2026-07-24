@@ -13,6 +13,7 @@ if str(CTRL) not in sys.path:
     sys.path.insert(0, str(CTRL))
 
 import log_summary  # noqa: E402
+import crash_monitor  # noqa: E402
 from Tools import log_events, monitors  # noqa: E402
 
 
@@ -104,6 +105,133 @@ class MonitorStopTests(unittest.TestCase):
 
         stop_log.assert_called_once()
         stop_crash.assert_called_once()
+
+
+class CrashMonitorLoopTests(unittest.TestCase):
+    def test_stop_request_records_terminal_state_and_cleans_runtime_markers(self) -> None:
+        with mock.patch.object(
+            crash_monitor, "is_feature_enabled", return_value=True
+        ), mock.patch.object(
+            crash_monitor, "_stop_requested", return_value=True
+        ), mock.patch.object(crash_monitor, "_send") as send, mock.patch.object(
+            crash_monitor, "_write_pid"
+        ) as write_pid, mock.patch.object(
+            crash_monitor, "_write_state_mode"
+        ) as write_state, mock.patch.object(
+            crash_monitor, "_clear_pid_and_stopflag"
+        ) as clear:
+            crash_monitor.main()
+
+        write_pid.assert_called_once_with()
+        send.assert_any_call("🛑 Crash monitor stop requested; exiting.")
+        write_state.assert_any_call("stopped", active=False, watching=False)
+        clear.assert_called_once_with()
+
+    def test_intentional_shutdown_never_enters_restart_path(self) -> None:
+        with mock.patch.object(
+            crash_monitor, "is_feature_enabled", return_value=True
+        ), mock.patch.object(
+            crash_monitor, "_stop_requested", side_effect=[False, True]
+        ), mock.patch.object(
+            crash_monitor, "is_shutdown_in_progress", return_value=True
+        ), mock.patch.object(crash_monitor.time, "sleep"), mock.patch.object(
+            crash_monitor, "_write_state_mode"
+        ) as write_state, mock.patch.object(
+            crash_monitor, "initiate_controlled_restart"
+        ) as restart, mock.patch.object(
+            crash_monitor, "_send"
+        ), mock.patch.object(
+            crash_monitor, "_write_pid"
+        ), mock.patch.object(
+            crash_monitor, "_clear_pid_and_stopflag"
+        ):
+            crash_monitor.main()
+
+        write_state.assert_any_call(
+            "intentional_shutdown", active=True, watching=False
+        )
+        restart.assert_not_called()
+
+    def test_startup_grace_suppresses_crash_restart_after_confirmed_misses(self) -> None:
+        running_flag = mock.Mock()
+        running_flag.exists.return_value = True
+        with mock.patch.object(
+            crash_monitor, "is_feature_enabled", return_value=True
+        ), mock.patch.object(
+            crash_monitor, "_stop_requested", side_effect=[False, False, True]
+        ), mock.patch.object(
+            crash_monitor, "is_shutdown_in_progress", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "_breaker_active", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "STATE_FLAG", running_flag
+        ), mock.patch.object(
+            crash_monitor, "is_server_running", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "_running_server_exists", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "startup_grace_active", return_value=True
+        ), mock.patch.object(crash_monitor.time, "sleep"), mock.patch.object(
+            crash_monitor, "initiate_controlled_restart"
+        ) as restart, mock.patch.object(
+            crash_monitor, "_debounced_crash_notify"
+        ) as notify, mock.patch.object(
+            crash_monitor, "_send"
+        ), mock.patch.object(
+            crash_monitor, "_write_pid"
+        ), mock.patch.object(
+            crash_monitor, "_write_state_mode"
+        ), mock.patch.object(
+            crash_monitor, "_clear_pid_and_stopflag"
+        ):
+            crash_monitor.main()
+
+        notify.assert_not_called()
+        restart.assert_not_called()
+
+    def test_confirmed_crash_requests_only_one_controlled_restart(self) -> None:
+        running_flag = mock.Mock()
+        running_flag.exists.return_value = True
+        with mock.patch.object(
+            crash_monitor, "is_feature_enabled", return_value=True
+        ), mock.patch.object(
+            crash_monitor, "_stop_requested", side_effect=[False, False, True]
+        ), mock.patch.object(
+            crash_monitor, "is_shutdown_in_progress", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "_breaker_active", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "STATE_FLAG", running_flag
+        ), mock.patch.object(
+            crash_monitor, "is_server_running", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "_running_server_exists", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "startup_grace_active", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "autorestart_quiet_active", return_value=False
+        ), mock.patch.object(
+            crash_monitor, "_count_attempts_in_window", return_value=0
+        ), mock.patch.object(crash_monitor.time, "sleep"), mock.patch.object(
+            crash_monitor, "initiate_controlled_restart", return_value=True
+        ) as restart, mock.patch.object(
+            crash_monitor, "_debounced_crash_notify"
+        ) as notify, mock.patch.object(
+            crash_monitor, "_append_attempt"
+        ) as append, mock.patch.object(
+            crash_monitor, "_send"
+        ), mock.patch.object(
+            crash_monitor, "_write_pid"
+        ), mock.patch.object(
+            crash_monitor, "_write_state_mode"
+        ), mock.patch.object(
+            crash_monitor, "_clear_pid_and_stopflag"
+        ):
+            crash_monitor.main()
+
+        notify.assert_called_once()
+        restart.assert_called_once_with(reason="proc_missing")
+        append.assert_called_once()
 
 
 class LogSummaryTests(unittest.TestCase):

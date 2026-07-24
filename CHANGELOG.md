@@ -6,6 +6,24 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Clarified the product origin and long-term roadmap around a friend-group host
+  keeping a private world safely available with minimal intervention. Discord
+  is treated as an optional community and remote-status surface, and future
+  guarded world export/import will support handing hosting responsibility to
+  another friend before the product expands through isolated multi-server
+  profiles, Linux/WSL2, and opt-in commercial-grade remote administration.
+- Hardened automated regression runs so Python compatibility, full validation,
+  and packaged installer/lifecycle jobs all explicitly suppress Discord network
+  messages, including notifications from child monitor and lifecycle processes.
+- Added v2.12 stabilization coverage for backup-policy synchronization, guarded
+  restore and missing-save recovery failures, crash-monitor restart suppression,
+  partial monitor-start cleanup, and the six supported installer workflow
+  routes. Crash-monitor orchestration is now included in coverage reporting.
+- Added deterministic controlled-shutdown coverage for backup gates and failure,
+  partial monitor stops, final-warning timing, server-stop continuation, and
+  unconditional cleanup of lifecycle locks. Start and shutdown orchestration are
+  now included in coverage reporting.
+
 ## 2.12.0 - 2026-07-23
 
 - Added a dedicated Backups workspace with non-blocking manual creation,

@@ -19,18 +19,24 @@ from Tools.backup_pins import is_archive_pinned  # noqa: E402
 
 
 class GuardedRestoreTests(unittest.TestCase):
-    def _archive(self, path: Path, payload: bytes, reason: str = "Manual") -> Path:
+    def _archive(
+        self,
+        path: Path,
+        payload: bytes,
+        reason: str = "Manual",
+        save_filename: str = "Server.vns",
+    ) -> Path:
         manifest = {
             "reason": reason,
             "created_utc": "2026-07-23T12:00:00Z",
-            "save_filename": "Server.vns",
+            "save_filename": save_filename,
             "bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
             "version": 1,
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(path, "w") as bundle:
-            bundle.writestr("Server.vns", payload)
+            bundle.writestr(save_filename, payload)
             bundle.writestr("manifest.json", json.dumps(manifest))
         return path
 
@@ -429,6 +435,94 @@ class GuardedRestoreTests(unittest.TestCase):
                 )
 
             self.assertFalse((save_dir / "Server.vns").exists())
+
+    def test_startup_recovery_lock_blocks_parallel_manual_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_dir = root / "SaveGames"
+            save_dir.mkdir()
+            runtime = root / "Runtime"
+            runtime.mkdir()
+            lock = runtime / "restore.lock"
+            lock.write_text("manual-restore", encoding="utf-8")
+            archive = self._archive(root / "backup.zip", b"backup")
+
+            with self.assertRaisesRegex(
+                backup_restore.GuardedRestoreError, "Another restore operation"
+            ):
+                backup_restore.recover_missing_save(
+                    [archive],
+                    save_dir=save_dir,
+                    expected_filenames=["Server.vns"],
+                    operation_dir=runtime,
+                    server_running_check=lambda: False,
+                )
+
+            self.assertEqual(lock.read_text(encoding="utf-8"), "manual-restore")
+            self.assertFalse((save_dir / "Server.vns").exists())
+
+    def test_startup_recovery_skips_archive_for_another_save_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_dir = root / "SaveGames"
+            save_dir.mkdir()
+            wrong = self._archive(
+                root / "newest.zip",
+                b"other world",
+                save_filename="Other.vns",
+            )
+            valid = self._archive(root / "older.zip", b"expected world")
+
+            result = backup_restore.recover_missing_save(
+                [wrong, valid],
+                save_dir=save_dir,
+                expected_filenames=["Server.vns"],
+                operation_dir=root / "Runtime",
+                server_running_check=lambda: False,
+            )
+
+            self.assertEqual(result.archive, str(valid))
+            self.assertEqual((save_dir / "Server.vns").read_bytes(), b"expected world")
+            self.assertFalse((save_dir / "Other.vns").exists())
+
+    def test_failed_startup_post_write_verification_preserves_unverified_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            save_dir = root / "SaveGames"
+            save_dir.mkdir()
+            archive = self._archive(root / "backup.zip", b"candidate")
+            original_verify = backup_restore._verify_hash
+
+            def fail_live_verification(path: Path, expected: str) -> bool:
+                if path == save_dir / "Server.vns":
+                    return False
+                return original_verify(path, expected)
+
+            with mock.patch.object(
+                backup_restore, "_verify_hash", side_effect=fail_live_verification
+            ):
+                with self.assertRaisesRegex(
+                    backup_restore.GuardedRestoreError, "post-write verification"
+                ):
+                    backup_restore.recover_missing_save(
+                        [archive],
+                        save_dir=save_dir,
+                        expected_filenames=["Server.vns"],
+                        operation_dir=root / "Runtime",
+                        server_running_check=lambda: False,
+                    )
+
+            self.assertFalse((save_dir / "Server.vns").exists())
+            failed = list(save_dir.glob(".vein-recovery-failed-*.tmp"))
+            self.assertEqual(len(failed), 1)
+            self.assertEqual(failed[0].read_bytes(), b"candidate")
+            state = json.loads(
+                (root / "Runtime" / "startup_recovery.state.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(state["phase"], "failed")
+            self.assertEqual(state["unverified_recovery_copy"], str(failed[0]))
 
 
 if __name__ == "__main__":

@@ -18,6 +18,23 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("Python ${{ matrix.python-version }} Unit Tests", self.text)
         self.assertIn("Full Repository Validation (Python 3.12)", self.text)
 
+    def test_every_test_job_disables_discord_network_sends(self) -> None:
+        self.assertEqual(self.text.count('VEIN_DISABLE_DISCORD: "1"'), 3)
+
+        compatibility = self.text.index("  compatibility:")
+        validation = self.text.index("  validation:")
+        installer = self.text.index("  installer_smoke:")
+        required = self.text.index("  required-gate:")
+        self.assertIn(
+            'VEIN_DISABLE_DISCORD: "1"', self.text[compatibility:validation]
+        )
+        self.assertIn(
+            'VEIN_DISABLE_DISCORD: "1"', self.text[validation:installer]
+        )
+        self.assertIn(
+            'VEIN_DISABLE_DISCORD: "1"', self.text[installer:required]
+        )
+
     def test_required_check_aggregates_all_jobs(self) -> None:
         self.assertIn("name: Unit Tests And Safety Checks", self.text)
         self.assertIn(

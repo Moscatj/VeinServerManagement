@@ -2,9 +2,6 @@
 source =
     Controller
 omit =
-    Controller/start_server.py
-    Controller/shutdown_server.py
-    Controller/crash_monitor.py
     Controller/monitor_log.py
     Controller/nightly_backup.py
     Controller/vein_manager.py

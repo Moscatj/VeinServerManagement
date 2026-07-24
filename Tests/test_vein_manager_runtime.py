@@ -169,6 +169,72 @@ class VeinManagerRuntimeConfigTests(unittest.TestCase):
             "apply", values={"server_name": "Reviewed"}
         )
 
+    def test_external_config_change_refreshes_policy_and_runtime_consumers(self) -> None:
+        owner = mock.Mock()
+        owner._saving = False
+        owner._backup_policy_dirty = False
+        owner._backup_policy_running = False
+
+        vein_manager.Main._handle_external_config_change(owner)
+
+        owner.load_config_text.assert_called_once_with()
+        owner.watch_config.assert_called_once_with()
+        owner._refresh_backup_policy.assert_called_once_with()
+
+    def test_external_config_change_preserves_dirty_backup_policy_form(self) -> None:
+        owner = mock.Mock()
+        owner._saving = False
+        owner._backup_policy_dirty = True
+        owner._backup_policy_running = False
+
+        vein_manager.Main._handle_external_config_change(owner)
+
+        owner.load_config_text.assert_called_once_with()
+        owner.watch_config.assert_called_once_with()
+        owner._refresh_backup_policy.assert_not_called()
+        self.assertIn(
+            "Discard or apply",
+            owner.lblBackupPolicyState.setText.call_args.args[0],
+        )
+        owner.lblBackupPolicyState.set_kind.assert_called_once_with("warning")
+
+    def test_applied_backup_policy_refreshes_all_visible_consumers(self) -> None:
+        owner = mock.Mock()
+        owner._backup_policy_dirty = False
+        payload = {
+            "ok": True,
+            "action": "apply",
+            "changed": True,
+            "backup": "Backups/Configs/config-backup-policy.yaml",
+            "policy": {"enabled": False},
+        }
+
+        with mock.patch.object(vein_manager, "populate_backup_policy") as populate:
+            vein_manager.Main._apply_backup_policy_result(owner, payload)
+
+        populate.assert_called_once()
+        owner._apply_backup_enabled_ui.assert_called_once_with(False)
+        owner.load_config_text.assert_called_once_with()
+        owner._refresh_backup_history.assert_called_once_with()
+        owner._kick_preflight_check.assert_called_once_with()
+        self.assertIn(
+            "Existing archives were not deleted",
+            owner.lblBackupPolicyState.setText.call_args.args[0],
+        )
+
+    def test_config_consumer_sync_refreshes_shared_config_and_runtime_cache(self) -> None:
+        owner = mock.Mock()
+        owner.config_path = "Config/config.yaml"
+        cache_key = str(Path(owner.config_path).resolve())
+        vein_manager._RUNTIME_CFG_CACHE[cache_key] = (123.0, {"stale": True})
+
+        with mock.patch.object(vein_manager, "refresh_config") as refresh:
+            vein_manager.Main._sync_config_consumers(owner)
+
+        refresh.assert_called_once_with(owner.config_path)
+        self.assertNotIn(cache_key, vein_manager._RUNTIME_CFG_CACHE)
+        owner._kick_status_poll.assert_called_once_with()
+
     def test_source_python_uses_console_sibling_of_pythonw(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             runtime = Path(tmp)

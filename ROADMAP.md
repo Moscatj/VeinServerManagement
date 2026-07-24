@@ -2,7 +2,8 @@
 
 This roadmap tracks practical maturity work for the Vein Server Management
 Suite. It is intentionally lightweight: this is a personal, source-available
-portfolio project, not a commercial product roadmap.
+portfolio project, and the roadmap is a direction rather than a delivery or
+support commitment.
 
 ## Current Baseline
 
@@ -95,8 +96,68 @@ Released through `v2.12.0`:
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
 
+## Product Direction
+
+Vein Server Management Suite is **local-first and VEIN-specific**. Its immediate
+job is to make a process that is normally intimidating to a casual host feel
+guided, understandable, and recoverable. Local operation is not a temporary
+step toward a hosted-only product: the application should continue to work
+without an account, cloud service, public management port, or permanent Internet
+connection beyond operator-requested Steam and update workflows.
+
+The primary user is one person in a friend group who has a capable Windows PC
+and wants to keep a private shared world available even when they are not
+playing or near the machine. They should not need to become a server
+administrator, maintain fragile scripts, pay a hosting provider, or ask friends
+to wait for them to recover every crash. Discord is the shared community surface
+for this use case: game chat and events can reach the group, while application
+notifications keep the host informed about server health and recovery.
+
+The product north star is: **after guided setup, a friend-group server remains
+available and recovers safely with minimal host intervention.** Product and
+stability decisions should improve observable outcomes such as time to first
+successful join, unattended availability, recovery after a crash, gameplay lost
+after a save failure, false or repeated restarts, clarity of incident history,
+and the effort required to restore or hand the world to another trusted host.
+
+Development should progress in four ordered stages:
+
+1. **Harden local single-server hosting.** Finish the approachable Windows
+   installer, first-run guidance, diagnostics, lifecycle reliability, backup and
+   restore safety, configuration help, host-handoff foundations, and regression
+   coverage needed for a casual operator to host confidently.
+2. **Expand to local multi-server hosting.** Introduce named, isolated server
+   profiles and safe server selection first. Then permit concurrent servers and
+   batch actions only after ports, processes, runtime state, logs, backups, and
+   lifecycle controls are demonstrably profile-scoped.
+3. **Add native Linux and WSL2 support.** Carry the hardened local backend and
+   profile model to Linux rather than maintaining a separate reduced product.
+4. **Add remote and commercial-grade management capabilities.** Build secure
+   headless operation, authenticated remote administration, roles, audit trails,
+   richer automation, off-machine backups, and fleet-oriented visibility on top
+   of the same local control layer.
+
+Throughout every stage:
+
+- preserve fully functional offline/local administration;
+- keep the GUI, CLI, future service/API, and automation paths on one guarded
+  control layer;
+- prefer deep VEIN-aware safety over generic file/process buttons;
+- treat Discord integration as an optional, privacy-conscious bridge between
+  the running world, the friend group, and the host—not merely as a diagnostic
+  webhook or a substitute for guarded management controls;
+- keep remote access opt-in and closed by default;
+- do not weaken save, backup, restore, shutdown, or secret-handling safeguards
+  to gain multi-server or remote convenience;
+- treat datacenter networking, DDoS mitigation, redundant hardware, and support
+  operations as hosting-provider capabilities that the app can diagnose or
+  integrate with, not capabilities the app itself can promise.
+
 ## Near-Term Priorities
 
+- Keep the near-term release focus on local Windows hosting: reliability,
+  efficiency, approachable language, safe defaults, and clear recovery paths for
+  casual hosts remain more important than remote or fleet-management features.
 - Add current GUI and installer screenshots to the README without making the
   landing page difficult to scan.
 - Keep GitHub Release pages populated with meaningful release notes and
@@ -118,6 +179,9 @@ Released through `v2.12.0`:
 - Add a guided network-readiness workflow for Windows Firewall, router port
   forwarding, and external reachability checks without silently changing
   network configuration.
+- Prepare the configuration, runtime-state, lifecycle, backup, monitoring, and
+  GUI controller boundaries for named server profiles without prematurely
+  exposing concurrent hosting.
 
 ## Installer And Binary Distribution Goals
 
@@ -154,7 +218,9 @@ Ongoing installer hardening:
 Native Ubuntu/Debian Linux and Ubuntu hosted by WSL2 are both first-class
 targets. The same Linux backend should run the VEIN dedicated server and the
 management suite without requiring Windows APIs. WSL2 is one deployment option,
-not a prerequisite for Linux support.
+not a prerequisite for Linux support. This stage begins after the local Windows
+workflow and profile-scoped multi-server foundation are stable enough to carry
+across platforms without duplicating lifecycle or backup behavior.
 
 Native Linux release model:
 
@@ -261,6 +327,31 @@ The approved phased GUI plan is documented in `Docs/gui_modernization.md`.
 - Add first-run diagnostics that make installed version, config path, server
   root, and validation status easy to verify.
 
+### Discord And Friend-Group Connection
+
+Discord should make a privately hosted world feel present and understandable
+when nobody is sitting at the server PC. It remains optional, and local hosting
+must work fully without it.
+
+Current foundations include distinct configuration for application
+notifications, VEIN game chat, and VEIN admin reports, plus log monitoring that
+can recognize server health and player events. Future improvements should:
+
+- make each Discord destination and message category easy to understand, test,
+  disable, and route without exposing webhook URLs;
+- deliver useful lifecycle and recovery outcomes, including whether an
+  automatic restart or backup succeeded, instead of sending noisy raw logs;
+- turn supported player and in-game events into opt-in, rate-limited community
+  updates with clear provenance and sensible grouping;
+- provide quiet hours, severity controls, event filters, and summaries so an
+  unstable server cannot flood a group or repeatedly mention members;
+- keep secrets, passwords, private paths, and sensitive diagnostic details out
+  of messages, previews, exports, logs, and test output;
+- keep all automated tests and validation isolated from real Discord network
+  messages; and
+- scope destinations and event preferences per profile when multi-server
+  hosting arrives.
+
 ### Backup Policy And Save Management
 
 The long-term backup experience should let operators balance rollback safety
@@ -291,6 +382,43 @@ remaining non-destructive:
 - Keep Load Save separate from automatic retention so selecting or switching a
   world never silently changes cleanup policy.
 
+### Host Handoff And World Portability
+
+A friend group should not lose access to its world when the original host no
+longer wants or is able to run the server. A future guided handoff workflow
+should let another trusted friend install the suite, prepare a compatible Vein
+server, and import the shared world without either person manually reconstructing
+paths and configuration.
+
+Build this on the Save Library and guarded restore engine rather than adding an
+unverified file-copy path:
+
+1. Create a portable export only from a stopped server or a validated backup.
+   Leave the source save and its backup history untouched.
+2. Include a versioned manifest, content hashes, world metadata, relevant Vein
+   version information when available, and an explicit inventory of the files
+   in the package.
+3. Offer a separately reviewed set of portable, non-secret server settings.
+   Exclude webhook URLs, passwords, tokens, local paths, runtime markers, logs,
+   SteamCMD, server binaries, and machine-specific state by default.
+4. On the receiving machine, preview compatibility warnings, destination paths,
+   port or profile conflicts, omitted settings, and every planned write before
+   import. Do not claim to convert saves between incompatible game versions.
+5. Protect any existing destination world, stage and hash-verify the imported
+   world, activate it atomically, verify it after activation, and roll back on
+   failure using the same guarantees as guarded restore.
+6. Produce a checksum and clear transfer instructions while letting friends
+   choose how they exchange the package. Host handoff must not require a project
+   account, project-operated cloud storage, or a public management endpoint.
+7. Reuse the same portable format for future profile import/export so migration
+   between friends, machines, Windows and Linux does not become a separate
+   lifecycle implementation.
+
+The first implementation slice should be an offline export/import planner and
+manifest validator exercised entirely in temporary directories. GUI transfer
+convenience and any optional cloud destination come only after the local safety
+contract is proven.
+
 ### Future Theme Customization
 
 Theme customization is a long-term polish goal after the core workflows and
@@ -313,7 +441,24 @@ rather than applying unrelated colors directly to individual controls.
 
 The current suite manages one configured Vein dedicated server at a time. A
 future multi-server workflow should be based on named server profiles rather
-than treating SteamCMD installs as the primary selector.
+than treating SteamCMD installs as the primary selector. This is the next major
+local hosting expansion after single-server stabilization and comes before
+native Linux and remote administration work.
+
+Delivery should be intentionally staged:
+
+1. Add multiple local profiles with one explicitly selected active profile and
+   one running server at a time. Existing single-server configuration should
+   migrate into a default profile without changing its server files or saves.
+2. Prove that paths, ports, process discovery, runtime markers, monitors,
+   backups, restore locks, logs, Steam maintenance, and Discord routing are
+   isolated by profile.
+3. Allow multiple concurrent local servers only after collision checks and
+   targeted shutdown tests demonstrate that one profile cannot stop, overwrite,
+   restore, or report state for another.
+4. Add guarded batch actions such as Start Selected, Stop Selected, or Stop All,
+   with per-profile results and explicit confirmation for broad lifecycle
+   operations.
 
 Target model:
 
@@ -328,9 +473,16 @@ Target model:
   - Discord channel/webhook routing
   - Steam branch/update settings
 - The GUI selects the active profile before start/stop/backup/monitor actions.
-- Process matching and shutdown must target only the selected profile whenever
-  possible, so two installed servers are not accidentally stopped together.
+- Home and navigation make the selected profile unmistakable and show whether
+  other profiles are stopped, starting, running, unhealthy, or awaiting setup.
+- Process matching and shutdown must target only the selected profile, so two
+  installed servers are never treated as one process group.
 - Backups should be grouped by profile, not just by save filename.
+- Port validation must reject unintended gameplay, query, HTTP API, or future
+  management-port collisions before a second server starts.
+- Profile duplication and export should copy management settings intentionally
+  without silently duplicating or moving live saves, server binaries, secrets,
+  or backup archives.
 
 SteamCMD should remain an implementation detail:
 
@@ -341,13 +493,68 @@ SteamCMD should remain an implementation detail:
 - Server identity should come from the profile and server root, not from which
   SteamCMD executable updated it.
 
-Open design questions:
+Design constraints still to resolve:
 
-- Whether concurrent multi-server hosting is supported in the first version, or
-  whether the GUI initially allows multiple profiles but only one running server
-  at a time.
-- How to display per-profile monitor state without mixing runtime files.
-- How much profile editing belongs in the installer versus the GUI.
+- How the GUI summarizes per-profile monitor and player state without making the
+  single-server workflow feel like a fleet dashboard.
+- Which minimal profile selection belongs in the installer and which ongoing
+  profile management belongs only in the application.
+- Whether concurrency should have optional CPU/memory guidance before platform
+  resource limits or container adapters exist.
+
+## Remote And Commercial-Grade Management Goals
+
+Remote administration begins only after local multi-server hosting and native
+Linux are stable. It should extend the local product rather than replace it or
+create a second lifecycle implementation.
+
+Foundation:
+
+- Separate the long-running management backend from desktop presentation behind
+  a documented, versioned command/service boundary.
+- Run a headless service that can manage profiles when no GUI user is signed in.
+- Let the desktop GUI use the same service locally before opening that boundary
+  to remote clients.
+- Bind locally by default. Remote listening requires an explicit operator action,
+  authenticated setup, encryption, and diagnostics that identify unsafe public
+  exposure.
+
+Administration and security:
+
+- Add named administrators, least-privilege roles, revocable sessions or API
+  credentials, and an audit trail for lifecycle, configuration, backup, restore,
+  update, and profile actions.
+- Protect secrets at rest and keep webhook, password, and token values out of
+  logs, routine API responses, exports, and audit details.
+- Add rate limits, bounded requests, secure defaults, upgrade compatibility, and
+  recovery access that does not depend on the remote service being healthy.
+- Keep the unauthenticated VEIN HTTP API private; never expose it merely because
+  management access is enabled.
+
+Operational capabilities worth adopting from mature general-purpose panels:
+
+- Responsive remote status and emergency controls for desktop and mobile use.
+- Scheduling for starts, controlled stops, restarts, Steam validation, backups,
+  retention previews, announcements, and maintenance windows.
+- Per-profile CPU, memory, disk, network, player, update, backup, and health
+  visibility, with historical trends where the data is reliable.
+- Off-machine backup destinations, transfer verification, restore testing, and
+  clear reporting when local safety points are the only available recovery path.
+- Optional platform resource limits or container adapters without making
+  containers mandatory for casual local hosts.
+- Provider-friendly unattended installation, configuration import/export, and
+  health endpoints suitable for external monitoring.
+
+Commercial-readiness considerations:
+
+- Signed packages, checksums, reliable upgrades, supported migration paths, and
+  clean-machine deployment tests are prerequisites for trust at broader scale.
+- Regional hosting, public IPs, DDoS protection, redundant power/storage,
+  hardware replacement, billing, and staffing remain responsibilities of a host
+  or infrastructure provider rather than promises of the management suite.
+- Before enabling paid hosting or other commercial deployment, define a clear
+  licensing and support model consistent with the current non-commercial
+  source-available license.
 
 ## Testing Goals
 

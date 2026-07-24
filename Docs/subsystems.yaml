@@ -71,6 +71,7 @@ subsystems:
       - Tests/test_process_helpers.py
       - Tests/test_restart.py
       - Tests/test_runtime_helpers.py
+      - Tests/test_shutdown_server.py
       - Tests/test_start_server.py
       - Tests/test_uninstall_cleanup.py
     docs:

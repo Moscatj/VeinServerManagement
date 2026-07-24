@@ -15,10 +15,13 @@ unit, health, diagnostic, coverage, documentation/link, source-hygiene,
 architecture/subsystem-registry, and whitespace checks.
 
 The standard validation, diagnostic, and coverage runners set
-`VEIN_DISABLE_DISCORD=1` for their child processes. The shared Discord sender
-treats that value as a hard network-send prohibition, so local webhook
-environment variables cannot cause test notifications. The setting is
-process-scoped and is restored when the PowerShell validation runner exits.
+`VEIN_DISABLE_DISCORD=1` for their child processes. Every CI job that runs unit,
+packaged-lifecycle, or installer smoke tests sets the same environment guard
+explicitly. The shared Discord sender treats that value as a hard network-send
+prohibition, so local webhook environment variables cannot cause test
+notifications. Child lifecycle and monitor processes inherit the guard. The
+setting is process-scoped and is restored when the PowerShell validation runner
+exits.
 
 The architecture check validates registry paths in both directions. It rejects
 missing routed paths and unowned production `Controller/**/*.py`,
@@ -55,6 +58,13 @@ Scripts\RunCoverage.bat
 ```
 
 Coverage is a guide, not a hard 100% target. Prefer meaningful tests around risky code over brittle tests that only chase a number.
+
+Crash-monitor, server-start, and controlled-shutdown orchestration are included
+in coverage reporting after adding deterministic tests for lifecycle gates,
+partial failures, cleanup, intentional shutdown, startup grace, and confirmed
+restart behavior. The longer log-monitor entrypoint remains excluded until
+similarly bounded coverage can exercise its loop and platform branches without
+touching a real server.
 
 ## Continuous Integration
 

@@ -14,6 +14,7 @@ jobs:
         python-version: ["3.11", "3.12"]
     env:
       VEIN_CONFIG: Config/config.example.yaml
+      VEIN_DISABLE_DISCORD: "1"
 
     steps:
       - name: Check out repository
@@ -44,6 +45,7 @@ jobs:
     runs-on: windows-latest
     env:
       VEIN_CONFIG: Config/config.example.yaml
+      VEIN_DISABLE_DISCORD: "1"
 
     steps:
       - name: Check out repository
@@ -67,6 +69,7 @@ jobs:
     env:
       CI: "true"
       PYTHON_BIN: python
+      VEIN_DISABLE_DISCORD: "1"
       VEIN_PACKAGE_VERSION: 0.0.${{ github.run_number }}
 
     steps:

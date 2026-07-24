@@ -61,6 +61,7 @@ function Invoke-CheckedConsoleExecutable {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    $startInfo.EnvironmentVariables["VEIN_DISABLE_DISCORD"] = "1"
     foreach ($argument in $Arguments) {
         $startInfo.ArgumentList.Add($argument)
     }

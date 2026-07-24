@@ -168,6 +168,63 @@ class StartServerOrchestrationTests(unittest.TestCase):
         launch.assert_not_called()
         self.assertIn("already running", send.call_args.args[0])
 
+    def test_failed_launch_stops_partially_started_monitors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "Runtime"
+            runtime.mkdir()
+            (runtime / "log_monitor.pid").write_text("123", encoding="utf-8")
+            selected = root / "Server" / "VeinServer.exe"
+            selected.parent.mkdir(parents=True)
+            selected.write_bytes(b"fixture")
+            vcfg = SimpleNamespace(
+                server_dir=selected.parent,
+                runtime_dir=runtime,
+                selected_exe=selected,
+                server_executables=[selected.name],
+                raw={"extra_launch_args": [], "monitor": {"startup_quiet_seconds": 0}},
+            )
+
+            with mock.patch.object(
+                start_server, "load_and_validate_config", return_value=vcfg
+            ), mock.patch.object(
+                start_server, "find_running_server", return_value=None
+            ), mock.patch.object(
+                start_server, "_startup_recovery_preflight", return_value=True
+            ), mock.patch.object(
+                start_server, "_steam_update_if_enabled"
+            ), mock.patch.object(
+                start_server, "_start_monitors", return_value=["log"]
+            ), mock.patch.object(
+                start_server, "start_vein_server", return_value=None
+            ), mock.patch.object(
+                start_server, "stop_log_monitor"
+            ) as stop_log, mock.patch.object(
+                start_server, "stop_crash_monitor"
+            ) as stop_crash, mock.patch.object(
+                start_server, "send_discord_message"
+            ), mock.patch.object(
+                start_server, "set_server_state"
+            ), mock.patch.object(
+                start_server, "create_startup_lock"
+            ) as create_lock, mock.patch.object(
+                start_server, "clear_startup_lock"
+            ) as clear_lock, mock.patch.object(
+                start_server, "_clear_restart_lock"
+            ) as clear_restart, mock.patch.object(
+                start_server, "RUNTIME_DIR", runtime
+            ), mock.patch.object(
+                start_server, "RESTARTING_LOCK", runtime / "restart.lock"
+            ), mock.patch.object(start_server.time, "sleep"):
+                result = start_server.main()
+
+        self.assertEqual(result, 1)
+        create_lock.assert_called_once_with()
+        clear_lock.assert_called_once_with()
+        self.assertGreaterEqual(clear_restart.call_count, 1)
+        stop_log.assert_called_once_with()
+        stop_crash.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()

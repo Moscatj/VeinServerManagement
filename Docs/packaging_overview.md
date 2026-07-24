@@ -130,6 +130,11 @@ Pull-request and push installer check:
   refuses a non-empty work directory, validates that the recorded uninstaller
   remains inside the disposable install root, and retains setup, CLI, health,
   and uninstall diagnostics under `dist/installer-smoke`.
+- Packaging regression tests maintain an explicit workflow matrix for fresh
+  managed-server setup, existing-server connection, app-only setup, side-by-side
+  setup, app-only maintenance, and missing-server repair. The executable smoke
+  test remains deliberately offline and sets the Discord network guard directly
+  on every packaged CLI process and its monitor/lifecycle children.
 - Successful smoke builds are retained as temporary seven-day Actions
   artifacts. They are test products only and are never attached to a GitHub
   Release.

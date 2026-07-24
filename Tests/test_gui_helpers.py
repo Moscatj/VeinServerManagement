@@ -110,6 +110,26 @@ class GuiHelperTests(unittest.TestCase):
             )
         self.assertTrue(callable(kwargs["server_running_check"]))
 
+    def test_guarded_restore_worker_reports_failure_without_raising_on_gui_thread(self) -> None:
+        worker = GuardedRestoreWorker(
+            "C:/Backups/selected.zip",
+            save_dir="C:/Server/SaveGames",
+            operation_dir="C:/Runtime",
+        )
+        payloads = []
+        worker.signals.ready.connect(payloads.append)
+        with mock.patch(
+            "GUI.backup_view.guarded_restore",
+            side_effect=RuntimeError("restore failed safely"),
+        ):
+            worker.run()
+
+        self.assertEqual(len(payloads), 1)
+        payload = payloads[0]
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["result"], {})
+        self.assertEqual(payload["error"], "restore failed safely")
+
     def test_backup_policy_form_applies_and_discards_changes_naturally(self) -> None:
         class Owner:
             pass

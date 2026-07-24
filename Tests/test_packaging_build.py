@@ -79,6 +79,62 @@ class PackagingBuildTests(unittest.TestCase):
         self.assertIn("Wait-ForLogMonitorAttachment", text)
         self.assertIn("VeinTools\\.exe", text)
         self.assertIn("unexpectedly depends on source Python", text)
+        self.assertIn(
+            '$startInfo.EnvironmentVariables["VEIN_DISABLE_DISCORD"] = "1"', text
+        )
+
+    def test_installer_workflow_matrix_preserves_each_server_configuration_contract(self) -> None:
+        text = INSTALLER_SCRIPT.read_text(encoding="utf-8")
+        scenarios = {
+            "fresh managed server": (
+                "InstallServerRadio.Checked := True;",
+                "InstallNewServer := InstallServer and (not FreshServerMaintenance);",
+                "InstallDedicatedServer",
+            ),
+            "fresh existing server connection": (
+                "ExistingServerRadio.Caption := 'Connect to an existing dedicated server';",
+                "ConfigureExistingServer;",
+                "UpdateConfigPaths(ServerDir, SteamCmdExe);",
+            ),
+            "fresh management app only": (
+                "SkipServerRadio.Checked := True;",
+                "PreserveExistingServerConfig or SkipServerSetup",
+                "Silent management-app-only installation requested",
+            ),
+            "side by side app": (
+                "FreshAppInstall := ExistingAppInstall and AlternateIntentRadio.Checked;",
+                "Install a separate, fresh management app in another folder",
+                "Choose a separate app folder",
+            ),
+            "app only maintenance": (
+                "PreserveExistingServerConfig := ExistingServerRadio.Checked;",
+                "The existing server configuration and server files will be left unchanged.",
+                "else if (not PreserveExistingServerConfig) and (not SkipServerSetup) then",
+            ),
+            "missing server repair": (
+                "RepairMissingServer := not HasVeinServerAt(ServerDirPage.Values[0]);",
+                "Repair or reinstall the missing dedicated server with SteamCMD (recommended)",
+                "Reinstalling the missing Vein dedicated server...",
+            ),
+        }
+
+        for scenario, requirements in scenarios.items():
+            with self.subTest(scenario=scenario):
+                for requirement in requirements:
+                    self.assertIn(requirement, text)
+
+        post_install = text[
+            text.index("procedure CurStepChanged") : text.index(
+                "function InitializeUninstall"
+            )
+        ]
+        self.assertIn("if InstallServer then", post_install)
+        self.assertIn("InstallDedicatedServer", post_install)
+        self.assertIn(
+            "else if (not PreserveExistingServerConfig) and (not SkipServerSetup) then",
+            post_install,
+        )
+        self.assertIn("ConfigureExistingServer", post_install)
 
     def test_fake_server_fixture_only_writes_the_requested_synthetic_log(self) -> None:
         text = FAKE_SERVER_FIXTURE.read_text(encoding="utf-8")
