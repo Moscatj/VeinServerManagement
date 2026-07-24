@@ -6,6 +6,14 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Prevented duplicate startup-readiness and historical player notifications by
+  beginning initial log attachment after content that predates the monitor.
+  Newly created, replaced, or truncated launch logs are still read from the
+  beginning so genuine current readiness is not missed.
+- Added a sanitized real-session log fixture covering login, authentication,
+  join, character, disconnect, autosave, crash, and routine Unreal noise. App
+  Discord messages now disable mention parsing so player-controlled names or
+  text cannot ping members or roles.
 - Fixed Discord disconnect floods caused by the broad `Logout` pattern matching
   Unreal `LogOutputDevice` stack traces. The log monitor now recognizes the
   canonical connection-removal event once, correlates its Steam ID with the

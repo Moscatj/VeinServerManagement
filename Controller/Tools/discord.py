@@ -65,6 +65,13 @@ def send_discord_message(message: str, channel: str = "startup") -> None:
     content = (message[:max_len] + "...") if len(message) > max_len else message
 
     try:
-        requests.post(url, json={"content": content}, timeout=10)
+        requests.post(
+            url,
+            json={
+                "content": content,
+                "allowed_mentions": {"parse": []},
+            },
+            timeout=10,
+        )
     except Exception as e:
         print(f"[Discord] Failed to post message: {e}")

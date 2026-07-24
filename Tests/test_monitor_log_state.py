@@ -14,6 +14,8 @@ if str(CTRL) not in sys.path:
 
 import monitor_log  # noqa: E402
 
+SANITIZED_LOG_FIXTURE = ROOT / "Tests" / "fixtures" / "vein_log_events_sanitized.txt"
+
 
 class MonitorLogStateTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -184,6 +186,56 @@ class MonitorLogStateTests(unittest.TestCase):
 
             self.assertFalse(changed)
             self.assertEqual(snapshot.read_text(encoding="utf-8"), "not-json")
+
+    def test_sanitized_real_session_fixture_classifies_only_expected_events(self) -> None:
+        rows = SANITIZED_LOG_FIXTURE.read_text(encoding="utf-8").splitlines()
+
+        for row in rows:
+            if not row or row.startswith("#"):
+                continue
+            expected_text, line = row.split("\t", 1)
+            expected = set() if expected_text == "none" else set(expected_text.split(","))
+            with self.subTest(line=line):
+                self.assertEqual(monitor_log._classify_log_line(line), expected)
+
+    def test_initial_attach_skips_old_history_but_reads_new_appended_lines(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            log_path = Path(tmp) / "Vein.log"
+            old_line = "LogWorld: Bringing World Old.World up for play\n"
+            log_path.write_text(old_line, encoding="utf-8")
+            initial = monitor_log._log_file_signature(log_path)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write("LogWorld: Bringing World New.World up for play\n")
+
+            position = monitor_log._initial_attach_position(log_path, initial)
+            with log_path.open("rb") as handle:
+                handle.seek(position)
+                remaining = handle.read().decode("utf-8")
+
+        self.assertIsNotNone(initial)
+        self.assertEqual(position, initial[2])
+        self.assertNotIn("Old.World", remaining)
+        self.assertIn("New.World", remaining)
+
+    def test_initial_attach_reads_replaced_or_truncated_log_from_start(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            log_path = Path(tmp) / "Vein.log"
+            log_path.write_text("old history that is longer\n", encoding="utf-8")
+            initial = monitor_log._log_file_signature(log_path)
+            log_path.write_text("new\n", encoding="utf-8")
+
+            position = monitor_log._initial_attach_position(log_path, initial)
+
+        self.assertEqual(position, 0)
+
+    def test_initial_attach_reads_newly_created_log_from_start(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            log_path = Path(tmp) / "Vein.log"
+            log_path.write_text("new launch\n", encoding="utf-8")
+
+            position = monitor_log._initial_attach_position(log_path, None)
+
+        self.assertEqual(position, 0)
 
 
 if __name__ == "__main__":

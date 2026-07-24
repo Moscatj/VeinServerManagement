@@ -66,6 +66,11 @@ restart behavior. The longer log-monitor entrypoint remains excluded until
 similarly bounded coverage can exercise its loop and platform branches without
 touching a real server.
 
+Log-trigger regressions use the sanitized representative fixture at
+`Tests/fixtures/vein_log_events_sanitized.txt`. It contains synthetic identities
+and redacted query fields; real VEIN logs and credentials must never be copied
+into test fixtures.
+
 ## Continuous Integration
 
 GitHub Actions runs on every push and pull request:

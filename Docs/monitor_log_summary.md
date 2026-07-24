@@ -114,6 +114,10 @@ Main loop:
    Quick Start paths instead of silently exiting.
 4. Attach as soon as a candidate appears and mark the state as `tailing`.
 5. Tail the file:
+   - On initial attachment, begin after history that already existed when the
+     monitor started. If that file was replaced or truncated for a new launch,
+     read the new file from the beginning. This prevents stale readiness and
+     player events from being replayed as current Discord notifications.
    - Detect truncation or replacement and reopen from the beginning.
    - If the server is offline, keep lightweight state available and pause HTTP
      polling until the server returns.
@@ -152,9 +156,16 @@ Fetch `/status`, `/players`, `/time`, `/weather` using `Controller/Tools/vein_ht
 
 ### `_discord(msg, channel="monitor")`
 Sends a message to Discord only if that channel is enabled.
+The shared sender disables Discord mention parsing, so player-controlled text
+such as `@everyone` remains visible text without pinging members or roles.
 
 ### Player timeline helpers
 `_record_player_event`, `_player_state_payload`, `_flush_player_snapshot_if_needed`, etc., maintain a bounded cache (≈10 players) with log + HTTP events (`login`, `auth`, `join`, `character_select`, `disconnect`, `http_online/offline`). Before a raw diagnostic line enters that cache, sensitive login query fields such as passwords and session tickets are replaced with explicit redaction markers. Log-monitor startup also migrates an existing readable snapshot by redacting event lines written before this protection was added; malformed snapshots are left untouched for diagnosis. This cache feeds both the GUI tree and a standalone `Runtime/player_characters.json`.
+
+Sanitized representative session lines live in
+`Tests/fixtures/vein_log_events_sanitized.txt`. Regression tests classify each
+notification-bearing signature and explicitly reject routine Unreal stack
+traces, generic connection cleanup, and player chat containing event-like words.
 
 ---
 

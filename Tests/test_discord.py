@@ -41,6 +41,24 @@ class DiscordTests(unittest.TestCase):
         self.assertEqual(requests.post.call_args.kwargs["timeout"], 10)
         self.assertEqual(len(payload["content"]), 1803)
         self.assertTrue(payload["content"].endswith("..."))
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
+
+    def test_player_controlled_text_cannot_create_discord_mentions(self) -> None:
+        requests = mock.Mock()
+        with mock.patch.dict(os.environ, {"VEIN_DISABLE_DISCORD": ""}), mock.patch.object(
+            discord, "requests", requests
+        ), mock.patch.object(
+            discord, "is_discord_channel_enabled", return_value=True
+        ), mock.patch.object(
+            discord,
+            "_discord_webhook_url",
+            return_value="https://example.test/webhook",
+        ):
+            discord.send_discord_message("Player @everyone joined", channel="monitor")
+
+        payload = requests.post.call_args.kwargs["json"]
+        self.assertEqual(payload["content"], "Player @everyone joined")
+        self.assertEqual(payload["allowed_mentions"], {"parse": []})
 
     def test_send_discord_message_noops_when_channel_disabled(self) -> None:
         requests = mock.Mock()

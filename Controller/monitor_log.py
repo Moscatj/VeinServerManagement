@@ -115,6 +115,56 @@ RX_CRASH = re.compile(
     re.I,
 )
 
+
+def _classify_log_line(line: str) -> set[str]:
+    """Classify notification-bearing Vein log signatures without side effects."""
+    events: set[str] = set()
+    if RX_LISTEN.search(line) or RX_WORLD_UP.search(line):
+        events.add("ready")
+    if RX_LOGIN.search(line):
+        events.add("login")
+    if RX_AUTH_OK.search(line) or RX_PLAYER_AUTH_OK.search(line):
+        events.add("auth")
+    if RX_JOINED.search(line):
+        events.add("join")
+    if RX_CHARSEL.search(line) or RX_CHARSEL_FULL.search(line):
+        events.add("character")
+    if RX_DISC.search(line):
+        events.add("disconnect")
+    if RX_AUTOSAVE.search(line):
+        events.add("autosave")
+    if RX_CRASH.search(line):
+        events.add("crash")
+    return events
+
+
+def _log_file_signature(path: Path) -> tuple[int, int, int] | None:
+    try:
+        stat = path.stat()
+        return int(stat.st_dev), int(stat.st_ino), int(stat.st_size)
+    except OSError:
+        return None
+
+
+def _log_path_key(path: Path) -> str:
+    return str(path.resolve(strict=False)).casefold()
+
+
+def _initial_attach_position(
+    path: Path, initial_signature: tuple[int, int, int] | None
+) -> int:
+    """Skip history present at monitor start while retaining new appended data."""
+    current = _log_file_signature(path)
+    if initial_signature is None or current is None:
+        return 0
+    initial_dev, initial_ino, initial_size = initial_signature
+    current_dev, current_ino, current_size = current
+    if (current_dev, current_ino) != (initial_dev, initial_ino):
+        return 0
+    if current_size < initial_size:
+        return 0
+    return initial_size
+
 _BEH = dict((_MON.get("heartbeat", {}) or {}))
 
 _MONITOR_HB_CHANNEL = str(_BEH.get("channel", "monitor"))
@@ -828,6 +878,11 @@ def monitor() -> None:
     _write_pid()
     _redact_existing_player_snapshot()
     expected = log_file_candidates()
+    initial_log_signatures = {
+        _log_path_key(path): signature
+        for path in expected
+        if (signature := _log_file_signature(path)) is not None
+    }
     expected_text = str(expected[0]) if expected else "no configured log path"
     _monitor_output(f"Starting. Waiting for game log: {expected_text}")
     _write_logmon_state(
@@ -942,7 +997,10 @@ def monitor() -> None:
                 if p and p.exists():
                     current_path = p
                     current_identity = None
-                    pos = 0
+                    initial_signature = initial_log_signatures.pop(
+                        _log_path_key(p), None
+                    )
+                    pos = _initial_attach_position(p, initial_signature)
                     wait_started = time.time()
                     _monitor_output(f"Attached to game log: {p}")
                     if NOTIFY_STATUS:
@@ -1083,8 +1141,9 @@ def monitor() -> None:
                 line = raw.strip()
                 if not line:
                     continue
+                line_events = _classify_log_line(line)
 
-                if TRACK_JOIN and RX_LOGIN.search(line):
+                if TRACK_JOIN and "login" in line_events:
                     details = RX_LOGIN_NAME_ID.search(line)
                     if details:
                         login_name = details.group(1).strip()
@@ -1113,20 +1172,19 @@ def monitor() -> None:
                     )
 
                 # Ready / joinable (world up + listening)
-                if TRACK_STARTUP:
-                    if RX_LISTEN.search(line) or RX_WORLD_UP.search(line):
-                        if not ready_announced:
-                            ready_announced = True
-                            seen_server_up_once = True
-                            last_seen_server_up = now
-                            if NOTIFY_STARTUP or NOTIFY_JOINABLE:
-                                _discord(
-                                    "✅ Server reported ready / joinable in Vein.log.",
-                                    channel="monitor",
-                                )
+                if TRACK_STARTUP and "ready" in line_events:
+                    if not ready_announced:
+                        ready_announced = True
+                        seen_server_up_once = True
+                        last_seen_server_up = now
+                        if NOTIFY_STARTUP or NOTIFY_JOINABLE:
+                            _discord(
+                                "✅ Server reported ready / joinable in Vein.log.",
+                                channel="monitor",
+                            )
 
                 # Authenticated player ID (for future use)
-                if TRACK_AUTH:
+                if TRACK_AUTH and "auth" in line_events:
                     m = RX_AUTH_OK.search(line)
                     if m:
                         player_id = m.group(1)
@@ -1154,7 +1212,7 @@ def monitor() -> None:
                         )
 
                 # Join / character select
-                if TRACK_JOIN:
+                if TRACK_JOIN and "join" in line_events:
                     m = RX_JOINED.search(line)
                     if m:
                         name = m.group(1).strip()
@@ -1175,7 +1233,7 @@ def monitor() -> None:
                                 channel="monitor",
                             )
 
-                if TRACK_CHARACTER:
+                if TRACK_CHARACTER and "character" in line_events:
                     m = RX_CHARSEL.search(line)
                     if m and NOTIFY_CHARACTER:
                         aka = m.group(1).strip()
@@ -1200,7 +1258,7 @@ def monitor() -> None:
                         )
 
                 # Disconnect
-                if TRACK_DISCONNECT:
+                if TRACK_DISCONNECT and "disconnect" in line_events:
                     disconnect_message = _disconnect_message_for_line(
                         line, observed_at=now
                     )
@@ -1218,7 +1276,7 @@ def monitor() -> None:
                             _discord(disconnect_message, channel="monitor")
 
                 # Autosave backups
-                if AUTOSAVE_ENABLED and TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
+                if AUTOSAVE_ENABLED and TRACK_AUTOSAVE and "autosave" in line_events:
                     if now - last_autosave_ts >= AUTOSAVE_COOLDOWN:
                         last_autosave_ts = now
                         if NOTIFY_AUTOSAVE:
@@ -1232,7 +1290,7 @@ def monitor() -> None:
                             pass
 
                 # Crash detection + backup
-                if CRASH_ENABLED and TRACK_CRASH and RX_CRASH.search(line):
+                if CRASH_ENABLED and TRACK_CRASH and "crash" in line_events:
                     if now - last_crash_ts >= CRASH_DEBOUNCE:
                         last_crash_ts = now
                         if NOTIFY_CRASH:
