@@ -6,6 +6,18 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+- Fixed Discord disconnect floods caused by the broad `Logout` pattern matching
+  Unreal `LogOutputDevice` stack traces. The log monitor now recognizes the
+  canonical connection-removal event once, correlates its Steam ID with the
+  cached player name, and suppresses immediate duplicate notifications.
+- Redacted password and session-ticket query fields before player-event log
+  lines enter runtime snapshots, while retaining non-sensitive diagnostic
+  context for local troubleshooting. Log-monitor startup also scrubs readable
+  pre-redaction snapshots without overwriting malformed files.
+- Hardened controlled crash restarts so competing requests cannot remove each
+  other's restart lock. Process-launch failures now return safely without a
+  false throttle stamp, and Discord notification failures cannot block a local
+  restart attempt.
 - Clarified the product origin and long-term roadmap around a friend-group host
   keeping a private world safely available with minimal intervention. Discord
   is treated as an optional community and remote-status surface, and future

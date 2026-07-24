@@ -107,6 +107,10 @@ Typical messages:
 - **Atomic state writes** prevent partial JSON (write to `.tmp` then replace).
 - **Quiet windows** ensure the monitor doesn’t flap during boot or crash storms.
 - **Live feature gating** allows enabling/disabling without restart.
+- Controlled restart requests acquire an exclusive runtime lock. A competing
+  request never removes a lock it does not own, launch failures return safely
+  to the monitor loop without writing a throttle stamp, and Discord failures do
+  not prevent the local restart attempt.
 - **No hardcoded paths** — everything flows through the config/runtime helpers.
 
 ---

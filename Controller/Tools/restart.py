@@ -24,8 +24,12 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
     Fire-and-forget restart respecting a simple throttle window.
     Writes a small lock to avoid duplicate spawns.
     """
-    throttle_seconds = int(config.get("restart_throttle_seconds", 120))
+    try:
+        throttle_seconds = int(config.get("restart_throttle_seconds", 120))
+    except (TypeError, ValueError):
+        throttle_seconds = 120
     now = time.time()
+    lock_acquired = False
     try:
         if RESTART_STAMP.exists():
             try:
@@ -36,10 +40,17 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
             except Exception:
                 pass
 
-        if RESTARTING_LOCK.exists():
+        try:
+            RESTARTING_LOCK.parent.mkdir(parents=True, exist_ok=True)
+            with RESTARTING_LOCK.open("x", encoding="utf-8") as lock_file:
+                lock_file.write(reason)
+            lock_acquired = True
+        except FileExistsError:
+            return False
+        except OSError as exc:
+            print(f"[Restart] Could not acquire restart lock: {exc}")
             return False
 
-        RESTARTING_LOCK.write_text(reason, encoding="utf-8")
         env = os.environ.copy()
         if os.environ.get("VEIN_CONFIG"):
             env["VEIN_CONFIG"] = os.environ["VEIN_CONFIG"]
@@ -47,31 +58,43 @@ def initiate_controlled_restart(reason: str = "unknown") -> bool:
 
         creationflags = win_creationflags_for_headless()
 
-        send_discord_message(
-            f"Crash monitor initiated controlled restart (reason={reason}).",
-            channel="startup",
-        )
+        try:
+            send_discord_message(
+                f"Crash monitor initiated controlled restart (reason={reason}).",
+                channel="startup",
+            )
+        except Exception as exc:
+            print(f"[Restart] Discord notification failed: {exc}")
 
         command = (
             [sys.executable, "start-server", "--config", env.get("VEIN_CONFIG", "")]
             if getattr(sys, "frozen", False)
             else [sys.executable, str(START_SCRIPT)]
         )
-        subprocess.Popen(
-            command,
-            cwd=str(PROJECT_ROOT),
-            env=env,
-            creationflags=creationflags,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-        )
-        RESTART_STAMP.write_text(str(now), encoding="utf-8")
+        try:
+            subprocess.Popen(
+                command,
+                cwd=str(PROJECT_ROOT),
+                env=env,
+                creationflags=creationflags,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+            )
+        except OSError as exc:
+            print(f"[Restart] Failed to launch controlled restart: {exc}")
+            return False
+
+        try:
+            RESTART_STAMP.write_text(str(now), encoding="utf-8")
+        except OSError as exc:
+            print(f"[Restart] Restart launched but throttle stamp could not be written: {exc}")
 
         time.sleep(int(config.get("restart_settle_seconds", 5)))
         return True
     finally:
-        try:
-            RESTARTING_LOCK.unlink(missing_ok=True)
-        except Exception:
-            pass
+        if lock_acquired:
+            try:
+                RESTARTING_LOCK.unlink(missing_ok=True)
+            except Exception:
+                pass

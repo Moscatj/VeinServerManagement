@@ -39,6 +39,67 @@ class RestartTests(unittest.TestCase):
 
         popen.assert_not_called()
 
+    def test_existing_restart_lock_is_not_removed_by_competing_request(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            stamp = base / "last_restart_at.txt"
+            lock = base / "restart.lock"
+            lock.write_text("first-request", encoding="utf-8")
+            with mock.patch.object(restart, "RESTART_STAMP", stamp), mock.patch.object(
+                restart, "RESTARTING_LOCK", lock
+            ), mock.patch.object(restart.subprocess, "Popen") as popen:
+                self.assertFalse(restart.initiate_controlled_restart("second-request"))
+
+            self.assertEqual(lock.read_text(encoding="utf-8"), "first-request")
+
+        popen.assert_not_called()
+
+    def test_spawn_failure_returns_false_without_stamp_and_cleans_owned_lock(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            stamp = base / "last_restart_at.txt"
+            lock = base / "restart.lock"
+            with mock.patch.object(restart, "RESTART_STAMP", stamp), mock.patch.object(
+                restart, "RESTARTING_LOCK", lock
+            ), mock.patch.object(
+                restart, "win_creationflags_for_headless", return_value=0
+            ), mock.patch.object(
+                restart, "send_discord_message"
+            ), mock.patch.object(
+                restart.subprocess, "Popen", side_effect=OSError("spawn failed")
+            ), mock.patch("builtins.print") as output:
+                self.assertFalse(restart.initiate_controlled_restart("test"))
+
+            self.assertFalse(lock.exists())
+            self.assertFalse(stamp.exists())
+
+        output.assert_any_call("[Restart] Failed to launch controlled restart: spawn failed")
+
+    def test_notification_failure_does_not_block_restart(self) -> None:
+        with TemporaryDirectory(dir=ROOT) as tmp:
+            base = Path(tmp)
+            stamp = base / "last_restart_at.txt"
+            lock = base / "restart.lock"
+            with mock.patch.object(restart, "RESTART_STAMP", stamp), mock.patch.object(
+                restart, "RESTARTING_LOCK", lock
+            ), mock.patch.object(restart.time, "time", return_value=3_000), mock.patch.object(
+                restart.time, "sleep"
+            ), mock.patch.dict(
+                restart.config, {"restart_settle_seconds": 0}, clear=False
+            ), mock.patch.object(
+                restart, "win_creationflags_for_headless", return_value=0
+            ), mock.patch.object(
+                restart, "send_discord_message", side_effect=RuntimeError("offline")
+            ), mock.patch.object(restart.subprocess, "Popen") as popen, mock.patch(
+                "builtins.print"
+            ):
+                self.assertTrue(restart.initiate_controlled_restart("test"))
+
+            self.assertFalse(lock.exists())
+            self.assertEqual(stamp.read_text(encoding="utf-8"), "3000")
+
+        popen.assert_called_once()
+
     def test_initiate_controlled_restart_spawns_and_cleans_lock(self) -> None:
         with TemporaryDirectory(dir=ROOT) as tmp:
             stamp = Path(tmp) / "last_restart_at.txt"

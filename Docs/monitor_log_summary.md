@@ -92,7 +92,10 @@ All pulled from `config.get("monitor", {})` with sensible fallbacks.
 - **Auth/Login:** `LogRamjetNetworking: Authenticated (\d+)`
 - **Join:** `LogNet: Join succeeded:\s*(.+)`
 - **Character select:** `selected character .* (aka ([^)]+))`
-- **Disconnect:** `closed by peer|Logout|Connection closed`
+- **Disconnect:** the canonical
+  `LogNet: UNetDriver::RemoveClientConnection - Removed address <steam-id> ...`
+  record. Broad `Logout` matching is intentionally rejected because it also
+  appears inside Unreal's routine `LogOutputDevice` prefix.
 - **Autosave:** `LogVeinSaveGame: Saved save game to disk`
 - **Crash:** `Fatal error|Access violation|EXCEPTION_ACCESS_VIOLATION|Assertion failed|ensure\(!\)`
 
@@ -120,7 +123,10 @@ Main loop:
    - On **auth** → “Auth OK for `<steam_id>`.”
    - On **join** → “`<name>` joined.” (track in a `current_players` set)
    - On **character select** → “`<name>` selected a character.”
-   - On **disconnect** → “A player disconnected.”
+   - On **disconnect** → resolve the Steam ID through the cached login identity
+     and send “`<name>` disconnected.” A short per-player duplicate guard
+     suppresses repeated connection-removal records; if the monitor attached
+     after login, the Steam ID is used as an explicit fallback.
    - On **autosave** → (debounced by `autosave_backup_cooldown_seconds`)
      - If `monitor.backups.on_autosave` → use the canonical `Tools.backups`
        backup engine.
@@ -148,7 +154,7 @@ Fetch `/status`, `/players`, `/time`, `/weather` using `Controller/Tools/vein_ht
 Sends a message to Discord only if that channel is enabled.
 
 ### Player timeline helpers
-`_record_player_event`, `_player_state_payload`, `_flush_player_snapshot_if_needed`, etc., maintain a bounded cache (≈10 players) with log + HTTP events (`login`, `auth`, `join`, `character_select`, `disconnect`, `http_online/offline`). This cache feeds both the GUI tree and a standalone `Runtime/player_characters.json`.
+`_record_player_event`, `_player_state_payload`, `_flush_player_snapshot_if_needed`, etc., maintain a bounded cache (≈10 players) with log + HTTP events (`login`, `auth`, `join`, `character_select`, `disconnect`, `http_online/offline`). Before a raw diagnostic line enters that cache, sensitive login query fields such as passwords and session tickets are replaced with explicit redaction markers. Log-monitor startup also migrates an existing readable snapshot by redacting event lines written before this protection was added; malformed snapshots are left untouched for diagnosis. This cache feeds both the GUI tree and a standalone `Runtime/player_characters.json`.
 
 ---
 

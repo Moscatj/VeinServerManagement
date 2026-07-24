@@ -98,7 +98,15 @@ RX_PLAYER_AUTH_OK = re.compile(
     re.I,
 )
 RX_PLAYER_STATE_ID = re.compile(r"LogVein:\s+PlayerState ID changed to\s+(\d+)", re.I)
-RX_DISC = re.compile(r"closed by peer|Logout|Connection closed", re.I)
+RX_DISC = re.compile(
+    r"LogNet:\s+UNetDriver::RemoveClientConnection\s+-\s+Removed address\s+"
+    r"(?P<steam>\d{15,20})(?::\d+)?\s+from\s+MappedClientConnections\b",
+    re.I,
+)
+RX_SENSITIVE_LOGIN_FIELD = re.compile(
+    r"(?P<prefix>[?&](?:Password|Ticket)=)[^?&\s]*",
+    re.I,
+)
 
 RX_AUTOSAVE = re.compile(r"LogVeinSaveGame: Saved save game to disk", re.I)
 
@@ -127,6 +135,8 @@ _LAST_PLAYER_SNAPSHOT_WRITE = 0.0
 _PLAYER_SNAPSHOT_INTERVAL = 2.0
 _HTTP_STATE: Optional[Dict[str, Any]] = None
 _HTTP_DISABLED_LOGGED = False
+_LAST_DISCONNECT_NOTIFY: Dict[str, float] = {}
+_DISCONNECT_NOTIFY_DEBOUNCE_SECONDS = 30.0
 
 
 def _trigger_section(new_key: str, legacy_key: str) -> dict:
@@ -356,6 +366,14 @@ def _prune_player_cache() -> None:
             _PLAYER_CACHE.pop(key, None)
 
 
+def _redact_player_event_line(line: str) -> str:
+    """Remove credentials from a log line before runtime persistence."""
+    return RX_SENSITIVE_LOGIN_FIELD.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        line,
+    )
+
+
 def _record_player_event(
     steam_id: Optional[str],
     event_type: str,
@@ -380,7 +398,7 @@ def _record_player_event(
     if detail:
         event["detail"] = detail
     if raw_line:
-        event["line"] = raw_line
+        event["line"] = _redact_player_event_line(raw_line)
     if character_id:
         event["character_id"] = character_id
 
@@ -506,13 +524,89 @@ def _extract_steam_id_from_line(line: str, name: Optional[str] = None) -> Option
     return _lookup_id_for_name(name)
 
 
+def _disconnect_message_for_line(
+    line: str, *, observed_at: Optional[float] = None
+) -> Optional[str]:
+    """Record one canonical disconnect and return its Discord message.
+
+    Vein emits one useful ``RemoveClientConnection`` record containing the
+    player's Steam ID. Broad terms such as ``Logout`` are unsafe because they
+    also match Unreal's routine ``LogOutputDevice`` prefix.
+    """
+    match = RX_DISC.search(line)
+    if not match:
+        return None
+
+    steam_id = match.group("steam").strip()
+    now = time.time() if observed_at is None else observed_at
+    for prior_id, prior_at in list(_LAST_DISCONNECT_NOTIFY.items()):
+        if now - prior_at >= _DISCONNECT_NOTIFY_DEBOUNCE_SECONDS:
+            _LAST_DISCONNECT_NOTIFY.pop(prior_id, None)
+    last_notified = _LAST_DISCONNECT_NOTIFY.get(steam_id)
+    if (
+        last_notified is not None
+        and now - last_notified < _DISCONNECT_NOTIFY_DEBOUNCE_SECONDS
+    ):
+        return None
+
+    _LAST_DISCONNECT_NOTIFY[steam_id] = now
+    name = _ID_TO_NAME.get(steam_id)
+    _record_player_event(
+        steam_id,
+        "disconnect",
+        source="log",
+        name=name,
+        raw_line=line,
+        state="offline",
+    )
+
+    if name:
+        return f"👋 **{name}** disconnected."
+    return f"👋 Steam ID `{steam_id}` disconnected."
+
+
 def _write_player_snapshot(payload: Dict[str, Any]) -> None:
+    tmp = PLAYER_SNAPSHOT_FILE.with_suffix(PLAYER_SNAPSHOT_FILE.suffix + ".tmp")
     try:
         PLAYER_SNAPSHOT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with PLAYER_SNAPSHOT_FILE.open("w", encoding="utf-8") as fh:
+        with tmp.open("w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, sort_keys=True)
+        os.replace(tmp, PLAYER_SNAPSHOT_FILE)
     except Exception:
-        pass
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _redact_existing_player_snapshot() -> bool:
+    """Redact pre-fix event lines without disturbing an unreadable snapshot."""
+    try:
+        payload = json.loads(PLAYER_SNAPSHOT_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+
+    changed = False
+    players = payload.get("players") if isinstance(payload, dict) else None
+    if not isinstance(players, list):
+        return False
+
+    for player in players:
+        events = player.get("events") if isinstance(player, dict) else None
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            line = event.get("line") if isinstance(event, dict) else None
+            if not isinstance(line, str):
+                continue
+            redacted = _redact_player_event_line(line)
+            if redacted != line:
+                event["line"] = redacted
+                changed = True
+
+    if changed:
+        _write_player_snapshot(payload)
+    return changed
 
 
 def _set_http_state(state: Optional[Dict[str, Any]]) -> None:
@@ -732,6 +826,7 @@ def monitor() -> None:
 
     # announce + write pid once
     _write_pid()
+    _redact_existing_player_snapshot()
     expected = log_file_candidates()
     expected_text = str(expected[0]) if expected else "no configured log path"
     _monitor_output(f"Starting. Waiting for game log: {expected_text}")
@@ -1105,18 +1200,22 @@ def monitor() -> None:
                         )
 
                 # Disconnect
-                if TRACK_DISCONNECT and RX_DISC.search(line):
-                    steam_id = _extract_steam_id_from_line(line)
-                    if steam_id:
-                        _record_player_event(
-                            steam_id,
-                            "disconnect",
-                            source="log",
-                            raw_line=line,
-                            state="offline",
+                if TRACK_DISCONNECT:
+                    disconnect_message = _disconnect_message_for_line(
+                        line, observed_at=now
+                    )
+                    if disconnect_message:
+                        disconnect_match = RX_DISC.search(line)
+                        steam_id = (
+                            disconnect_match.group("steam")
+                            if disconnect_match is not None
+                            else None
                         )
-                    if NOTIFY_DISC:
-                        _discord("👋 Player disconnected.", channel="monitor")
+                        player_name = _ID_TO_NAME.get(steam_id or "")
+                        if player_name:
+                            current_players.discard(player_name)
+                        if NOTIFY_DISC:
+                            _discord(disconnect_message, channel="monitor")
 
                 # Autosave backups
                 if AUTOSAVE_ENABLED and TRACK_AUTOSAVE and RX_AUTOSAVE.search(line):
