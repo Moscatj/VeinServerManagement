@@ -7,7 +7,7 @@ support commitment.
 
 ## Current Baseline
 
-Released through `v2.12.0`:
+Released through `v2.12.1`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -95,6 +95,14 @@ Released through `v2.12.0`:
   start when prior save archives exist but none can be verified.
 - Read-only archive history shows total archive count and size, category count,
   oldest/newest dates, and category filtering without opening or modifying ZIPs.
+- Log-monitor notifications are tested against sanitized real-session fixtures.
+  Disconnects are identity-aware and deduplicated, historical log content is not
+  replayed during initial attachment, sensitive connection fields are redacted
+  from runtime snapshots, and app messages cannot trigger Discord mentions.
+- Stabilization coverage exercises installer routes, backup-policy synchronization,
+  guarded restore, missing-save recovery, crash restart coordination, monitor
+  lifecycle cleanup, and controlled shutdown. Automated runs suppress Discord
+  network messages in both parent and child processes.
 
 ## Product Direction
 

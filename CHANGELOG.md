@@ -6,6 +6,8 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.12.1 - 2026-07-24
+
 - Prevented duplicate startup-readiness and historical player notifications by
   beginning initial log attachment after content that predates the monitor.
   Newly created, replaced, or truncated launch logs are still read from the
