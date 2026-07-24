@@ -7,7 +7,7 @@ support commitment.
 
 ## Current Baseline
 
-Released through `v2.12.1`:
+Released through `v2.13.0`:
 
 - Public source hygiene baseline.
 - Sanitized config examples and documentation.
@@ -103,6 +103,9 @@ Released through `v2.12.1`:
   guarded restore, missing-save recovery, crash restart coordination, monitor
   lifecycle cleanup, and controlled shutdown. Automated runs suppress Discord
   network messages in both parent and child processes.
+- The About dialog provides deliberate links to the GitHub project and the
+  installed version's release notes without performing a background network
+  request; development builds fall back to the latest release page.
 
 ## Product Direction
 

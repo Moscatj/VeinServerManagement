@@ -6,6 +6,13 @@ This project uses a lightweight versioning approach suitable for a personal sour
 
 ## Unreleased
 
+## 2.13.0 - 2026-07-24
+
+- Added explicit GitHub project and version-aware release-notes actions to the
+  About dialog. Stable packaged builds open their exact release while source or
+  development versions fall back to the latest release, and links are opened
+  only after a user click.
+
 ## 2.12.1 - 2026-07-24
 
 - Prevented duplicate startup-readiness and historical player notifications by

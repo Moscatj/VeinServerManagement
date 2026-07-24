@@ -19,6 +19,7 @@ def _about_lines(info: dict[str, Any]) -> list[str]:
         f"OS: {info.get('os', 'unknown')}",
         f"License: {info.get('license', 'unknown')}",
         f"Repository: {info.get('repository', '')}",
+        f"Release notes: {info.get('release_notes', '')}",
         f"App root: {info.get('app_root', '')}",
     ]
     config = str(info.get("config") or "").strip()
@@ -30,6 +31,15 @@ def _about_lines(info: dict[str, Any]) -> list[str]:
 def about_text(info: dict[str, Any]) -> str:
     title = str(info.get("suite") or info.get("name") or "Vein Server Manager")
     return title + "\n\n" + "\n".join(_about_lines(info))
+
+
+def _open_https_url(value: Any) -> bool:
+    """Open a deliberate HTTPS link without accepting local or custom schemes."""
+
+    url = QtCore.QUrl(str(value or "").strip())
+    if not url.isValid() or url.scheme().lower() != "https" or not url.host():
+        return False
+    return QtGui.QDesktopServices.openUrl(url)
 
 
 def show_about_dialog(parent: QtWidgets.QWidget, info: dict[str, Any]) -> None:
@@ -71,9 +81,21 @@ def show_about_dialog(parent: QtWidgets.QWidget, info: dict[str, Any]) -> None:
     layout.addWidget(details)
 
     buttons = QtWidgets.QDialogButtonBox()
+    project_btn = buttons.addButton(
+        "Open GitHub Project", QtWidgets.QDialogButtonBox.ActionRole
+    )
+    release_btn = buttons.addButton(
+        "View release notes", QtWidgets.QDialogButtonBox.ActionRole
+    )
     copy_btn = buttons.addButton("Copy", QtWidgets.QDialogButtonBox.ActionRole)
     ok_btn = buttons.addButton(QtWidgets.QDialogButtonBox.Ok)
     ok_btn.setDefault(True)
+    project_btn.clicked.connect(
+        lambda _checked=False: _open_https_url(info.get("repository"))
+    )
+    release_btn.clicked.connect(
+        lambda _checked=False: _open_https_url(info.get("release_notes"))
+    )
     copy_btn.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(about_text(info)))
     buttons.accepted.connect(dialog.accept)
     layout.addWidget(buttons)

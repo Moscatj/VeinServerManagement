@@ -39,7 +39,7 @@ should extend that workflow without making the one-server case harder.
 
 This is a personal source-available portfolio project. It is suitable for experimentation and local non-commercial use, with CI, unit tests, and safety-oriented repository rules in place. It is not an official Vein project and does not include commercial support.
 
-The current stable release is **v2.12.1**. Windows users can install it without
+The current stable release is **v2.13.0**. Windows users can install it without
 Python or other developer tools from the
 [GitHub Releases page](https://github.com/Moscatj/VeinServerManagement/releases/latest).
 

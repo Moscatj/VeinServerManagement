@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ APP_LICENSE = "Non-Commercial Source Available"
 APP_REPOSITORY = "https://github.com/Moscatj/VeinServerManagement"
 VERSION_FILE = "version.txt"
 UNKNOWN_VERSION = "0.0.0-dev"
+STABLE_VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 def _read_version_file(root: Path) -> str | None:
@@ -68,6 +70,22 @@ def get_commit(root: Path, *, allow_git: bool = False) -> str:
     return value or "unknown"
 
 
+def release_notes_url(
+    version: str,
+    *,
+    repository: str = APP_REPOSITORY,
+) -> str:
+    """Return exact release notes for a stable version or the latest release."""
+
+    normalized = str(version or "").strip()
+    if normalized.lower().startswith("v"):
+        normalized = normalized[1:]
+    base = repository.rstrip("/")
+    if STABLE_VERSION_PATTERN.fullmatch(normalized):
+        return f"{base}/releases/tag/v{normalized}"
+    return f"{base}/releases/latest"
+
+
 def build_about_info(
     root: Path,
     *,
@@ -76,10 +94,11 @@ def build_about_info(
     include_git: bool = False,
 ) -> dict[str, Any]:
     """Collect display-safe application metadata for the About dialog."""
+    version = get_app_version(root, allow_git=include_git)
     return {
         "name": APP_GUI_NAME,
         "suite": APP_DISPLAY_NAME,
-        "version": get_app_version(root, allow_git=include_git),
+        "version": version,
         "commit": get_commit(root, allow_git=include_git),
         "python": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()} {platform.version()}",
@@ -88,4 +107,5 @@ def build_about_info(
         "config": str(config_path) if config_path else "",
         "license": APP_LICENSE,
         "repository": APP_REPOSITORY,
+        "release_notes": release_notes_url(version),
     }
